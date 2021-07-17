@@ -44,7 +44,7 @@ nc_files <- list.files(path = nc_path, pattern = "\\.nc$")                      
 # Process each NetCDF file in the list (outer loop)                            #
 ################################################################################
 
-for(i in 1:1) { # length(nc_files)
+for(i in 1:length(nc_files)) {
 
   print(paste("Processing NetCDF file ", i, " of ", length(nc_files), "...", sep = "")) # Output progress to the console
   
@@ -60,14 +60,14 @@ for(i in 1:1) { # length(nc_files)
   # Process each airport in the sample (inner loop)                            #
   ##############################################################################
   
-  for(j in 1:1) { #nrow(dt_smp)
+  for(j in 1:nrow(dt_smp)) {
 
     # Output progress to the console
     print(paste("   Processing airport ", j, " (", dt_smp[j, our.icao], ") of ", nrow(dt_smp), "...", sep = ""))
 
     # Parse out the airport's spatial coordinates
-    smp_lat  <- dt_smp[j, our.lat]
-    smp_lon  <- dt_smp[j, our.lon]
+    smp_lat <- dt_smp[j, our.lat]
+    smp_lon <- dt_smp[j, our.lon]
 
     # Find the NetCDF file's row indices of the spatial coordinates nearest to the current airport
     lat_index <- which.min(abs(nc_lat - smp_lat))
@@ -89,13 +89,13 @@ for(i in 1:1) { # length(nc_files)
     # To do so, the rolling average of both time and value is computed for every row pair of 'hurs' data
     if (nc_atts$variable_id == "hurs") {                                        # Only execute if the climate variable is hurs
       nc_out[, nc.time := nc.time - 3600 * 3]                                   # Roll back the time by 3 hours (which is the same as averaging the times of the current and previous six-hourly observations)
-      nc_out[, nc.val := data.table::frollmean(x = nc.val, 2)]                  # Average the current and previous observation values
-      nc_out <- na.omit(object = nc_out, cols = "nc.val")                         # The first value of 'hurs' would be empty since it does not have a previous observation, so we remove it
+      nc_out[, nc.val := data.table::frollmean(x = nc.val, n = 2)]              # Average the current and previous observation values
+      nc_out <- na.omit(object = nc_out, cols = "nc.val")                       # The first value of 'hurs' would be empty since it does not have a previous observation, so we remove it
     }
 
     # Write the results to a compressed CSV file
     out_path <- paste("data/climate/outputs", nc_atts$experiment_id, sep = "/") # Set the file path
-    out_file <- paste(dt_smp[j, our.icao], "csv.gz", sep = ".")                            # Set up one file for each airport-experiment pair
+    out_file <- paste(dt_smp[j, our.icao], "csv.gz", sep = ".")                 # Set up one file for each airport-experiment pair
     data.table::fwrite(x = nc_out, file = file.path(out_path, out_file, fsep = "/"), append = TRUE, na = NA, compress = "gzip") # Write the data to the file using the 'fwrite' function from the 'data.table' package because of its speed but also ability to compress. The .gzip format was found here to reduce file size by ~80% relative to an uncompressed .csv
 
   } # End of inner loop
