@@ -9,14 +9,10 @@
 
 # Load required libraries
 library(data.table)
-library(dplyr)
-library(magrittr)
 library(ncdf4)
 library(ncdf4.helpers)
 library(PCICt)
-library(stringr)
 library(tidync)
-library(tidyr)
 
 # Clear the console
 cat("\014")
@@ -38,7 +34,7 @@ dt_smp <- unique(x = dt_smp, by = "our.icao")                                   
 ################################################################################
 
 nc_path  <- "data/climate/inputs"                                               # Set the file path
-nc_files <- list.files(path = nc_path, pattern = "\\.nc$")                      # List the files
+nc_files <- list.files(path = nc_path, pattern = "\\.nc$", full.names = TRUE)   # List the files
 
 ################################################################################
 # Process each NetCDF file in the list (outer loop)                            #
@@ -49,7 +45,7 @@ for(i in 1:length(nc_files)) {
   print(paste("Processing NetCDF file ", i, " of ", length(nc_files), "...", sep = "")) # Output progress to the console
   
   # Parse out the NetCDF file's attributes and dimensions
-  nc       <- ncdf4::nc_open(file.path(nc_path, nc_files[i]))                   # Open the NetCDF file
+  nc       <- ncdf4::nc_open(nc_files[i])                                       # Open the NetCDF file
   nc_atts  <- ncdf4::ncatt_get(nc, 0)                                           # Extract the NetCDF file's attributes
   nc_lat   <- ncdf4::ncvar_get(nc = nc, varid = "lat")                          # Extract the NetCDF file's 1D latitude array
   nc_lon   <- ncdf4::ncvar_get(nc = nc, varid = "lon") - 180                    # Extract the NetCDF file's 1D longitude array. Subtract 180 because the NetCDF longitude convention is 0°-360° but the airports' longitudes are in -180° to 180°
