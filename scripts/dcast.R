@@ -5,7 +5,9 @@
 
 # Load required libraries
 library(data.table)
+library(dplyr)
 library(R.utils)
+library(zoo)
 
 # Clear the console
 cat("\014")
@@ -16,20 +18,20 @@ timer_total <- Sys.time()
 ###############################################################################
 # List climate files to be processed                                          #
 ###############################################################################
-filepath <- "D:/"
+filepath <- "data/climate/outputs/ssp585"
 filelist <- list.files(path = filepath, pattern = "\\.csv.gz$", all.files = FALSE, full.names = TRUE, recursive = TRUE)
 
 ###############################################################################
 # Read and process each file sequentially                                     #
 ###############################################################################
-for(i in 1:length(filelist)) {
+for(i in 1:1) { # length(filelist)
   
   # Start a timer for the loop
   timer_loop <- Sys.time() 
   
   # Load each file as a data.table
   file <- data.table::fread(      
-    file = filename[i],
+    file = filelist[i],
     header = TRUE,
     colClasses = c("factor", "POSIXct", "factor", "numeric"),
     col.names = c("our.icao", "nc.time", "nc.var", "nc.val"),
@@ -37,15 +39,15 @@ for(i in 1:length(filelist)) {
     key = c("our.icao", "nc.var", "nc.time")
   )
 
-  # Convert each file from long to wide
-  file <- data.table::dcast.data.table(
-    data = file,
-    formula = our.icao + nc.time ~ nc.var,
-    value.var = "nc.val"
-  )
-
-  # Overwrite the long file with the wide file
-  data.table::fwrite(x = file, file = filename[i], append = FALSE, na = NA, compress = "gzip")
+  # # Convert each file from long to wide
+  # file <- data.table::dcast.data.table(
+  #   data = file,
+  #   formula = our.icao + nc.time ~ nc.var,
+  #   value.var = "nc.val"
+  # )
+  # 
+  # # Overwrite the long file with the wide file
+  # data.table::fwrite(x = file, file = filelist[i], append = FALSE, na = NA, compress = "gzip")
   
   # Display the timer
   print(paste("Processed file", i, "of", length(filelist), "in", signif(Sys.time() - timer_loop, digits = 2), "seconds.", sep = " "))

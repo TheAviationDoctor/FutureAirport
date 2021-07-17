@@ -2,15 +2,13 @@
 # /scripts/esgf.R                                                             #
 # Import and wrangle climate data from the Earth System Grid Federation (ESGF)#
 ###############################################################################
-
 # Load required libraries
 library(dplyr)
 library(epwshiftr)
-
-# Clear the console and plots
+# Clear the console
 cat("\014")
 
-# Search the Lawrence Livermore National Laboratory (LLNL) node of the ESGF for available CMIP6 model outputs that meet our research requirements
+# Search the Lawrence Livermore National Laboratory (LLNL) node of the ESGF
 nc_files <- rbind(
   epwshiftr::esgf_query( # First query
     activity = "ScenarioMIP",
@@ -26,7 +24,7 @@ nc_files <- rbind(
     limit = 10000L,
     data_node = NULL
   ),
-  epwshiftr::esgf_query( # Second query because hurs is only available at the 6hr frequency, not 6hrPt
+  epwshiftr::esgf_query( # Second query as hurs is only available at the 6hr frequency
     activity = "ScenarioMIP",
     variable = c("hurs"),
     frequency = c("6hr"),
@@ -42,17 +40,19 @@ nc_files <- rbind(
   )
 )
 
-# Remove duplicate tracking ids (there is a weird ESGF server-side issue with a few identical hurs files appearing twice with the same tracking_id, but with .nc and .nc_0 extensions)
+# Remove duplicate tracking ids (there is a weird ESGF server-side issue with a few identical hurs files appearing twice with the same tracking_id and .nc_0 extensions)
 nc_files <- nc_files[!rev(duplicated(rev(nc_files$tracking_id))),]
 
-# Count number of unique datasets
-length(unique(nc_files$dataset_id))
+# Describe the data
+length(unique(nc_files$dataset_id)) # Count number of unique datasets
+sum(nc_files$file_size) / 10^9 # Sum size of combined dataset in GB
+mean(nc_files$file_size) # Average size per file
+nrow(nc_files) # Count number of files
 
-# Sum size of combined dataset in GB
-sum(nc_files$file_size) / 10^9
-
-# Count number of files
-nrow(nc_files)
+# Write the files
+filepath <- "data/climate/query" # Set the file path
+filename <- "esgf.csv"           # Set the file name
+write.csv(x = nc_files, file = file.path(filepath, filename, fsep = "/"))
 
 # Group and summarize files
 nc_files %>%
