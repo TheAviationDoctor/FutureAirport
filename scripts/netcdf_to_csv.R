@@ -1,6 +1,6 @@
 ################################################################################
-# /scripts/netcdf.R                                                            #
-# Import and wrangle the NetCDF files downloaded from esgf.R                   #
+# /scripts/netcdf_to_csv.R                                                     #
+# Wrangle the NetCDF files downloaded from esgf.R into CSV files per airport   #
 ################################################################################
 
 ################################################################################
@@ -33,7 +33,7 @@ dt_smp <- unique(x = dt_smp, by = "our.icao")                                   
 # List all NetCDF files previously downloaded from esgf.R                      #
 ################################################################################
 
-nc_path  <- "data/climate/inputs"                                               # Set the file path
+nc_path  <- "data/climate/2_netcdf_downloads"                                               # Set the file path
 nc_files <- list.files(path = nc_path, pattern = "\\.nc$", full.names = TRUE)   # List the files
 
 ################################################################################
@@ -75,6 +75,7 @@ for(i in 1:length(nc_files)) {
     # Assemble the results into a data table
     nc_out <- data.table::data.table(
       nc.time = PCICt::as.POSIXct.PCICt(nc_time),                               # Time series
+      nc.exp = nc_atts$experiment_id,                                           # Experiment (shared socio-economic pathway)
       nc.var = nc_atts$variable_id,                                             # Climate variable name (repeated down, i.e. long format)
       nc.val = as.vector(nc_val)                                                # Climate variable values
     )
@@ -90,7 +91,7 @@ for(i in 1:length(nc_files)) {
     }
 
     # Write the results to a compressed CSV file
-    out_path <- paste("data/climate/outputs", nc_atts$experiment_id, sep = "/") # Set the file path
+    out_path <- "data/climate/3_csv_long"                                       # Set the file path
     out_file <- paste(dt_smp[j, our.icao], "csv.gz", sep = ".")                 # Set up one file for each airport-experiment pair
     data.table::fwrite(x = nc_out, file = file.path(out_path, out_file, fsep = "/"), append = TRUE, na = NA, compress = "gzip") # Write the data to the file using the 'fwrite' function from the 'data.table' package because of its speed but also ability to compress. The .gzip format was found here to reduce file size by ~80% relative to an uncompressed .csv
 
