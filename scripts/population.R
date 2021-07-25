@@ -4,8 +4,14 @@
 ###############################################################################
 
 # Load required libraries
+library(dplyr)
+library(ggplot2)
+library(magrittr)
+library(purrr)
+library(readr)
 library(scales)
-library(tidyverse)
+library(stringr)
+library(tidyr)
 
 # Clear the console
 cat("\014")
@@ -80,9 +86,9 @@ df_tra_binned
 coeff <- max(df_tra_binned$traffic_per)/max(df_tra_binned$airports) # Define a coefficient to scale the secondary y axis proportionally to the first
 ggplot(data = df_tra_binned) +
   geom_col(mapping = aes(x = bin, y = airports)) +
-  geom_text(mapping = aes(x = bin, y = airports, label = scales::comma(airports, accuracy = 1)), vjust = 1.5, color = ifelse(df_tra_binned$airports < 100, "black", "white"), size = 3.5) +
+  geom_text(mapping = aes(x = bin, y = airports, label = comma(airports, accuracy = 1)), vjust = 1.5, color = ifelse(df_tra_binned$airports < 100, "black", "white"), size = 3.5) +
   geom_point(mapping = aes(x = bin, y = traffic_per / coeff), shape = "square", size = 2) +
-  geom_text(mapping = aes(x = bin, y = traffic_per / coeff, label = scales::percent(traffic_per, accuracy = 0.01)), nudge_x = -.35, nudge_y = 50, color = "black", size = 3.5) +
+  geom_text(mapping = aes(x = bin, y = traffic_per / coeff, label = percent(traffic_per, accuracy = 0.01)), nudge_x = -.35, nudge_y = 50, color = "black", size = 3.5) +
   geom_path(mapping = aes(x = bin, y = traffic_per / coeff, group = 1), lty = 1, size = 0.9) +
   scale_x_discrete(name = "2019 passenger traffic bins", limits = rev) +
   scale_y_continuous(name = "Count of airports (bars)", labels = comma, breaks = c(0, 300, 600, 900, 1200), sec.axis = sec_axis(~ . * coeff, name = "Cumulative percentage of 2019 passenger traffic (line)", labels = percent)) +
@@ -119,7 +125,7 @@ nrow(df_geo)
 ###############################################################################
 
 # Left join the traffic and geolocation datasets
-df_apt <- merge(x = df_tra, y = df_geo, by.x = "iata.code", by.y = "our.iata", all.x = TRUE) # We use base R, however left_join from tidyverse::dplyr would return the same results
+df_apt <- merge(x = df_tra, y = df_geo, by.x = "iata.code", by.y = "our.iata", all.x = TRUE)
 
 # Count the resulting observations
 nrow(df_apt)

@@ -31,7 +31,7 @@ for(i in 1:length(csv_in_list)) {
   print(paste("   Processing file ", i, " of ", length(csv_in_list), "...", sep = ""))
   
   # Load the current file into a data.table
-  file <- data.table::fread(      
+  file <- fread(      
     file = file.path(csv_in_path, csv_in_list[i], fsep = "/"),
     header = TRUE,
     colClasses = c("POSIXct", "factor", "factor", "numeric"),
@@ -41,7 +41,7 @@ for(i in 1:length(csv_in_list)) {
   )
 
   # Convert the current file from long to wide
-  file <- data.table::dcast.data.table(
+  file <- dcast.data.table(
     data = file,
     formula = nc.time + nc.exp ~ nc.var,
     value.var = "nc.val"
@@ -55,10 +55,10 @@ for(i in 1:length(csv_in_list)) {
   ################################################################################
   
   # Inputs
-  hurs <- file[, hurs] / 100                                                    # Near-surface relative humidity in %
-  ps   <- file[, ps] / 100                                                      # Near-surface air pressure in hPa
-  tas  <- file[, tas] - 273.15                                                  # Near-surface air temperature in °C
-  pol  <- 0.99999683 +                                                          # Polynomial approximation for the saturation vapor pressure over liquid water at 0°C as per function ESW(T) at https://icoads.noaa.gov/software/other/profs. Requires tas in °C
+  hurs <- file[, hurs] / 100   # Near-surface relative humidity in %
+  ps   <- file[, ps] / 100     # Near-surface air pressure in hPa
+  tas  <- file[, tas] - 273.15 # Near-surface air temperature in °C
+  pol  <- 0.99999683 +         # Polynomial approximation for the saturation vapor pressure over liquid water at 0°C as per function ESW(T) at https://icoads.noaa.gov/software/other/profs. Requires tas in °C
           tas * (-0.90826951E-02 +
             tas * (0.78736169E-04 +
               tas * (-0.61117958E-06 +
@@ -68,15 +68,15 @@ for(i in 1:length(csv_in_list)) {
                       tas * (-0.17892321E-14 +
                         tas * (0.11112018E-16 +
                           tas * (-0.30994571E-19)))))))))
-  es0  <- 6.1078                                                                  # Saturation vapor pressure at 0°C (constant)
-  Rd   <- 287.058                                                                 # Specific gas constant for dry air, in J/(kg·K)
-  Rv   <- 461.495                                                                 # Specific gas constant for water vapor, in J/(kg·K)
+  es0  <- 6.1078  # Saturation vapor pressure at 0°C (constant)
+  Rd   <- 287.058 # Specific gas constant for dry air, in J/(kg·K)
+  Rv   <- 461.495 # Specific gas constant for water vapor, in J/(kg·K)
   
   # Outputs
-  esw <- es0 / pol^8                                                              # Saturation vapor pressure at tas, in Pa
-  pv  <- esw * hurs                                                               # Partial pressure of water vapor, in Pa
-  pd  <- ps - pv                                                                  # Partial pressure of dry air, in Pa
-  rho <- ((pd / (Rd * (tas + 273.15))) + (pv / (Rv * (tas + 273.15)))) * 100      # Total air density. Requires tas in K
+  esw <- es0 / pol^8 # Saturation vapor pressure at tas, in Pa
+  pv  <- esw * hurs  # Partial pressure of water vapor, in Pa
+  pd  <- ps - pv     # Partial pressure of dry air, in Pa
+  rho <- ((pd / (Rd * (tas + 273.15))) + (pv / (Rv * (tas + 273.15)))) * 100 # Total air density. Requires tas in K
   
   # Save the air density to a new column
   file[, rho := rho]
@@ -88,7 +88,7 @@ for(i in 1:length(csv_in_list)) {
   # Write the results to a compressed CSV file
   csv_out_path <- "data/climate/4_csv_wide"
   csv_out_name <- csv_in_list[i]
-  data.table::fwrite(x = file, file = file.path(csv_out_path, csv_out_name, fsep = "/"), append = FALSE, na = NA, compress = "gzip")
+  fwrite(x = file, file = file.path(csv_out_path, csv_out_name, fsep = "/"), append = FALSE, na = NA, compress = "gzip")
   
 }
 

@@ -12,7 +12,6 @@ library(data.table)
 library(ncdf4)
 library(ncdf4.helpers)
 library(PCICt)
-library(tidync)
 
 # Clear the console
 cat("\014")
@@ -23,7 +22,7 @@ cat("\014")
 
 smp_path <- "data/population/outputs"                                           # Set the sample's file path
 smp_file <- "sample.csv"                                                        # Set the sample's file name
-dt_smp <- data.table::fread(                                                    # Load the sample into a data table
+dt_smp <- fread(                                                    # Load the sample into a data table
   file = file.path(smp_path, smp_file, fsep = "/"),
   header = TRUE,
   colClasses = c("factor", "factor", "integer", "character", "numeric", "numeric", "factor", "integer", "integer"))
@@ -45,12 +44,12 @@ for(i in 1:length(nc_files)) {
   print(paste("Processing NetCDF file ", i, " of ", length(nc_files), "...", sep = "")) # Output progress to the console
   
   # Parse out the NetCDF file's attributes and dimensions
-  nc       <- ncdf4::nc_open(nc_files[i])                                       # Open the NetCDF file
-  nc_atts  <- ncdf4::ncatt_get(nc, 0)                                           # Extract the NetCDF file's attributes
-  nc_lat   <- ncdf4::ncvar_get(nc = nc, varid = "lat")                          # Extract the NetCDF file's 1D latitude array
-  nc_lon   <- ncdf4::ncvar_get(nc = nc, varid = "lon") - 180                    # Extract the NetCDF file's 1D longitude array. Subtract 180 because the NetCDF longitude convention is 0°-360° but the airports' longitudes are in -180° to 180°
-  nc_time  <- ncdf4.helpers::nc.get.time.series(f = nc, v = nc_atts$variable_id, time.dim.name = "time") # Extract the NetCDF file's 1D time array in a clean PCICt (POSIXct-like) format
-  nc_var   <- ncdf4::ncvar_get(nc = nc, varid = nc_atts$variable_id) # Extract the 3D climate array from the NetCDF file. Needed only for method 2 explained further below
+  nc       <- nc_open(nc_files[i])                                       # Open the NetCDF file
+  nc_atts  <- ncatt_get(nc, 0)                                           # Extract the NetCDF file's attributes
+  nc_lat   <- ncvar_get(nc = nc, varid = "lat")                          # Extract the NetCDF file's 1D latitude array
+  nc_lon   <- ncvar_get(nc = nc, varid = "lon") - 180                    # Extract the NetCDF file's 1D longitude array. Subtract 180 because the NetCDF longitude convention is 0°-360° but the airports' longitudes are in -180° to 180°
+  nc_time  <- nc.get.time.series(f = nc, v = nc_atts$variable_id, time.dim.name = "time") # Extract the NetCDF file's 1D time array in a clean PCICt (POSIXct-like) format
+  nc_var   <- ncvar_get(nc = nc, varid = nc_atts$variable_id) # Extract the 3D climate array from the NetCDF file. Needed only for method 2 explained further below
   
   ##############################################################################
   # Process each airport in the sample (inner loop)                            #
@@ -73,7 +72,7 @@ for(i in 1:length(nc_files)) {
     nc_val <- nc_var[lon_index, lat_index, ]
 
     # Assemble the results into a data table
-    nc_out <- data.table::data.table(
+    nc_out <- data.table(
       nc.time = PCICt::as.POSIXct.PCICt(nc_time),                               # Time series
       nc.exp = nc_atts$experiment_id,                                           # Experiment (shared socio-economic pathway)
       nc.var = nc_atts$variable_id,                                             # Climate variable name (repeated down, i.e. long format)
@@ -86,19 +85,19 @@ for(i in 1:length(nc_files)) {
     # To do so, the rolling average of both time and value is computed for every row pair of 'hurs' data
     if (nc_atts$variable_id == "hurs") {                                        # Only execute if the climate variable is hurs
       nc_out[, nc.time := nc.time - 3600 * 3]                                   # Roll back the time by 3 hours (which is the same as averaging the times of the current and previous six-hourly observations)
-      nc_out[, nc.val := data.table::frollmean(x = nc.val, n = 2)]              # Average the current and previous observation values
+      nc_out[, nc.val := frollmean(x = nc.val, n = 2)]              # Average the current and previous observation values
       nc_out <- na.omit(object = nc_out, cols = "nc.val")                       # The first value of 'hurs' would be empty since it does not have a previous observation, so we remove it
     }
 
     # Write the results to a compressed CSV file
     out_path <- "data/climate/3_csv_long"                                       # Set the file path
     out_file <- paste(dt_smp[j, our.icao], "csv.gz", sep = ".")                 # Set up one file for each airport-experiment pair
-    data.table::fwrite(x = nc_out, file = file.path(out_path, out_file, fsep = "/"), append = TRUE, na = NA, compress = "gzip") # Write the data to the file using the 'fwrite' function from the 'data.table' package because of its speed but also ability to compress. The .gzip format was found here to reduce file size by ~80% relative to an uncompressed .csv
+    fwrite(x = nc_out, file = file.path(out_path, out_file, fsep = "/"), append = TRUE, na = NA, compress = "gzip") # Write the data to the file using the 'fwrite' function from the 'data.table' package because of its speed but also ability to compress. The .gzip format was found here to reduce file size by ~80% relative to an uncompressed .csv
 
   } # End of inner loop
 
   # Release the NetCDF file from memory
-  ncdf4::nc_close(nc)
+  nc_close(nc)
 
 } # End of outer loop
 

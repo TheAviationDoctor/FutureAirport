@@ -20,7 +20,7 @@ cat("\014")
 
 # Query the Lawrence Livermore National Laboratory (LLNL) node of the ESGF
 nc_files <- rbind(
-  epwshiftr::esgf_query( # First query for the main climate variables of interest
+  esgf_query( # First query for the main climate variables of interest
     activity = "ScenarioMIP",
     variable = c("ps", "tas", "sfcWind", "uas", "vas"),
     frequency = c("6hrPt"),
@@ -34,7 +34,7 @@ nc_files <- rbind(
     limit = 10000L,
     data_node = NULL
   ),
-  epwshiftr::esgf_query( # Separate query for 'hurs', which is only available at the 6hr frequency
+  esgf_query( # Separate query for 'hurs', which is only available at the 6hr frequency
     activity = "ScenarioMIP",
     variable = c("hurs"),
     frequency = c("6hr"),
@@ -65,8 +65,8 @@ nrow(nc_files)                                                                  
 
 # Display the number of files by experiment (SSP) and variable
 nc_files %>%
-  dplyr::group_by(experiment_id) %>%
-  dplyr::summarize(hurs = sum(variable_id == "hurs"), ps = sum(variable_id == "ps"), tas = sum(variable_id == "tas"), sfcWind = sum(variable_id == "sfcWind"), uas = sum(variable_id == "uas"), vas = sum(variable_id == "vas"))
+  group_by(experiment_id) %>%
+  summarize(hurs = sum(variable_id == "hurs"), ps = sum(variable_id == "ps"), tas = sum(variable_id == "tas"), sfcWind = sum(variable_id == "sfcWind"), uas = sum(variable_id == "uas"), vas = sum(variable_id == "vas"))
 
 # Save the query results to a file for later reference
 filepath <- "data/climate/1_esgf_query"

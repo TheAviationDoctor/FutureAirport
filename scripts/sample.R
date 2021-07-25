@@ -4,13 +4,15 @@
 ###############################################################################
 
 # Load required libraries
+library(dplyr)
 library(geosphere)
+library(ggplot2)
 library(kgc)
+library(magrittr)
 library(maps)
 library(rgeos)
 library(rnaturalearth)
 library(scales)
-library(tidyverse)
 
 # Clear the console and plots
 cat("\014")
@@ -69,7 +71,7 @@ sum(df_smp$iata.traffic[!rev(duplicated(rev(df_smp$our.icao)))]) / sum(df_pop$ia
 ###############################################################################
 
 # Define the world object from the Natural Earth package
-world <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf")
+world <- ne_countries(scale = "small", returnclass = "sf")
 # Define the Earth's five geographical zones
 geo_zones <- c(-90, -66.5635, -23.4365, 23.4365, 66.5635, 90)
 geo_labels <- c("Antarctic", "South temperate zone", "Tropics", "North temperate zone", "Arctic")
@@ -113,26 +115,26 @@ df_smp_binned <- df_smp[!duplicated(df_smp$our.icao),] %>% # Summarize observati
 # Count the population airports by geographical zone
 df_pop_binned %>%
   group_by(geo) %>%
-  dplyr::summarize(n = n()) %>% # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and throws an error if a dependency to plyr exists in any package
-  mutate(per = scales::percent(n / nrow(df_pop_binned), accuracy = .01)) # Percentage
+  dplyr::summarize(n = n()) %>% # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and is being masked
+  mutate(per = percent(n / nrow(df_pop_binned), accuracy = .01)) # Percentage
 
 # Count the sample airports by geographical zone
 df_smp_binned %>%
   group_by(geo) %>%
-  dplyr::summarize(n = n()) %>% # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and throws an error if a dependency to plyr exists in any package
-  mutate(per = scales::percent(n / nrow(df_smp_binned), accuracy = .01)) # Percentage
+  dplyr::summarize(n = n()) %>% # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and is being masked
+  mutate(per = percent(n / nrow(df_smp_binned), accuracy = .01)) # Percentage
 
 # Sum the population traffic by geographical zone
 df_pop_binned %>%
   group_by(geo) %>%
   summarize(n = sum(iata.traffic)) %>% # Sum
-  mutate(per = scales::percent(n / sum(df_pop[!duplicated(df_pop$our.icao),]$iata.traffic), accuracy = .01)) # Percentage
+  mutate(per = percent(n / sum(df_pop[!duplicated(df_pop$our.icao),]$iata.traffic), accuracy = .01)) # Percentage
 
 # Sum the sample traffic by geographical zone
 df_smp_binned %>%
   group_by(geo) %>%
   summarize(n = sum(iata.traffic)) %>% # Sum
-  mutate(per = scales::percent(n / sum(df_smp[!duplicated(df_smp$our.icao),]$iata.traffic), accuracy = .01)) # Percentage
+  mutate(per = percent(n / sum(df_smp[!duplicated(df_smp$our.icao),]$iata.traffic), accuracy = .01)) # Percentage
 
 # Build a world map and plot the airports
 ggplot() +
@@ -154,7 +156,7 @@ ggplot() +
   geom_hline(aes(yintercept = -23.4365), color = "gray", linetype = "dashed") + # Draw the Tropic of Capricorn
   geom_hline(aes(yintercept = -66.5635), color = "gray", linetype = "dashed") + # Draw the Antarctic Circle
   theme_minimal() + # Apply a minimal theme that hides the oceans
-  theme(axis.title = element_blank(), axis.text.x=element_blank()) # Hide axis titles
+  theme(axis.title = element_blank(), axis.text.x = element_blank()) # Hide axis titles
 
 # Build a histogram of the airport count by latitude
 ggplot() +
@@ -192,7 +194,7 @@ df_kgc_pop <- data.frame(df_kgc_pop, kgc = LookupCZ(df_kgc_pop, res = resolution
 # Summarize the climate distribution for the population data
 df_kgc_pop <- df_kgc_pop %>%
   group_by(kgc) %>%
-  dplyr::summarize(pop.airports = n(), pop.traffic = sum(iata.traffic)) # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and throws an error if a dependency to plyr exists in any package
+  dplyr::summarize(pop.airports = n(), pop.traffic = sum(iata.traffic)) # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and is being masked
 
 # Prepare the sample data
 df_kgc_smp <- df_smp[!duplicated(df_smp$our.icao),c("our.icao", "our.lon", "our.lat", "iata.traffic")] %>% # Select unique airport locations and coordinates from the sample
@@ -205,7 +207,7 @@ df_kgc_smp <- data.frame(df_kgc_smp, kgc = LookupCZ(df_kgc_smp, res = resolution
 # Summarize the climate distribution for the sample data
 df_kgc_smp <- df_kgc_smp %>%
   group_by(kgc) %>%
-  dplyr::summarize(smp.airports = n(), smp.traffic = sum(iata.traffic)) # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and throws an error if a dependency to plyr exists in any package
+  dplyr::summarize(smp.airports = n(), smp.traffic = sum(iata.traffic)) # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and is being masked
 
 # Merge the population and sample counts for row-wise comparison
 df_kgc <- merge(df_kgc_pop, df_kgc_smp, by = "kgc", all = TRUE)
@@ -221,14 +223,14 @@ df_kgc$kgc <- as.factor(df_kgc$kgc) # Re-factorize
 # View the summarized table of main climate groups
 df_kgc %>%
   group_by(group = substr(kgc, 1, 1)) %>%
-  dplyr::summarize(pop.airports = sum(pop.airports), pop.airports.per = scales::percent(sum(pop.airports) / sum(df_kgc$pop.airports), accuracy = .01), pop.traffic = sum(pop.traffic), pop.traffic.per = scales::percent(sum(pop.traffic) / sum(df_kgc$pop.traffic), accuracy = .01), smp.airports = sum(smp.airports), smp.airports.per = scales::percent(sum(smp.airports) / sum(df_kgc$smp.airports), accuracy = .01), smp.traffic = sum(smp.traffic), smp.traffic.per = scales::percent(sum(smp.traffic) / sum(df_kgc$smp.traffic), accuracy = .01)) %>% # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and throws an error if a dependency to plyr exists in any package
+  dplyr::summarize(pop.airports = sum(pop.airports), pop.airports.per = percent(sum(pop.airports) / sum(df_kgc$pop.airports), accuracy = .01), pop.traffic = sum(pop.traffic), pop.traffic.per = percent(sum(pop.traffic) / sum(df_kgc$pop.traffic), accuracy = .01), smp.airports = sum(smp.airports), smp.airports.per = percent(sum(smp.airports) / sum(df_kgc$smp.airports), accuracy = .01), smp.traffic = sum(smp.traffic), smp.traffic.per = percent(sum(smp.traffic) / sum(df_kgc$smp.traffic), accuracy = .01)) %>% # Count. We have to call out the dplyr package explicitly because summarize() also exists in plyr and is being masked
   print()
 
 # Plot the airport distribution across climate zones
 ggplot(data = df_kgc) +
   geom_bar(mapping = aes(x = kgc, weight = pop.airports), fill="black", alpha=0.5, width = 1) +
   geom_bar(mapping = aes(x = kgc, weight = smp.airports), fill="black", alpha=0.5, width = 1) +
-  scale_y_continuous(trans = "log1p", breaks = c(2^(0:8))) + # Pseudo-log scale for visibility
+  scale_y_continuous(trans = "log1p", breaks = c(2^(0:8))) + # Pseudo-log scale for legibility
   labs(x = "Köppen-Geiger climate zones", y = "Airport count") +
   theme_minimal() +
   theme(panel.grid.minor = element_blank())
