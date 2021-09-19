@@ -6,3 +6,5 @@
 *.gz
 *.nc
 *.sh
+data/
+logs

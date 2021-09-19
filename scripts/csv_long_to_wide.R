@@ -52,13 +52,16 @@ for(i in 1:length(csv_in_list)) {
 
   ################################################################################
   # Calculate the air density of moist air                                       #
+  # Replicates in R the polynomial approximation ESW(T) for the saturation vapor #
+  # pressure in mb over liquid water at 0°C originally coded in FORTRAN found at #
+  # https://icoads.noaa.gov/software/other/profs by Herman Wobus                 #
   ################################################################################
   
   # Inputs
   hurs <- file[, hurs] / 100   # Near-surface relative humidity in %
   ps   <- file[, ps] / 100     # Near-surface air pressure in hPa
   tas  <- file[, tas] - 273.15 # Near-surface air temperature in °C
-  pol  <- 0.99999683 +         # Polynomial approximation for the saturation vapor pressure over liquid water at 0°C as per function ESW(T) at https://icoads.noaa.gov/software/other/profs. Requires tas in °C
+  pol  <- 0.99999683 +         # Requires tas in °C 
           tas * (-0.90826951E-02 +
             tas * (0.78736169E-04 +
               tas * (-0.61117958E-06 +
