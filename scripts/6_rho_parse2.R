@@ -8,7 +8,11 @@
 ################################################################################
 
 # Load required libraries
-library(parallel)
+library(data.table)
+library(DBI)
+library(ggplot2)
+library(readr)
+library(R.utils)
 
 # Clear the console
 cat("\014")
@@ -22,59 +26,88 @@ nc_files <- list.files(path = nc_path, pattern = "\\.nc$", full.names = TRUE)   
 nc_exps  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 4))           # List all the experiments (SSPs) from the NetCDF file names
 
 ################################################################################
-# Define the latitude brackets for which we want to plot the air density       #
+# Extract the sample airports for each climate zone                            #
 ################################################################################
 
-lats <- list(
-  list(name = "Tropical",  lower = 0,       upper = 23.4365), # NEED TO SWITCH TO CTE SYNTAX
-  list(name = "Temperate", lower = 23.4365, upper = 66.5635),
-  list(name = "Frigid",    lower = 66.5635, upper = 90)
-  # list(name = "All",       lower = 0,       upper = 90) # NEED TO REMOVE THIS INNER JOIN TO SPEED UP THE AVERAGE
-)
+# Define the latitude brackets for the climate zones
+lat_lower <- c(0, 23.4365, 66.5635, 0)
+lat_upper <- c(23.4365, 66.5635, 90, 90)
+lat_names <- c("Tropical", "Temperate", "Frigid", "All")
 
-################################################################################
-# Function to plot the air density over time across all sample airports        #
-# Each worker is a CPU node that gets assigned one climate zone to parse       #
-################################################################################
+# Open the connection to the database
+db_cnf <- ".my.cnf"                                                             # Set the file name that contains the database connection parameters
+db_grp <- "phd"                                                                 # Set the group name within the cnf file that contains the connection parameters
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
-# Declare the function with the latitude bracket as input parameter
-nc_parse <- function(lat) {
-  
-  # Open the worker's connection to the database
-  db_cnf <- ".my.cnf"                                                           # Set the file name that contains the database connection parameters
-  db_grp <- "phd"                                                               # Set the group name within the cnf file that contains the connection parameters
-  db_pop <- "population"                                                        # Set the name of the table where the population data are stored
-  db_rho <- "rho"                                                               # Set the prefix of the table where the air density data are stored
-  thresh <- 10^6                                                                # Set the sample airports' minimum traffic size
+# For each latitude bracket
+for (i in 1:length(lat_names)) {
+
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
-
-  # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), "Worker", Sys.getpid(), "is querying the database for the average air density values across the", lat$name, "zones...", sep = " "))
   
-  # Query to average the air density for each experiment (SSP) separately, across all sample airports within each of the latitude brackets defined earlier
+  # Retrieve the sample airports in those latitudes
+  db_tbl <- "population"                                                        # Set the name of the table where the population data are stored
+  threshold <- 10^6                                                             # Set the sample airports' minimum traffic size
+  db_qry <- paste("SELECT DISTINCT icao FROM", db_tbl, "WHERE traffic >", threshold, "AND ABS(lat) BETWEEN", lat_lower[i], "AND", lat_upper[i], "ORDER BY icao ASC", sep = " ")
+  db_res <- dbSendQuery(db_con, db_qry)                                         # Send the query to the database
+  dt_apt <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = "icao", check.names = TRUE)) # Convert the query output from data frame to data table by reference (using setDT rather than as.data.table) to avoid duplication in memory
+  # df_apt <- suppressWarnings(dbFetch(db_res, n = Inf))                                            
+  dbClearResult(db_res)
 
-  #UNTESTED
-  db_qry <- paste(paste(paste("WITH cte1 AS (SELECT DISTINCT icao FROM ", db_pop, "WHERE traffic > ", thresh," AND ABS(lat) BETWEEN ", lat$lower," AND ", lat$upper,") SELECT obs, AVG(val) AS avg_rho, '", nc_exps, "' AS exp FROM ", db_rho, "_", nc_exps, " INNER JOIN cte1 WHERE ", db_rho, "_", nc_exps, ".apt = cte1.icao GROUP BY obs", sep = ""), collapse = " UNION "), ";", sep = "")
-
-  # TESTED
-  # db_qry <- paste(paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps,"' AS exp FROM ", db_rho, "_", nc_exps, " INNER JOIN population ON (", db_rho, "_", nc_exps, ".apt = population.icao) WHERE ABS(population.lat) BETWEEN ", lat$lower," AND ", lat$upper," GROUP BY ", db_rho, "_", nc_exps, ".obs", sep = ""), collapse = " UNION "), ";", sep = "") # Build the query
-
-  print(db_qry)
+  # print(paste(paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps,"' AS exp FROM ", db_tbl, "_", nc_exps, " WHERE apt IN (", dt_apt[, 1], ")", collapse = " UNION ", sep = ""), sep = ""), ";", sep = ""))
   
+  # Calculate the average air density for each experiment (SSP)
+  db_tbl <- "rho"                                                          # Set the name of the table where the air density data are stored
+  db_qry <- paste(paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps,"' AS exp FROM ", db_tbl, "_", nc_exps, " WHERE apt IN ('AYPY', 'KATL')", collapse = " UNION ", sep = ""), sep = ""), ";", sep = "")
   db_res <- dbSendQuery(db_con, db_qry)                                           # Send the query to the database
   dt_rho <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), check.names = TRUE)) # Convert the query output from data frame to data table by reference (using setDT rather than as.data.table) to avoid duplication in memory
   dt_rho[, obs := as.POSIXct(obs, format = "%Y-%m-%d %H:%M:%S")]                  # Convert the observations' time stamps back to POSIXct format for plotting
   dt_rho[, exp := as.factor(exp)]                                                 # Convert the experiment from character to factor
   dbClearResult(db_res)
 
-  # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), "Worker", Sys.getpid(), "finished querying the database for the", lat$name, "zones and is now plotting the air density...", sep = " "))
+  View(dt_rho)
+  
+  dbDisconnect(db_con)
+  
+}
 
+# Release the database connection
+# dbDisconnect(db_con)
+
+stop()
+
+################################################################################
+# Function to plot the air density over time across all sample airports        #
+# Each worker is a CPU node that gets assigned one climate zone to parse       #
+################################################################################
+
+# Declare the function with the experiment (SSP) as input parameter
+nc_parse <- function(lat) {
+  
+  # Open the worker's connection to the database
+  db_cnf <- ".my.cnf"                                                           # Set the file name that contains the database connection parameters
+  db_grp <- "phd"                                                               # Set the group name within the cnf file that contains the connection parameters
+  db_tbl <- "rho"                                                               # Set the name of the table where the air density data are stored
+  db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+
+  # Output the worker's progress to the log file defined in makeCluster()
+  print(paste(Sys.time(), " Worker ", Sys.getpid(), " is querying the database for the average air density values across the", lat$name, "zones...", sep = " "))
+  
+  # Query to average the air density for each experiment (SSP) separately, across all sample airports within each of the latitude brackets defined earlier
+  db_qry <- paste(paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps,"' AS exp FROM ", db_tbl, "_", nc_exps, " INNER JOIN population ON (", db_tbl, "_", nc_exps, ".apt = population.icao) WHERE ABS(population.lat) BETWEEN ", lat$lower," AND ", lat$upper," GROUP BY ", db_tbl, "_", nc_exps, ".obs", sep = ""), collapse = " UNION "), ";", sep = "") # Build the query
+  db_res <- dbSendQuery(db_con, db_qry)                                           # Send the query to the database
+  dt_rho <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), check.names = TRUE)) # Convert the query output from data frame to data table by reference (using setDT rather than as.data.table) to avoid duplication in memory
+  dt_rho[, obs := as.POSIXct(obs, format = "%Y-%m-%d %H:%M:%S")]                  # Convert the observations' time stamps back to POSIXct format for plotting
+  dt_rho[, exp := as.factor(exp)]                                                 # Convert the experiment from character to factor
+  dbClearResult(db_res)
+  
+  # Output the worker's progress to the log file defined in makeCluster()
+  print(paste(Sys.time(), " Worker ", Sys.getpid(), " finished querying the database for the", lat$name, "zones and is now plotting the air density...", sep = " "))
+  
   # Plot the air density over time
   plot <- ggplot(data = dt_rho, mapping = aes(x = obs, y = avg_rho)) +
     geom_line() +
     geom_smooth(method = "lm", formula = y ~ x) +
-    labs(x = "Time", y = "Air density", title = paste("Average air density across", tolower(lat$name), "zones", sep = " ")) +
+    labs(x = "Time", y = "Air density", title = paste("Average Air Density Across", lat$name, "zones", sep = " ")) +
     facet_wrap(~ exp, ncol = 2) +
     theme_minimal() +
     theme(panel.grid.minor.x = element_blank(), panel.grid.minor.y = element_blank())
@@ -95,7 +128,7 @@ nc_parse <- function(lat) {
   )
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), "Worker", Sys.getpid(), "finished plotting the air density for the", lat$name, "zones.", sep = " "))
+  print(paste(Sys.time(), " Worker ", Sys.getpid(), " finished plotting the air density for the", lat$name, "zones.", sep = " "))
   
   # Release the database connection
   dbDisconnect(db_con)
@@ -120,7 +153,6 @@ cl <- makeCluster(cores, outfile = outfile)
 clusterEvalQ(cl, {
   library(data.table)
   library(DBI)
-  library(ggplot2)
 })
 
 # Pass the required variables from the main scope to the workers' scope
