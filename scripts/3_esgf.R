@@ -1,5 +1,5 @@
 ################################################################################
-# /scripts/esgf.R                                                              #
+# /scripts/3_esgf.R                                                            #
 # Query the Earth System Grid Federation (ESGF) for suitable climate models    #
 ################################################################################
 
@@ -69,7 +69,7 @@ nc_files %>%
   summarize(hurs = sum(variable_id == "hurs"), ps = sum(variable_id == "ps"), tas = sum(variable_id == "tas"), sfcWind = sum(variable_id == "sfcWind"), uas = sum(variable_id == "uas"), vas = sum(variable_id == "vas"))
 
 # Save the query results to a file for later reference
-filepath <- "data/climate/1_esgf_query"
+filepath <- "data/climate/esgf"
 filename <- "esgf.csv"
 write.csv(x = nc_files, file = file.path(filepath, filename, fsep = "/"))
 

@@ -1,5 +1,5 @@
 ################################################################################
-# /scripts/netcdf.R                                                            #
+# /scripts/4_netcdf.R                                                          #
 # Extracts airport-level climatic variables from the NetCDF files              #
 #  and saves them to a database for later processing                           #
 #  Took ~6.5 hours to run on the researchers' config (https://bit.ly/3ChCBAP)  #
@@ -116,8 +116,8 @@ nc_parse <- function(nc_var) {
     for(k in 1:nrow(dt_smp)) {
 
       # Parse out the airport's spatial coordinates
-      smp_lat <- dt_smp[k, our.lat]
-      smp_lon <- dt_smp[k, our.lon]
+      smp_lat <- dt_smp[k, lat]
+      smp_lon <- dt_smp[k, lon]
 
       # Find the NetCDF file's row indices of the spatial coordinates nearest to the current airport
       lat_index <- which.min(abs(nc_lat - smp_lat))
@@ -129,7 +129,7 @@ nc_parse <- function(nc_var) {
       # Assemble the results into a data table
       nc_out <- data.table(
         obs = PCICt::as.POSIXct.PCICt(nc_obs, format = "%Y-%m-%d %H:%M:%S"),    # Time series of the observations. The database won't accept POSIXct as DATETIME so we must simplify the format here
-        apt = dt_smp[k, our.icao],                                              # Airport ICAO code
+        apt = dt_smp[k, icao],                                                  # Airport ICAO code
         val = as.vector(nc_val)                                                 # Climate variable value for each observation
       )
 
@@ -191,7 +191,7 @@ nc_parse <- function(nc_var) {
 cores <- length(nc_vars)
 
 # Set and clear the output file for cluster logging
-outfile <- ".netcdf.log"
+outfile <- "netcdf.log"
 close(file(outfile, open = "w"))
 
 # Build the cluster of workers and select a file in which to log progress (which can't be printed to the console on the Windows version of RStudio)

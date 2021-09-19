@@ -68,9 +68,14 @@ sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))]) / sum(df_pop$traffic[!re
 
 # Define the world object from the Natural Earth package
 world <- ne_countries(scale = "small", returnclass = "sf")
+
 # Define the Earth's five geographical zones
 geo_zones <- c(-90, -66.5635, -23.4365, 23.4365, 66.5635, 90)
 geo_labels <- c("Antarctic", "South temperate zone", "Tropics", "North temperate zone", "Arctic")
+
+# Define traffic bins and their labels
+breaks <- c(10^0, 10^1, 10^2, 10^3, 10^4, 10^5, 10^6, 10^7, 10^8, 10^9)
+labels <- c("[1–10)", "[10–100)", "[100–1K)", "[1K–10K)", "[10K–100K)", "[100K–1M)", "[1M–10M)", "[10M–100M)", "[100M–1B)")
 
 # Describe the population's latitude variable
 length(df_pop$lat[!rev(duplicated(rev(df_pop$icao)))])

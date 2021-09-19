@@ -1,5 +1,5 @@
 ################################################################################
-# /scripts/rho.R                                                               #
+# /scripts/5_rho.R                                                             #
 # Calculates the air density variable from hurs, ps, and tas                   #
 #  Took ~2 hours to run on the researchers' config (https://bit.ly/3ChCBAP)    #
 ################################################################################
@@ -18,19 +18,9 @@ cat("\014")
 # List all the experiments (SSPs) from the NetCDF file names                   #
 ################################################################################
 
-nc_path  <- "data/climate/2_netcdf_downloads"                                   # Set the file path where the NetCDF files are located
+nc_path  <- "data/climate/netcdf"                                               # Set the file path where the NetCDF files are located
 nc_files <- list.files(path = nc_path, pattern = "\\.nc$", full.names = TRUE)   # List all the NetCDF files (ending in .nc)
 nc_exps  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 4))           # List all the experiments (SSPs) from the NetCDF file names
-
-################################################################################
-# Configure the database connection parameters                                 #
-# Remember to execute the query 'SET GLOBAL local_infile = 1;' as root user    #
-#  on the DBMS as MySQL requires it to copy data locally                       #
-################################################################################
-
-db_cnf <- ".my.cnf"                                                             # Import the database connection parameters from the cnf file
-db_grp <- "phd"                                                                 # Group name within the cnf file
-db_tbl <- "rho"
 
 ################################################################################
 # Function to calculate the air density rho from hurs, ps, and tas             #
@@ -40,23 +30,23 @@ db_tbl <- "rho"
 # Declare the function with the experiment (SSP) as input parameter
 nc_parse <- function(nc_exp) {
 
-  # Locally define the name of the air density variable
-  nc_var <- "rho"
-    
   ##############################################################################
   # Set up the database table to store this worker's outputs                   #
   ##############################################################################
   
   # Open the worker's connection to the database
+  db_cnf <- ".my.cnf"                                                           # Set the file name that contains the database connection parameters
+  db_grp <- "phd"                                                               # Set the group name within the cnf file that contains the connection parameters
+  db_tbl <- "rho"                                                               # Set the name of the table where the air density data will be stored
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
     
   # Drop the table corresponding to the air density variable and current experiment (SSP), if it exists
-  db_qry <- paste("DROP TABLE IF EXISTS ", tolower(nc_var), "_", tolower(nc_exp), ";", sep = "")
+  db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_tbl), "_", tolower(nc_exp), ";", sep = "")
   db_res <- dbSendQuery(db_con, db_qry)
   dbClearResult(db_res)
 
   # Create the table corresponding to the air density variable and current experiment (SSP)
-  db_qry <- paste("CREATE TABLE ", tolower(nc_var), "_", tolower(nc_exp), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, apt CHAR(4) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
+  db_qry <- paste("CREATE TABLE ", tolower(db_tbl), "_", tolower(nc_exp), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, apt CHAR(4) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
   db_res <- dbSendQuery(db_con, db_qry)
   dbClearResult(db_res)
 
@@ -109,22 +99,22 @@ nc_parse <- function(nc_exp) {
   db_cols <- c("obs", "apt", "val")
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), " Worker ", Sys.getpid(), " is writing ", tolower(nc_var), "_", tolower(nc_exp), " to the database...", sep = ""))
+  print(paste(Sys.time(), " Worker ", Sys.getpid(), " is writing ", tolower(db_tbl), "_", tolower(nc_exp), " to the database...", sep = ""))
 
   # Write the data to the table corresponding air density and the current experiment (SSP)
   # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
-  dbWriteTable(conn = db_con, name = paste(tolower(nc_var), "_", tolower(nc_exp), sep = ""), value = db_out[, ..db_cols], append = TRUE, row.names = FALSE)
+  dbWriteTable(conn = db_con, name = paste(tolower(db_tbl), "_", tolower(nc_exp), sep = ""), value = db_out[, ..db_cols], append = TRUE, row.names = FALSE)
 
   ##############################################################################
   # Add indices to the experiment table                                        #
   ##############################################################################
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), " Worker ", Sys.getpid(), " is indexing table ", tolower(nc_var), "_", tolower(nc_exp), "...", sep = ""))
+  print(paste(Sys.time(), " Worker ", Sys.getpid(), " is indexing table ", tolower(db_tbl), "_", tolower(nc_exp), "...", sep = ""))
 
   # Create a composite index on the apt and obs columns (after the bulk insert above, not before for performance reasons) to speed up subsequent searches
   db_idx <- "idx" # Set index name
-  db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(nc_var), "_", tolower(nc_exp), " (apt, obs);", sep = "")
+  db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_tbl), "_", tolower(nc_exp), " (apt, obs);", sep = "")
   db_res <- dbSendQuery(db_con, db_qry)
   dbClearResult(db_res)
   
@@ -144,7 +134,7 @@ nc_parse <- function(nc_exp) {
 cores <- length(nc_exps)
 
 # Set and clear the output file for cluster logging
-outfile <- ".rho.log"
+outfile <- "rho.log"
 close(file(outfile, open = "w"))
 
 # Build the cluster of workers and select a file in which to log progress (which can't be printed to the console on the Windows version of RStudio)
@@ -155,9 +145,6 @@ clusterEvalQ(cl, {
   library(data.table)
   library(DBI)
 })
-
-# Pass the required variables from the main scope to the workers' scope
-clusterExport(cl, c("db_cnf", "db_grp"))
 
 # Distribute the parallel parsing of NetCDF files across the workers, with the climate variables as input parameter
 parLapply(cl, nc_exps, nc_parse)
