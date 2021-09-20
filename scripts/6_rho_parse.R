@@ -1,6 +1,7 @@
 ################################################################################
 # /scripts/6_rho_parse.R                                                       #
 # Plots the air density over time                                              #
+#  Took 20 mins. to run on the researchers' config (https://bit.ly/3ChCBAP)    #
 ################################################################################
 
 ################################################################################
@@ -26,10 +27,10 @@ nc_exps  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 4))           
 ################################################################################
 
 lats <- list(
-  list(name = "Tropical",  lower = 0,       upper = 23.4365), # NEED TO SWITCH TO CTE SYNTAX
+  list(name = "Tropical",  lower = 0,       upper = 23.4365),
   list(name = "Temperate", lower = 23.4365, upper = 66.5635),
-  list(name = "Frigid",    lower = 66.5635, upper = 90)
-  # list(name = "All",       lower = 0,       upper = 90) # NEED TO REMOVE THIS INNER JOIN TO SPEED UP THE AVERAGE
+  list(name = "Frigid",    lower = 66.5635, upper = 90),
+  list(name = "All",       lower = 0,       upper = 90)
 )
 
 ################################################################################
@@ -39,7 +40,7 @@ lats <- list(
 
 # Declare the function with the latitude bracket as input parameter
 nc_parse <- function(lat) {
-  
+
   # Open the worker's connection to the database
   db_cnf <- ".my.cnf"                                                           # Set the file name that contains the database connection parameters
   db_grp <- "phd"                                                               # Set the group name within the cnf file that contains the connection parameters
@@ -49,35 +50,36 @@ nc_parse <- function(lat) {
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), "Worker", Sys.getpid(), "is querying the database for the average air density values across the", lat$name, "zones...", sep = " "))
-  
+  print(paste(Sys.time(), "Worker", Sys.getpid(), "is averaging the air density across", tolower(lat$name), "zones...", sep = " "))
+
   # Query to average the air density for each experiment (SSP) separately, across all sample airports within each of the latitude brackets defined earlier
-
-  #UNTESTED
-  db_qry <- paste(paste(paste("WITH cte1 AS (SELECT DISTINCT icao FROM ", db_pop, "WHERE traffic > ", thresh," AND ABS(lat) BETWEEN ", lat$lower," AND ", lat$upper,") SELECT obs, AVG(val) AS avg_rho, '", nc_exps, "' AS exp FROM ", db_rho, "_", nc_exps, " INNER JOIN cte1 WHERE ", db_rho, "_", nc_exps, ".apt = cte1.icao GROUP BY obs", sep = ""), collapse = " UNION "), ";", sep = "")
-
-  # TESTED
-  # db_qry <- paste(paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps,"' AS exp FROM ", db_rho, "_", nc_exps, " INNER JOIN population ON (", db_rho, "_", nc_exps, ".apt = population.icao) WHERE ABS(population.lat) BETWEEN ", lat$lower," AND ", lat$upper," GROUP BY ", db_rho, "_", nc_exps, ".obs", sep = ""), collapse = " UNION "), ";", sep = "") # Build the query
-
-  print(db_qry)
-  
+  ifelse(
+    lat$name == "All",
+    db_qry <- paste(paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps, "' AS exp FROM ", db_rho, "_", nc_exps, " GROUP BY obs", sep = ""), collapse = " UNION "), ";", sep = ""),
+    db_qry <- paste("WITH cte1 AS (SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", thresh," AND ABS(lat) BETWEEN ", lat$lower," AND ", lat$upper,") ", paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps, "' AS exp FROM ", db_rho, "_", nc_exps, " INNER JOIN cte1 WHERE ", db_rho, "_", nc_exps, ".apt = cte1.icao GROUP BY obs", sep = ""), collapse = " UNION "), ";", sep = "")
+  )
   db_res <- dbSendQuery(db_con, db_qry)                                           # Send the query to the database
   dt_rho <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), check.names = TRUE)) # Convert the query output from data frame to data table by reference (using setDT rather than as.data.table) to avoid duplication in memory
   dt_rho[, obs := as.POSIXct(obs, format = "%Y-%m-%d %H:%M:%S")]                  # Convert the observations' time stamps back to POSIXct format for plotting
   dt_rho[, exp := as.factor(exp)]                                                 # Convert the experiment from character to factor
   dbClearResult(db_res)
 
+  # Print to the log file the average air density in the first and last years of the dataset, for every experiment (SSP)
+  print(dt_rho[obs < "2016-01-01 00:00:00", .("2015" = mean(avg_rho)), by = .(exp)])
+  print(dt_rho[obs > "2100-01-01 00:00:00", .("2100" = mean(avg_rho)), by = .(exp)])
+  
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), "Worker", Sys.getpid(), "finished querying the database for the", lat$name, "zones and is now plotting the air density...", sep = " "))
+  print(paste(Sys.time(), "Worker", Sys.getpid(), "is now plotting the air density across the", tolower(lat$name), "zones...", sep = " "))
 
   # Plot the air density over time
   plot <- ggplot(data = dt_rho, mapping = aes(x = obs, y = avg_rho)) +
     geom_line() +
     geom_smooth(method = "lm", formula = y ~ x) +
-    labs(x = "Time", y = "Air density", title = paste("Average air density across", tolower(lat$name), "zones", sep = " ")) +
+    labs(x = "Time", y = "Air density", title = paste("Average air density at airports across", tolower(lat$name), "zones", sep = " ")) +
     facet_wrap(~ exp, ncol = 2) +
     theme_minimal() +
-    theme(panel.grid.minor.x = element_blank(), panel.grid.minor.y = element_blank())
+    theme(panel.grid.minor.x = element_blank(), panel.grid.minor.y = element_blank()) +
+    ylim(1.13, 1.5)
 
   # Save the plot to a file
   ggsave(
@@ -95,8 +97,8 @@ nc_parse <- function(lat) {
   )
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), "Worker", Sys.getpid(), "finished plotting the air density for the", lat$name, "zones.", sep = " "))
-  
+  print(paste(Sys.time(), "Worker", Sys.getpid(), "finished its work on the", tolower(lat$name), "zones.", sep = " "))
+
   # Release the database connection
   dbDisconnect(db_con)
   
@@ -107,7 +109,7 @@ nc_parse <- function(lat) {
 ################################################################################
 
 # Set the number of cores/workers to use in the cluster. Here we set as many workers as there are world climate zones for which we want to plot average rho
-cores <- 4
+cores <- length(lats)
 
 # Set and clear the output file for cluster logging
 outfile <- "logs/rho_parse.log"
