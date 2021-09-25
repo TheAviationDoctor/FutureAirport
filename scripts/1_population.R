@@ -19,7 +19,7 @@ library(stringr)
 library(tidyr)
 
 # Import the constants
-source("0_constants.R")
+source("scripts/0_constants.R")
 
 # Start a script timer
 start_time <- Sys.time()

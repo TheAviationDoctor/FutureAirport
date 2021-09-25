@@ -1,5 +1,5 @@
 ################################################################################
-# /scripts/4_netcdf.R                                                          #
+# scripts/4_netcdf.R                                                           #
 # Extracts airport-level climatic variables from the NetCDF files              #
 #  and saves them to a database for later processing                           #
 #  Took ~6.5 hours to run on the researchers' config (https://bit.ly/3ChCBAP)  #
@@ -15,7 +15,7 @@ library(DBI)
 library(parallel)
 
 # Import the constants
-source("0_constants.R")
+source("scripts/0_constants.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -53,6 +53,9 @@ nc_vars  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 1))           
 
 # Declare the function with the climatic variable as input parameter
 fn_parse <- function(nc_var) {
+  
+  # Import the constants
+  source("0_constants.R")
   
   ##############################################################################
   # Set up the database table to store this worker's outputs                   #
@@ -126,9 +129,9 @@ fn_parse <- function(nc_var) {
 
       # Assemble the results into a data table
       nc_out <- data.table(
-        obs  = PCICt::as.POSIXct.PCICt(nc_obs, format = "%Y-%m-%d %H:%M:%S"),    # Time series of the observations. The database won't accept POSIXct as DATETIME so we must simplify the format here
-        icao = dt_smp[k, icao],                                                  # Airport ICAO code
-        val  = as.vector(nc_val)                                                 # Climate variable value for each observation
+        obs  = PCICt::as.POSIXct.PCICt(nc_obs, format = "%Y-%m-%d %H:%M:%S"),   # Time series of the observations. The database won't accept POSIXct as DATETIME so we must simplify the format here
+        icao = dt_smp[k, icao],                                                 # Airport ICAO code
+        val  = as.vector(nc_val)                                                # Climate variable value for each observation
       )
 
       # All climate variables except 'hurs' are 6-hourly mean samples at 06:00 (i.e. a mean of 03:00-09:00), 12:00 (i.e. a mean of 09:00-15:00), 18:00 (i.e. a mean of 15:00-21:00), and 00:00 (i.e. a mean of 21:00-03:00)

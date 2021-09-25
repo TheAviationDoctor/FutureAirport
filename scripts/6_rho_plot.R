@@ -1,5 +1,5 @@
 ################################################################################
-# /scripts/6_rho_parse.R                                                       #
+# scripts/6_rho_plot.R                                                         #
 # Plots the air density over time                                              #
 #  Took 20 mins. to run on the researchers' config (https://bit.ly/3ChCBAP)    #
 ################################################################################
@@ -12,7 +12,7 @@
 library(parallel)
 
 # Import the constants
-source("0_constants.R")
+source("scripts/0_constants.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -63,7 +63,7 @@ fn_rho_plot <- function(lat) {
     labs(x = "Time", y = "Air density", title = paste("Average air density at airports across", tolower(lat$name), "zones", sep = " ")) +
     facet_wrap(~ exp, ncol = 2) +
     theme_minimal() +
-    theme(panel.grid.minor.x = element_blank(), panel.grid.minor.y = element_blank()) +
+    theme(panel.grid.minor.x = element_blank(), panel.grid.minor.y = element_blank(), panel.background = element_rect(fill = "white")) +
     ylim(1.13, 1.5)
 
   # Save the plot to a file

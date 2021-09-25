@@ -1,5 +1,5 @@
 ################################################################################
-# /scripts/3_esgf.R                                                            #
+# scripts/3_esgf.R                                                             #
 # Query the Earth System Grid Federation (ESGF) for suitable climate models    #
 ################################################################################
 
@@ -12,7 +12,7 @@ library(dplyr)
 library(epwshiftr)
 
 # Import the constants
-source("0_constants.R")
+source("scripts/0_constants.R")
 
 # Start a script timer
 start_time <- Sys.time()

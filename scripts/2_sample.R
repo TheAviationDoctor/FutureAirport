@@ -1,5 +1,5 @@
 ################################################################################
-# /scripts/2_sample.R                                                          #
+# scripts/2_sample.R                                                           #
 # Builds the research sample from the population of airports and runways       #
 ################################################################################
 
@@ -20,7 +20,7 @@ library(rnaturalearth)
 library(scales)
 
 # Import the constants
-source("0_constants.R")
+source("scripts/0_constants.R")
 
 # Start a script timer
 start_time <- Sys.time()

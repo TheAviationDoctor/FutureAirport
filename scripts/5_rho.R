@@ -1,5 +1,5 @@
 ################################################################################
-# /scripts/5_rho.R                                                             #
+# scripts/5_rho.R                                                              #
 # Calculates the air density variable from hurs, ps, and tas                   #
 #  Took ~2 hours to run on the researchers' config (https://bit.ly/3ChCBAP)    #
 ################################################################################
@@ -12,7 +12,7 @@
 library(parallel)
 
 # Import the constants
-source("0_constants.R")
+source("scripts/0_constants.R")
 
 # Start a script timer
 start_time <- Sys.time()

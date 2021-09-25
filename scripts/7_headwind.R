@@ -1,5 +1,5 @@
 ################################################################################
-# /scripts/7_headwind.R                                                        #
+# scripts/7_headwind.R                                                         #
 # Calculates headwind speed and identifies active runway for each observation  #
 #  Took ~X hours to run on the researchers' config (https://bit.ly/3ChCBAP)    #
 ################################################################################
@@ -14,7 +14,7 @@ library(DBI)
 library(parallel)
 
 # Import the constants
-source("0_constants.R")
+source("scripts/0_constants.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -26,7 +26,7 @@ cat("\014")
 # Import the sample airports defined in sample.R                               #
 ################################################################################
 
-# Open the connection to the database
+# Connect to the database
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
 # Build the query to retrieve airports above the passenger traffic threshold
@@ -104,7 +104,7 @@ fn_wnd <- function(nc_exp) {
   fn_headwind <- function(rwy) {
     
     # Calculate the angle (in degrees) between the runway heading and the direction that the wind is coming from
-    alpha    <- abs(rwy - wnd_dir)
+    alpha <- abs(rwy - wnd_dir)
     
     # Calculate and return the headwind speed (in m/s)
     wnd_spd * cos(alpha * pi / 180)
@@ -126,11 +126,9 @@ fn_wnd <- function(nc_exp) {
 
     # Calculate the wind speed at this observation's airport
     wnd_spd <- sqrt(dt_wnd[i, uas]^2 + dt_wnd[i, vas]^2)
-    # print(paste("Wind speed is", wnd_spd, sep = " "))
   
     # Calculate the direction that the wind is coming from at this observation's airport
     wnd_dir <- (180 + (180 / pi) * atan2(dt_wnd[i, uas], dt_wnd[i, vas])) %% 360
-    # print(paste("Wind direction is", wnd_dir, sep = " "))
     
     # Extract the list of unique runways for this observation's airport
     rwys <- dt_smp[icao == dt_wnd[i, icao], rwy]
@@ -206,11 +204,10 @@ fn_wnd <- function(nc_exp) {
 cores <- length(nc_exps)
 
 # Set and clear the output file for cluster logging
-outfile <- "logs/wnd.log"
-close(file(outfile, open = "w"))
+close(file(log_wnd, open = "w"))
 
 # Build the cluster of workers and select a file in which to log progress (which can't be printed to the console on the Windows version of RStudio)
-cl <- makeCluster(cores, outfile = outfile)
+cl <- makeCluster(cores, outfile = log_wnd)
 
 # Have each worker load the libraries that they need to handle the nc_parse function defined above
 clusterEvalQ(cl, {

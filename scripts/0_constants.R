@@ -1,5 +1,5 @@
 ################################################################################
-# 0_constants.R                                                                #
+# scripts/0_constants.R                                                        #
 # Sets values of various constants used across the scripts                     #
 ################################################################################
 
@@ -44,6 +44,7 @@ nc_lats <- list(
 log_net <- "logs/netcdf.log"    # Log file for 4_netcdf.R
 log_rho <- "logs/rho.log"       # Log file for 5_rho.R
 log_par <- "logs/rho_plot.log"  # Log file for 6_rho_plot.R
+log_wnd <- "logs/wnd.log"       # Log file for 7_headwind.R
 
 ################################################################################
 # Database parameters                                                          #
