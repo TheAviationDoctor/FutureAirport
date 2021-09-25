@@ -3,6 +3,10 @@
 # Builds the population of airports and runways                                #
 ################################################################################
 
+################################################################################
+# Housekeeping                                                                 #
+################################################################################
+
 # Load required libraries
 library(DBI)
 library(dplyr)
@@ -14,6 +18,12 @@ library(scales)
 library(stringr)
 library(tidyr)
 
+# Import the constants
+source("0_constants.R")
+
+# Start a script timer
+start_time <- Sys.time()
+
 # Clear the console
 cat("\014")
 
@@ -22,9 +32,7 @@ cat("\014")
 ################################################################################
 
 # Load the runway data from a CSV file
-filepath <- "data/population"
-filename <- "runways.csv"
-df_rwy <- read.csv(file = file.path(filepath, filename, fsep = "/"), header = TRUE, na.strings = c(0, "NULL"), col.names = c("id", "area", "icao", "country", "rwy", "len", "lat", "lon", "toda", "toda.night", "unit"), colClasses = c("integer", "factor", "character", "factor", "character", "integer", "character", "character", "integer", "integer", "factor"))
+df_rwy <- read.csv(file = pop_rwy, header = TRUE, na.strings = c(0, "NULL"), col.names = c("id", "area", "icao", "country", "rwy", "len", "lat", "lon", "toda", "toda.night", "unit"), colClasses = c("integer", "factor", "character", "factor", "character", "integer", "character", "character", "integer", "integer", "factor"))
 
 # Describe the data
 str(df_rwy)
@@ -49,9 +57,7 @@ nrow(df_rwy) / length(unique(df_rwy$icao))
 ################################################################################
 
 # Load the traffic data from a CSV file
-filepath <- "data/population"
-filename <- "traffic.csv"
-df_tra <- read.csv(file = file.path(filepath, filename, fsep = "/"), header = TRUE, col.names = c("iata", "traffic"), colClasses = c("character", "integer"))
+df_tra <- read.csv(file = pop_tra, header = TRUE, col.names = c("iata", "traffic"), colClasses = c("character", "integer"))
 
 # Describe the data
 str(df_tra)
@@ -78,7 +84,7 @@ df_tra_binned <- df_tra %>%
     traffic_cum = cumsum(traffic),
     traffic_per = cumsum(traffic) / sum(traffic)
   ) %>%
-  relocate(bin, airports, airports_cum, airports_per, traffic, traffic_cum, traffic_per)  # Reorder the columns
+  relocate(bin, airports, airports_cum, airports_per, traffic, traffic_cum, traffic_per) # Reorder the columns
 
 # Display the traffic distribution table
 df_tra_binned
@@ -141,9 +147,7 @@ ggsave(
 ################################################################################
 
 # Load the geolocation data from a CSV file
-filepath <- "data/population"
-filename <- "geolocation.csv"
-df_geo <- read.csv(file = file.path(filepath, filename, fsep = "/"), header = TRUE, col.names = c("id", "ident", "type", "name", "lat", "lon", "elev", "cont", "country", "region", "city", "sched", "icao", "iata", "local", "website", "wiki", "keywords"), colClasses = c("integer", "character", "factor", "character", "numeric", "numeric", "numeric", "factor", "factor", "factor", "character", "factor", "character", "character", "character", "character", "character", "character"))
+df_geo <- read.csv(file = pop_geo, header = TRUE, col.names = c("id", "ident", "type", "name", "lat", "lon", "elev", "cont", "country", "region", "city", "sched", "icao", "iata", "local", "website", "wiki", "keywords"), colClasses = c("integer", "character", "factor", "character", "numeric", "numeric", "numeric", "factor", "factor", "factor", "character", "factor", "character", "character", "character", "character", "character", "character"))
 
 # Describe the data
 str(df_geo)
@@ -223,7 +227,7 @@ sum(df_pop$traffic[!rev(duplicated(rev(df_pop$icao)))]) # Traffic
 # Create column to uniquely identify unique runways (i.e. reciprocal headings sharing the same physical surface and same TODA at a given airport)
 df_pop_unique <- df_pop %>%
   mutate(rwy.recip = if_else( # Calculate reciprocal heading for each runway
-    parse_number(rwy) <= 18, # 180 degrees
+    parse_number(rwy) <= 18,  # 180 degrees
     paste("RW", formatC(parse_number(rwy) + 18, width = 2, format = "d", flag = "0"), case_when(str_sub(rwy, -1, -1) == "L" ~ "R", str_sub(rwy, -1, -1) == "R" ~ "L", str_sub(rwy, -1, -1) == "C" ~ "C", TRUE ~ ""), sep = ""),
     paste("RW", formatC(parse_number(rwy) - 18, width = 2, format = "d", flag = "0"), case_when(str_sub(rwy, -1, -1) == "L" ~ "R", str_sub(rwy, -1, -1) == "R" ~ "L", str_sub(rwy, -1, -1) == "C" ~ "C", TRUE ~ ""), sep = "")
   )) %>%
@@ -255,32 +259,36 @@ row.names(df_pop) <- NULL
 ################################################################################
 
 # Connect to the database
-db_cnf <- ".my.cnf"                                                             # Set the file name that contains the database connection parameters
-db_grp <- "phd"                                                                 # Set the group name within the cnf file that contains the connection parameters
-db_tbl <- "population"                                                          # Name the table that will store the population data
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)     # Open the connection to the database
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
 # Drop the population table if it exists
-db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_tbl), ";", sep = "")
+db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_pop), ";", sep = "")
 db_res <- dbSendQuery(db_con, db_qry)
 dbClearResult(db_res)
 
 # Create the population table
-db_qry <- paste("CREATE TABLE ", tolower(db_tbl), " (id INT NOT NULL AUTO_INCREMENT, icao CHAR(4) NOT NULL, iata CHAR(3) NOT NULL, traffic INT NOT NULL, name CHAR(", max(nchar(df_pop$name)),") NOT NULL, lat FLOAT NOT NULL, lon FLOAT NOT NULL, rwy CHAR(5) NOT NULL, len SMALLINT NOT NULL, toda SMALLINT NOT NULL, PRIMARY KEY (id));", sep = "")
+db_qry <- paste("CREATE TABLE ", tolower(db_pop), " (id INT NOT NULL AUTO_INCREMENT, icao CHAR(4) NOT NULL, iata CHAR(3) NOT NULL, traffic INT NOT NULL, name CHAR(", max(nchar(df_pop$name)),") NOT NULL, lat FLOAT NOT NULL, lon FLOAT NOT NULL, rwy CHAR(5) NOT NULL, len SMALLINT NOT NULL, toda SMALLINT NOT NULL, PRIMARY KEY (id));", sep = "")
 db_res <- dbSendQuery(db_con, db_qry)
 dbClearResult(db_res)
 
 # Write the population data to the population table
 # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
-dbWriteTable(conn = db_con, name = tolower(db_tbl), value = df_pop, append = TRUE, row.names = FALSE)
+dbWriteTable(conn = db_con, name = tolower(db_pop), value = df_pop, append = TRUE, row.names = FALSE)
 
 # Create a composite index on the icao, traffic, lat, and lon columns (after the bulk insert above, not before for performance reasons) to speed up subsequent searches
 db_idx <- "idx" # Set index name
-db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_tbl), " (icao, traffic, lat, lon);", sep = "")
+db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_pop), " (icao, traffic, lat, lon);", sep = "")
 db_res <- dbSendQuery(db_con, db_qry)
 dbClearResult(db_res)
 
 # Disconnect from the database
 dbDisconnect(db_con)
+
+################################################################################
+# Housekeeping                                                                 #
+################################################################################
+
+# Display the script execution time
+Sys.time() - start_time
 
 # EOF

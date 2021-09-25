@@ -3,17 +3,11 @@
 # Models the aircraft takeoff performance                                      #
 ################################################################################
 
-# Load common constants
-source("scripts/constants.R")
+# Import the constants
+source("0_constants.R")
 
 # Clear the console
 cat("\014")
-
-################################################################################
-# Unit system                                                                  #
-################################################################################
-
-u     <- "i"                                                                    # Choose "i" for imperial, "m" for metric
 
 ################################################################################
 # Variables definition - Aircraft                                              #
@@ -60,25 +54,6 @@ T     <- rbind(                                                                 
 CT1 <- .13899E+06                                                               # First coefficient of max climb / takeoff thrust as per BADA 3
 CT2 <- .45045E+05                                                               # Second coefficient of max climb / takeoff thrust as per BADA 3
 CT3 <- .10941E-09                                                               # Third coefficient of max climb / takeoff thrust as per BADA 3
-
-################################################################################
-# Variable definition - Runway                                                 #
-################################################################################
-
-mu    <- c(                                                                     # Dimensionless coefficient of rolling friction. ESDU 85029 (p. 32) suggests .02 as a typical value. Values below are taken from Filippone (2012), Table 9.3
-  "blake" = .0165,                                                              # Value used in the Blake (2009) example, p. 18-11
-  "dca"   = .02,                                                                # Value for dry concrete/asphalt
-  "htg"   = .04,                                                                # Value for hard turf and gravel
-  "sdg"   = .05,                                                                # Value for short and dry grass
-  "lg"    = .10,                                                                # Value for long grass
-  "sg_lo" = .10,                                                                # Value for soft ground (low softness)
-  "sg_mi" = .20,                                                                # Value for soft ground (medium softness)
-  "sg_hi" = .30                                                                 # Value for soft ground (high softness)
-)
-
-theta <- 0                                                                      # Runway slope in degrees. Assumed to be zero as a positive slope in one runway heading would cancel out the negative slope in the reciprocal heading
-
-Hp  <- 0                                                                        # Geopotential pressure altitude in feet
 
 ################################################################################
 # Calculate the acceleration at each TAS increment                             #

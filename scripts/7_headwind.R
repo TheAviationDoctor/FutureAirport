@@ -13,6 +13,9 @@ library(data.table)
 library(DBI)
 library(parallel)
 
+# Import the constants
+source("0_constants.R")
+
 # Start a script timer
 start_time <- Sys.time()
 
@@ -20,43 +23,14 @@ start_time <- Sys.time()
 cat("\014")
 
 ################################################################################
-# List all the experiments (SSPs) from the NetCDF file names                   #
+# Import the sample airports defined in sample.R                               #
 ################################################################################
-
-# Set the file path where the NetCDF files are located
-nc_path  <- "data/climate/netcdf"
-
-# List all the NetCDF files (ending in .nc)
-nc_files <- list.files(path = nc_path, pattern = "\\.nc$", full.names = TRUE)
-
-# List all the experiments (SSPs) from the NetCDF file names
-nc_exps  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 4))
-
-################################################################################
-# Connect to the database                                                      #
-################################################################################
-
-# Set the file name that contains the database connection parameters
-db_cnf <- ".my.cnf"
-
-# Set the group name within the cnf file that contains the connection parameters
-db_grp <- "phd"
 
 # Open the connection to the database
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
-################################################################################
-# Import the sample airports defined in sample.R                               #
-################################################################################
-
-# Set the name of the table where population data are stored
-db_pop <- "population"
-
-# Set the sample airports' minimum traffic size
-thresh <- 10^6
-
 # Build the query to retrieve airports above the passenger traffic threshold
-db_qry <- paste("SELECT icao, rwy, toda FROM", db_pop, "WHERE traffic >", thresh, "ORDER BY icao;", sep = " ")
+db_qry <- paste("SELECT icao, rwy, toda FROM", db_pop, "WHERE traffic >", pop_thr, "ORDER BY icao;", sep = " ")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
@@ -79,9 +53,6 @@ dt_smp <- dt_smp[, .SD[which.max(toda)], by = .(icao, rwy)]
 # Count how many unique runway headings remain in the sample before we choose which ones have the strongest headwind for each airport
 nrow(dt_smp)
 
-# FOR TESTING ONLY
-head(dt_smp)
-
 ################################################################################
 # Define a function to return wind direction, headwind speed, and active runway#
 # Each worker is a CPU node that gets assigned one climate experiment (SSP)    #
@@ -89,18 +60,15 @@ head(dt_smp)
 
 # Declare the function with the experiment (SSP) as input parameter
 fn_wnd <- function(nc_exp) {
-  
+
+  # Import the constants
+  source("0_constants.R")
+    
   ##############################################################################
   # Connect this worker to the database                                        #
   ##############################################################################
   
-  # Set the file name that contains the database connection parameters
-  db_cnf <- ".my.cnf"
-  
-  # Set the group name within the cnf file that contains the connection parameters
-  db_grp <- "phd"
-  
-  # Open the connection to the database
+  # Connect the worker to the database
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
   
   ################################################################################
@@ -126,7 +94,7 @@ fn_wnd <- function(nc_exp) {
   # Release the database resource
   dbClearResult(db_res)
   
-  # Count how many observations
+  # Count how many observations exist in the combined wind table
   nrow(dt_wnd)
 
   ################################################################################
@@ -143,9 +111,9 @@ fn_wnd <- function(nc_exp) {
     
   }
   
-  ################################################################################
-  # Calculate the headwind for each runway at each observation                   #
-  ################################################################################
+  ##############################################################################
+  # Calculate the headwind for each runway at each observation                 #
+  ##############################################################################
   
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste("[2/4] ", Sys.time(), " Worker ", Sys.getpid(), " is calculating the headwind speed and active runway for each observation in ", nc_exp, "...", sep = ""))
@@ -153,8 +121,8 @@ fn_wnd <- function(nc_exp) {
   # For each observation
   for (i in 1:nrow(dt_wnd)) {
 
-    # Output the worker's progress to the log file defined in makeCluster() at every 1,000 observations processed
-    if(i %% 10^3 == 0) { print(paste("Processing observation ", format(i, big.mark = ","), " of ", format(nrow(dt_wnd), big.mark = ","), "...", sep = "")) }
+    # Output the worker's progress to the log file defined in makeCluster() at every arbitrarily-sized batch of observations processed
+    if(i %% 10^6 == 0) { print(paste("Processing observation ", format(i, big.mark = ","), " of ", format(nrow(dt_wnd), big.mark = ","), "...", sep = "")) }
 
     # Calculate the wind speed at this observation's airport
     wnd_spd <- sqrt(dt_wnd[i, uas]^2 + dt_wnd[i, vas]^2)
@@ -189,9 +157,6 @@ fn_wnd <- function(nc_exp) {
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste("[3/4] ", Sys.time(), " Worker ", Sys.getpid(), " is writing the headwind speed and active runway to table ", tolower(db_wnd), "_", tolower(nc_exp), "...", sep = ""))
   
-  # Set the name of the table where the active runway and headwind speed data will be stored
-  db_wnd <- "wnd"
-  
   # Drop the table corresponding to the headwind variable and current experiment (SSP), if it exists
   db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_wnd), "_", tolower(nc_exp), ";", sep = "")
   db_res <- dbSendQuery(db_con, db_qry)
@@ -225,7 +190,7 @@ fn_wnd <- function(nc_exp) {
   db_res <- dbSendQuery(db_con, db_qry)
   dbClearResult(db_res)
   
-  # Release the database connection
+  # Disconnect the worker from the database
   dbDisconnect(db_con)
   
   # Output the worker's progress to the log file defined in makeCluster()
@@ -254,7 +219,7 @@ clusterEvalQ(cl, {
 })
 
 # Pass the required variables from the main scope to the workers' scope
-clusterExport(cl, c("db_cnf", "db_grp", "db_con", "dt_smp"))
+clusterExport(cl, c("dt_smp"))
 
 # Distribute the parallel parsing of NetCDF files across the workers, with the climate variables as input parameter
 parLapply(cl, nc_exps, fn_wnd)
@@ -266,7 +231,7 @@ stopCluster(cl)
 # Housekeeping                                                                 #
 ################################################################################
 
-# Display the script processing time
+# Display the script execution time
 Sys.time() - start_time
 
 # EOF

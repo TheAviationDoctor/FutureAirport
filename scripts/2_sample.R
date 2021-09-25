@@ -3,6 +3,10 @@
 # Builds the research sample from the population of airports and runways       #
 ################################################################################
 
+################################################################################
+# Housekeeping                                                                 #
+################################################################################
+
 # Load required libraries
 library(DBI)
 library(dplyr)
@@ -15,7 +19,13 @@ library(rgeos)
 library(rnaturalearth)
 library(scales)
 
-# Clear the console and plots
+# Import the constants
+source("0_constants.R")
+
+# Start a script timer
+start_time <- Sys.time()
+
+# Clear the console
 cat("\014")
 
 ################################################################################
@@ -23,18 +33,15 @@ cat("\014")
 ################################################################################
 
 # Connect to the database
-db_cnf <- ".my.cnf"                                                             # Set the file name that contains the database connection parameters
-db_grp <- "phd"                                                                 # Set the group name within the cnf file that contains the connection parameters
-db_tbl <- "population"                                                          # Name the table that stores the population data
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)     # Open the connection to the database
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
 # Retrieve the population data
-db_qry <- paste("SELECT * FROM ", db_tbl, ";", sep = "")
+db_qry <- paste("SELECT * FROM ", db_pop, ";", sep = "")
 db_res <- dbSendQuery(db_con, db_qry)
 df_pop <- suppressWarnings(dbFetch(db_res, n = Inf))
 dbClearResult(db_res)
 
-# Release the database connection
+# Disconnect from the database
 dbDisconnect(db_con)
 
 ################################################################################
@@ -42,8 +49,7 @@ dbDisconnect(db_con)
 ################################################################################
 
 # Sample airports above the minimum traffic threshold in passengers
-threshold <- 10^6
-df_smp <- subset(df_pop, traffic >= threshold)
+df_smp <- subset(df_pop, traffic >= pop_thr)
 
 # Describe the sample
 str(df_smp)
@@ -264,7 +270,7 @@ df_kgc[is.na(df_kgc)] <- 0
 # Recode missing climate zones with Z
 df_kgc$kgc <- as.character(df_kgc$kgc) # De-factorize
 df_kgc$kgc[df_kgc$kgc == "Climate Zone info missing"] <- "Z"
-df_kgc$kgc <- as.factor(df_kgc$kgc) # Re-factorize
+df_kgc$kgc <- as.factor(df_kgc$kgc)    # Re-factorize
 
 # View the summarized table of main climate groups
 df_kgc %>%
@@ -319,5 +325,12 @@ ggsave(
   limitsize = TRUE,
   bg = NULL
 )
+
+################################################################################
+# Housekeeping                                                                 #
+################################################################################
+
+# Display the script execution time
+Sys.time() - start_time
 
 # EOF

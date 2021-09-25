@@ -14,22 +14,24 @@ library(data.table)
 library(DBI)
 library(parallel)
 
+# Import the constants
+source("0_constants.R")
+
+# Start a script timer
+start_time <- Sys.time()
+
 # Clear the console
 cat("\014")
 
 ################################################################################
-# Import the sample airports defined in sample.R so we can loop through them   #
+# Import the sample airports defined in sample.R                               #
 ################################################################################
 
 # Connect to the database
-db_cnf <- ".my.cnf"                                                             # Set the file name that contains the database connection parameters
-db_grp <- "phd"                                                                 # Set the group name within the cnf file that contains the connection parameters
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)     # Open the connection to the database
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
-# Retrieve the sample airports, sorted from largest to smallest traffic
-db_tbl <- "population"                                                          # Set the name of the table where population data are stored
-threshold <- 10^6                                                               # Set the sample airports' minimum traffic size
-db_qry <- paste("SELECT icao, lat, lon FROM", db_tbl, "WHERE traffic >", threshold, "GROUP BY icao;", sep = " ")
+# Retrieve the sample airports
+db_qry <- paste("SELECT icao, lat, lon FROM", db_pop, "WHERE traffic >", pop_thr, "GROUP BY icao;", sep = " ")
 db_res <- dbSendQuery(db_con, db_qry)
 dt_smp <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = "icao", check.names = TRUE))
 dbClearResult(db_res)
@@ -38,13 +40,11 @@ dbClearResult(db_res)
 dbDisconnect(db_con)
 
 ################################################################################
-# Prepare the NetCDF files                                                     #
+# List the climate variables contained in the NetCDF files                     #
 ################################################################################
 
-nc_path  <- "data/climate/netcdf"                                               # Set the file path where the NetCDF files are located
 nc_files <- list.files(path = nc_path, pattern = "\\.nc$", full.names = TRUE)   # List all the NetCDF files (ending in .nc)
 nc_vars  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 1))           # List all the climatic variables from the NetCDF file names
-nc_exps  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 4))           # List all the experiments (SSPs) from the NetCDF file names
 
 ################################################################################
 # Function to parse the NetCDF file in parallel across multiple workers        #
@@ -52,15 +52,13 @@ nc_exps  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 4))           
 ################################################################################
 
 # Declare the function with the climatic variable as input parameter
-nc_parse <- function(nc_var) {
+fn_parse <- function(nc_var) {
   
   ##############################################################################
   # Set up the database table to store this worker's outputs                   #
   ##############################################################################
   
-  # Open the worker's connection to the database
-  db_cnf <- ".my.cnf"                                                           # Set the file name that contains the database connection parameters
-  db_grp <- "phd"                                                               # Set the group name within the cnf file that contains the connection parameters
+  # Connect the worker to the database
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
   
   # For each experiment (SSP)
@@ -175,13 +173,13 @@ nc_parse <- function(nc_var) {
     
   } # End of index creation
   
-  # Release the worker's database connection
+  # Disconnect the worker from the database
   dbDisconnect(db_con)
   
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), "Worker", Sys.getpid(), "in charge of variable", nc_var, "has completed its work.", sep = " "))
   
-} # End of the nc_parse function definition
+} # End of the fn_parse function definition
 
 ################################################################################
 # Handle the parallel computation across multiple cores                        #
@@ -191,13 +189,12 @@ nc_parse <- function(nc_var) {
 cores <- length(nc_vars)
 
 # Set and clear the output file for cluster logging
-outfile <- "logs/netcdf.log"
-close(file(outfile, open = "w"))
+close(file(log_net, open = "w"))
 
 # Build the cluster of workers and select a file in which to log progress (which can't be printed to the console on the Windows version of RStudio)
-cl <- makeCluster(cores, outfile = outfile)
+cl <- makeCluster(cores, outfile = log_net)
 
-# Have each worker load the libraries that they need to handle the nc_parse function defined above
+# Have each worker load the libraries that they need to handle the fn_parse function defined above
 clusterEvalQ(cl, {
   library(data.table)
   library(DBI)
@@ -207,12 +204,19 @@ clusterEvalQ(cl, {
 })
 
 # Pass the required variables from the main scope to the workers' scope
-clusterExport(cl, c("dt_smp", "nc_exps", "nc_path", "nc_vars"))
+clusterExport(cl, c("dt_smp", "nc_vars"))
 
 # Distribute the parallel parsing of NetCDF files across the workers, with the climate variables as input parameter
-parLapply(cl, nc_vars, nc_parse)
+parLapply(cl, nc_vars, fn_parse)
 
 # Terminate the cluster once finished
 stopCluster(cl)
+
+################################################################################
+# Housekeeping                                                                 #
+################################################################################
+
+# Display the script execution time
+Sys.time() - start_time
 
 # EOF
