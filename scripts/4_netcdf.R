@@ -72,7 +72,7 @@ nc_parse <- function(nc_var) {
     dbClearResult(db_res)
 
     # Create the table corresponding to the climatic variable and experiment (SSP)
-    db_qry <- paste("CREATE TABLE ", tolower(nc_var), "_", tolower(nc_exps[i]), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, apt CHAR(4) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
+    db_qry <- paste("CREATE TABLE ", tolower(nc_var), "_", tolower(nc_exps[i]), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
     db_res <- dbSendQuery(db_con, db_qry)
     dbClearResult(db_res)
 
@@ -128,9 +128,9 @@ nc_parse <- function(nc_var) {
 
       # Assemble the results into a data table
       nc_out <- data.table(
-        obs = PCICt::as.POSIXct.PCICt(nc_obs, format = "%Y-%m-%d %H:%M:%S"),    # Time series of the observations. The database won't accept POSIXct as DATETIME so we must simplify the format here
-        apt = dt_smp[k, icao],                                                  # Airport ICAO code
-        val = as.vector(nc_val)                                                 # Climate variable value for each observation
+        obs  = PCICt::as.POSIXct.PCICt(nc_obs, format = "%Y-%m-%d %H:%M:%S"),    # Time series of the observations. The database won't accept POSIXct as DATETIME so we must simplify the format here
+        icao = dt_smp[k, icao],                                                  # Airport ICAO code
+        val  = as.vector(nc_val)                                                 # Climate variable value for each observation
       )
 
       # All climate variables except 'hurs' are 6-hourly mean samples at 06:00 (i.e. a mean of 03:00-09:00), 12:00 (i.e. a mean of 09:00-15:00), 18:00 (i.e. a mean of 15:00-21:00), and 00:00 (i.e. a mean of 21:00-03:00)
@@ -167,9 +167,9 @@ nc_parse <- function(nc_var) {
     # Output the worker's progress to the log file defined in makeCluster()
     print(paste(Sys.time(), " Worker ", Sys.getpid(), " is indexing table ", tolower(nc_var), "_", tolower(nc_exps[l]), "...", sep = ""))
     
-    # Create a composite index on the apt and obs columns (after the bulk insert above, not before for performance reasons) to speed up subsequent searches
+    # Create a composite index on the icao and obs columns (after the bulk insert above, not before for performance reasons) to speed up subsequent searches
     db_idx <- "idx" # Set index name
-    db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(nc_var), "_", tolower(nc_exps[l]), " (apt, obs);", sep = "")
+    db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(nc_var), "_", tolower(nc_exps[l]), " (icao, obs);", sep = "")
     db_res <- dbSendQuery(db_con, db_qry)
     dbClearResult(db_res)
     
@@ -191,7 +191,7 @@ nc_parse <- function(nc_var) {
 cores <- length(nc_vars)
 
 # Set and clear the output file for cluster logging
-outfile <- "netcdf.log"
+outfile <- "logs/netcdf.log"
 close(file(outfile, open = "w"))
 
 # Build the cluster of workers and select a file in which to log progress (which can't be printed to the console on the Windows version of RStudio)

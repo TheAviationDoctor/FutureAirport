@@ -22,7 +22,7 @@ cat("\014")
 nc_files <- rbind(
   esgf_query( # First query for the main climate variables of interest
     activity = "ScenarioMIP",
-    variable = c("ps", "tas", "sfcWind", "uas", "vas"),
+    variable = c("ps", "tas", "uas", "vas"),
     frequency = c("6hrPt"),
     experiment = c("ssp126", "ssp245", "ssp370", "ssp585"),
     source = "MPI-ESM1-2-HR",
@@ -66,7 +66,7 @@ nrow(nc_files)                                                                  
 # Display the number of files by experiment (SSP) and variable
 nc_files %>%
   group_by(experiment_id) %>%
-  summarize(hurs = sum(variable_id == "hurs"), ps = sum(variable_id == "ps"), tas = sum(variable_id == "tas"), sfcWind = sum(variable_id == "sfcWind"), uas = sum(variable_id == "uas"), vas = sum(variable_id == "vas"))
+  summarize(hurs = sum(variable_id == "hurs"), ps = sum(variable_id == "ps"), tas = sum(variable_id == "tas"), uas = sum(variable_id == "uas"), vas = sum(variable_id == "vas"))
 
 # Save the query results to a file for later reference
 filepath <- "data/climate/esgf"

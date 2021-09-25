@@ -24,7 +24,7 @@ nc_exps  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 4))           
 
 ################################################################################
 # Function to calculate the air density rho from hurs, ps, and tas             #
-# Each worker is a CPU node that gets assigned one experiment (SSP) to parse   #
+# Each worker is a CPU node that gets assigned one climate experiment (SSP)    #
 ################################################################################
 
 # Declare the function with the experiment (SSP) as input parameter
@@ -46,12 +46,12 @@ nc_parse <- function(nc_exp) {
   dbClearResult(db_res)
 
   # Create the table corresponding to the air density variable and current experiment (SSP)
-  db_qry <- paste("CREATE TABLE ", tolower(db_tbl), "_", tolower(nc_exp), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, apt CHAR(4) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
+  db_qry <- paste("CREATE TABLE ", tolower(db_tbl), "_", tolower(nc_exp), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
   db_res <- dbSendQuery(db_con, db_qry)
   dbClearResult(db_res)
 
   # Define the query to retrieve the hurs, ps, and tas values across their respective tables for the current experiment (SSP)
-  db_qry <- paste("SELECT hurs_", nc_exp, ".id, hurs_", nc_exp, ".obs, hurs_", nc_exp, ".apt, hurs_", nc_exp, ".val AS hurs, ps_", nc_exp, ".val AS ps, tas_", nc_exp, ".val AS tas FROM hurs_", nc_exp, " LEFT JOIN ps_", nc_exp, " ON hurs_", nc_exp, ".obs = ps_", nc_exp, ".obs AND hurs_", nc_exp, ".apt = ps_", nc_exp, ".apt LEFT JOIN tas_", nc_exp, " ON hurs_", nc_exp, ".obs = tas_", nc_exp, ".obs AND hurs_", nc_exp, ".apt = tas_", nc_exp, ".apt;", sep = "")
+  db_qry <- paste("SELECT hurs_", nc_exp, ".id, hurs_", nc_exp, ".obs, hurs_", nc_exp, ".icao, hurs_", nc_exp, ".val AS hurs, ps_", nc_exp, ".val AS ps, tas_", nc_exp, ".val AS tas FROM hurs_", nc_exp, " LEFT JOIN ps_", nc_exp, " ON hurs_", nc_exp, ".obs = ps_", nc_exp, ".obs AND hurs_", nc_exp, ".icao = ps_", nc_exp, ".icao LEFT JOIN tas_", nc_exp, " ON hurs_", nc_exp, ".obs = tas_", nc_exp, ".obs AND hurs_", nc_exp, ".icao = tas_", nc_exp, ".icao;", sep = "")
 
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), "Worker", Sys.getpid(), "is parsing the climatic variables for experiment", nc_exp, "from the database...", sep = " "))
@@ -95,8 +95,8 @@ nc_parse <- function(nc_exp) {
   # Save the air density to a new column
   db_out[, val := rho]
 
-  # Keep only the relevant columns to be saved to the database table
-  db_cols <- c("obs", "apt", "val")
+  # Choose which data table columns to write to the database table
+  db_cols <- c("obs", "icao", "val")
 
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), " Worker ", Sys.getpid(), " is writing ", tolower(db_tbl), "_", tolower(nc_exp), " to the database...", sep = ""))
@@ -112,9 +112,9 @@ nc_parse <- function(nc_exp) {
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), " Worker ", Sys.getpid(), " is indexing table ", tolower(db_tbl), "_", tolower(nc_exp), "...", sep = ""))
 
-  # Create a composite index on the apt and obs columns (after the bulk insert above, not before for performance reasons) to speed up subsequent searches
+  # Create a composite index on the icao and obs columns (after the bulk insert above, not before for performance reasons) to speed up subsequent searches
   db_idx <- "idx" # Set index name
-  db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_tbl), "_", tolower(nc_exp), " (apt, obs);", sep = "")
+  db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_tbl), "_", tolower(nc_exp), " (icao, obs);", sep = "")
   db_res <- dbSendQuery(db_con, db_qry)
   dbClearResult(db_res)
   
@@ -134,7 +134,7 @@ nc_parse <- function(nc_exp) {
 cores <- length(nc_exps)
 
 # Set and clear the output file for cluster logging
-outfile <- "rho.log"
+outfile <- "logs/rho.log"
 close(file(outfile, open = "w"))
 
 # Build the cluster of workers and select a file in which to log progress (which can't be printed to the console on the Windows version of RStudio)

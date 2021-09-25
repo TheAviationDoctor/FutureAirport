@@ -21,3 +21,13 @@ rho   <- c(                                                                     
   "m" = 1.225                                                                   # In kilograms per cubic meter
 )
 
+##############################################################################
+# Database parameters                                                        #
+##############################################################################
+
+# Set the file name that contains the database connection parameters
+db_cnf <- ".my.cnf"
+
+# Set the group name within the cnf file that contains the connection parameters
+db_grp <- "phd"
+

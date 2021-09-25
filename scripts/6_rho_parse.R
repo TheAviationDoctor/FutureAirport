@@ -56,7 +56,7 @@ nc_parse <- function(lat) {
   ifelse(
     lat$name == "All",
     db_qry <- paste(paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps, "' AS exp FROM ", db_rho, "_", nc_exps, " GROUP BY obs", sep = ""), collapse = " UNION "), ";", sep = ""),
-    db_qry <- paste("WITH cte1 AS (SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", thresh," AND ABS(lat) BETWEEN ", lat$lower," AND ", lat$upper,") ", paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps, "' AS exp FROM ", db_rho, "_", nc_exps, " INNER JOIN cte1 WHERE ", db_rho, "_", nc_exps, ".apt = cte1.icao GROUP BY obs", sep = ""), collapse = " UNION "), ";", sep = "")
+    db_qry <- paste("WITH cte1 AS (SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", thresh," AND ABS(lat) BETWEEN ", lat$lower," AND ", lat$upper,") ", paste(paste("SELECT obs, AVG(val) AS avg_rho, '", nc_exps, "' AS exp FROM ", db_rho, "_", nc_exps, " INNER JOIN cte1 WHERE ", db_rho, "_", nc_exps, ".icao = cte1.icao GROUP BY obs", sep = ""), collapse = " UNION "), ";", sep = "")
   )
   db_res <- dbSendQuery(db_con, db_qry)                                           # Send the query to the database
   dt_rho <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), check.names = TRUE)) # Convert the query output from data frame to data table by reference (using setDT rather than as.data.table) to avoid duplication in memory
