@@ -29,7 +29,7 @@ cat("\014")
 fn_rho_plot <- function(lat) {
   
   # Import the constants
-  source("0_constants.R")
+  source("scripts/0_constants.R")
   
   # Connect the worker to the database
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)

@@ -55,7 +55,7 @@ nc_vars  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 1))           
 fn_parse <- function(nc_var) {
   
   # Import the constants
-  source("0_constants.R")
+  source("scripts/0_constants.R")
   
   ##############################################################################
   # Set up the database table to store this worker's outputs                   #
