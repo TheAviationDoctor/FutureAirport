@@ -41,9 +41,6 @@ dt_smp <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = c("icao", "rwy"
 # Release the database resource
 dbClearResult(db_res)
 
-# Disconnect from the database
-dbDisconnect(db_con)
-
 # Replace the runway name (e.g., RW26R) with the magnetic heading in degrees (e.g., 260) for later headwind calculation
 dt_smp[, rwy := as.numeric(substr(rwy, 3, 4)) * 10]
 
@@ -53,13 +50,48 @@ dt_smp <- dt_smp[, .SD[which.max(toda)], by = .(icao, rwy)]
 # Count how many unique runway headings remain in the sample before we choose which ones have the strongest headwind for each airport
 nrow(dt_smp)
 
+# Disconnect from the database
+dbDisconnect(db_con)
+
+################################################################################
+# Create the database tables to store the headwind speed and active runway     #
+################################################################################
+
+# Connect to the database
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+
+for (i in 1:length(nc_exps)) {
+
+  # Build the query to drop the table corresponding to the headwind variable and current experiment (SSP), if it exists
+  db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_wnd), "_", tolower(nc_exps[i]), ";", sep = "")
+  
+  # Send the query to the database
+  db_res <- dbSendQuery(db_con, db_qry)
+  
+  # Release the database resource
+  dbClearResult(db_res)
+  
+  # Build the query to create the table corresponding to the headwind variable and current experiment (SSP)
+  db_qry <- paste("CREATE TABLE ", tolower(db_wnd), "_", tolower(nc_exps[i]), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, rwy CHAR(3) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
+
+  # Send the query to the database
+  db_res <- dbSendQuery(db_con, db_qry)
+  
+  # Release the database resource
+  dbClearResult(db_res)
+
+}
+
+# Disconnect from the database
+dbDisconnect(db_con)
+
 ################################################################################
 # Define a function to return wind direction, headwind speed, and active runway#
 # Each worker is a CPU node that gets assigned one climate experiment (SSP)    #
 ################################################################################
 
 # Declare the function with the experiment (SSP) as input parameter
-fn_wnd <- function(nc_exp, i) {
+fn_wnd <- function(nc_exp, j) {
 
     # Import the constants
   source("scripts/0_constants.R")
@@ -75,14 +107,16 @@ fn_wnd <- function(nc_exp, i) {
   # Retrieve the eastward and northward wind speeds from the database          #
   ##############################################################################
 
-  # Set the names of the tables where the eastward and northward wind data are stored (l[[1]] is the item of the list l that contains the experiment names)
+  # Set the name of the table where the eastward wind data are stored for the current experiment (SSP)
   db_uas <- paste("uas_", tolower(nc_exp), sep = "")
+
+  # Set the name of the table where the northward wind data are stored for the current experiment (SSP)
   db_vas <- paste("vas_", tolower(nc_exp), sep = "")
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste("[1/4] ", Sys.time(), " Worker ", Sys.getpid(), " is reading wind data from tables ", db_uas, " and ", db_vas, "...", sep = ""))
+  print(paste("[1/3] ", Sys.time(), " Worker ", Sys.getpid(), " is reading eastward and northward wind data from tables ", db_uas, " and ", db_vas, "...", sep = ""))
 
-  # Count the rows in the eastward wind table
+  # Count the rows in the eastward wind table (the LEFT table in the upcoming JOIN)
   db_qry <- paste("SELECT COUNT(*) FROM", db_uas, ";", sep = " ")
 
   # Send the query to the database
@@ -95,7 +129,7 @@ fn_wnd <- function(nc_exp, i) {
   dbClearResult(db_res)
   
   # Build the query to retrieve the wind data for every airport/observation pair. We use LIMIT and OFFSET combined with the split variable defined further down to increase parallelization
-  db_qry <- paste("SELECT uas.obs, uas.icao, uas.val AS uas, vas.val AS vas FROM", db_uas, "AS uas,", db_vas, "AS vas WHERE uas.id = vas.id ORDER BY uas.icao, uas.obs LIMIT", ceiling(df_cnt / split) - i, "OFFSET", ceiling(df_cnt * i / split) + i, ";", sep = " ")
+  db_qry <- paste("SELECT uas.obs, uas.icao, uas.val AS uas, vas.val AS vas FROM", db_uas, "AS uas,", db_vas, "AS vas WHERE uas.id = vas.id ORDER BY uas.icao, uas.obs LIMIT", ceiling(df_cnt / split) - j, "OFFSET", ceiling(df_cnt * j / split) + j, ";", sep = " ")
 
   # Send the query to the database
   db_res <- dbSendQuery(db_con, db_qry)
@@ -128,12 +162,12 @@ fn_wnd <- function(nc_exp, i) {
   ##############################################################################
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste("[2/4] ", Sys.time(), " Worker ", Sys.getpid(), " is calculating the headwind speed and active runway for each observation in ", nc_exp, "...", sep = ""))
+  print(paste("[2/3] ", Sys.time(), " Worker ", Sys.getpid(), " is calculating the headwind speed and active runway for each observation in ", nc_exp, "...", sep = ""))
 
   # For each observation
   for (i in 1:nrow(dt_wnd)) {
 
-    # Output the worker's progress to the log file defined in makeCluster() at every arbitrarily-sized batch of observations processed
+    # Output the worker's progress to the log file defined in makeCluster() at every million of observations processed (so we don't flood the log file)
     if(i %% 10^6 == 0) { print(paste("Processing observation ", format(i, big.mark = ","), " of ", format(nrow(dt_wnd), big.mark = ","), "...", sep = "")) }
 
     # Calculate the wind speed at this observation's airport
@@ -165,17 +199,7 @@ fn_wnd <- function(nc_exp, i) {
   ##############################################################################
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste("[3/4] ", Sys.time(), " Worker ", Sys.getpid(), " is writing the headwind speed and active runway to table ", tolower(db_wnd), "_", tolower(nc_exp), "...", sep = ""))
-
-  # Drop the table corresponding to the headwind variable and current experiment (SSP), if it exists
-  db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_wnd), "_", tolower(nc_exp), ";", sep = "")
-  db_res <- dbSendQuery(db_con, db_qry)
-  dbClearResult(db_res)
-
-  # Create the table corresponding to the headwind variable and current experiment (SSP)
-  db_qry <- paste("CREATE TABLE ", tolower(db_wnd), "_", tolower(nc_exp), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, rwy CHAR(3) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
-  db_res <- dbSendQuery(db_con, db_qry)
-  dbClearResult(db_res)
+  print(paste("[3/3] ", Sys.time(), " Worker ", Sys.getpid(), " is writing the headwind speed and active runway to table ", tolower(db_wnd), "_", tolower(nc_exp), "...", sep = ""))
 
   # Choose which data table columns to write to the database table
   db_cols <- c("obs", "icao", "rwy", "val")
@@ -186,19 +210,6 @@ fn_wnd <- function(nc_exp, i) {
   # Write to the headwind table
   # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
   dbWriteTable(conn = db_con, name = paste(tolower(db_wnd), "_", tolower(nc_exp), sep = ""), value = dt_wnd[, ..db_cols], append = TRUE, row.names = FALSE)
-
-  ##############################################################################
-  # Add indices to the experiment table                                        #
-  ##############################################################################
-
-  # Output the worker's progress to the log file defined in makeCluster()
-  print(paste("[4/4] ", Sys.time(), " Worker ", Sys.getpid(), " is indexing the headwind table ", tolower(db_wnd), "_", tolower(nc_exp), "...", sep = ""))
-
-  # Create a composite index on the icao and obs columns (after the bulk insert above, not before for performance reasons) to speed up subsequent searches
-  db_idx <- "idx" # Set index name
-  db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_wnd), "_", tolower(nc_exp), " (icao, obs);", sep = "")
-  db_res <- dbSendQuery(db_con, db_qry)
-  dbClearResult(db_res)
 
   # Disconnect the worker from the database
   dbDisconnect(db_con)
@@ -238,6 +249,44 @@ parLapply(cl, nc_exps, fn_wnd, 0:(split-1))
 
 # Terminate the cluster once finished
 stopCluster(cl)
+
+################################################################################
+# Add a composite index to the headwind tables                                 #
+################################################################################
+
+# Connect to the database
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+
+for (i in 1:length(nc_exps)) {
+  
+  # Build the query to drop the table corresponding to the headwind variable and current experiment (SSP), if it exists
+  db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_wnd), "_", tolower(nc_exps[i]), ";", sep = "")
+  
+  # Send the query to the database
+  db_res <- dbSendQuery(db_con, db_qry)
+  
+  # Release the database resource
+  dbClearResult(db_res)
+  
+  # Build the query to create the table corresponding to the headwind variable and current experiment (SSP)
+  db_qry <- paste("CREATE TABLE ", tolower(db_wnd), "_", tolower(nc_exps[i]), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, rwy CHAR(3) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
+
+  # Set the index name
+  db_idx <- "idx"
+  
+  # Build the query to create the composite index
+  db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_wnd), "_", tolower(nc_exp), " (icao, obs);", sep = "")
+  
+  # Send the query to the database
+  db_res <- dbSendQuery(db_con, db_qry)
+  
+  # Release the database resource
+  dbClearResult(db_res)
+  
+}
+
+# Disconnect from the database
+dbDisconnect(db_con)
 
 ################################################################################
 # Housekeeping                                                                 #
