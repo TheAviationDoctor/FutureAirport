@@ -64,19 +64,19 @@ for (i in 1:length(nc_exps)) {
 
   # Build the query to drop the table corresponding to the headwind variable and current experiment (SSP), if it exists
   db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_wnd), "_", tolower(nc_exps[i]), ";", sep = "")
-  
+
   # Send the query to the database
   db_res <- dbSendQuery(db_con, db_qry)
-  
+
   # Release the database resource
   dbClearResult(db_res)
-  
+
   # Build the query to create the table corresponding to the headwind variable and current experiment (SSP)
   db_qry <- paste("CREATE TABLE ", tolower(db_wnd), "_", tolower(nc_exps[i]), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, rwy CHAR(3) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
 
   # Send the query to the database
   db_res <- dbSendQuery(db_con, db_qry)
-  
+
   # Release the database resource
   dbClearResult(db_res)
 
@@ -90,10 +90,10 @@ dbDisconnect(db_con)
 # Each worker is a CPU node that gets assigned one climate experiment (SSP)    #
 ################################################################################
 
-# Declare the function with the experiment (SSP) as input parameter
-fn_wnd <- function(nc_exp, j) {
+# Declare the function with the experiment (SSP) and iteration as input parameters
+fn_wnd <- function(m) {
 
-    # Import the constants
+  # Import the constants
   source("scripts/0_constants.R")
   
   ##############################################################################
@@ -108,10 +108,10 @@ fn_wnd <- function(nc_exp, j) {
   ##############################################################################
 
   # Set the name of the table where the eastward wind data are stored for the current experiment (SSP)
-  db_uas <- paste("uas_", tolower(nc_exp), sep = "")
+  db_uas <- paste("uas_", tolower(m[2]), sep = "")
 
   # Set the name of the table where the northward wind data are stored for the current experiment (SSP)
-  db_vas <- paste("vas_", tolower(nc_exp), sep = "")
+  db_vas <- paste("vas_", tolower(m[2]), sep = "")
 
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste("[1/3] ", Sys.time(), " Worker ", Sys.getpid(), " is reading eastward and northward wind data from tables ", db_uas, " and ", db_vas, "...", sep = ""))
@@ -127,10 +127,12 @@ fn_wnd <- function(nc_exp, j) {
 
   # Release the database resource
   dbClearResult(db_res)
-  
-  # Build the query to retrieve the wind data for every airport/observation pair. We use LIMIT and OFFSET combined with the split variable defined further down to increase parallelization
-  db_qry <- paste("SELECT uas.obs, uas.icao, uas.val AS uas, vas.val AS vas FROM", db_uas, "AS uas,", db_vas, "AS vas WHERE uas.id = vas.id ORDER BY uas.icao, uas.obs LIMIT", ceiling(df_cnt / split) - j, "OFFSET", ceiling(df_cnt * j / split) + j, ";", sep = " ")
 
+  # Build the query to retrieve the wind data for every airport/observation pair. We use LIMIT and OFFSET combined with the split variable defined further down to increase parallelization
+  db_qry <- paste("SELECT uas.obs, uas.icao, uas.val AS uas, vas.val AS vas FROM", db_uas, "AS uas,", db_vas, "AS vas WHERE uas.id = vas.id ORDER BY uas.icao, uas.obs LIMIT", ceiling(df_cnt / split) - as.integer(m[1]), "OFFSET", ceiling(df_cnt * as.integer(m[1]) / split) + as.integer(m[1]), ";", sep = " ")
+
+  print(db_qry)
+  
   # Send the query to the database
   db_res <- dbSendQuery(db_con, db_qry)
 
@@ -162,7 +164,7 @@ fn_wnd <- function(nc_exp, j) {
   ##############################################################################
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste("[2/3] ", Sys.time(), " Worker ", Sys.getpid(), " is calculating the headwind speed and active runway for each observation in ", nc_exp, "...", sep = ""))
+  print(paste("[2/3] ", Sys.time(), " Worker ", Sys.getpid(), " is calculating the headwind speed and active runway for each observation in ", m[2], "...", sep = ""))
 
   # For each observation
   for (i in 1:nrow(dt_wnd)) {
@@ -199,7 +201,7 @@ fn_wnd <- function(nc_exp, j) {
   ##############################################################################
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste("[3/3] ", Sys.time(), " Worker ", Sys.getpid(), " is writing the headwind speed and active runway to table ", tolower(db_wnd), "_", tolower(nc_exp), "...", sep = ""))
+  print(paste("[3/3] ", Sys.time(), " Worker ", Sys.getpid(), " is writing the headwind speed and active runway to table ", tolower(db_wnd), "_", tolower(m[2]), "...", sep = ""))
 
   # Choose which data table columns to write to the database table
   db_cols <- c("obs", "icao", "rwy", "val")
@@ -209,13 +211,13 @@ fn_wnd <- function(nc_exp, j) {
 
   # Write to the headwind table
   # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
-  dbWriteTable(conn = db_con, name = paste(tolower(db_wnd), "_", tolower(nc_exp), sep = ""), value = dt_wnd[, ..db_cols], append = TRUE, row.names = FALSE)
+  dbWriteTable(conn = db_con, name = paste(tolower(db_wnd), "_", tolower(m[2]), sep = ""), value = dt_wnd[, ..db_cols], append = TRUE, row.names = FALSE)
 
   # Disconnect the worker from the database
   dbDisconnect(db_con)
 
   # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), " Worker ", Sys.getpid(), " has completed its work for ", nc_exp, ".", sep = ""))
+  print(paste(Sys.time(), " Worker ", Sys.getpid(), " has completed its work for ", m[2], ".", sep = ""))
   
 } # End of fn_wnd function definition
 
@@ -228,6 +230,15 @@ split <- 4
 
 # Set the number of cores/workers to use in the cluster
 cores <- length(nc_exps) * split
+
+# Set the experiments (SSPs) across all cores
+l <- as.list(rep(nc_exps, each = split))
+
+# Set the iteration of each experiment across all cores
+n <- as.list(rep(0:(split-1), times = split))
+
+# Build the matrix to pass to the parRapply function
+m <- matrix(c(n, l), ncol = 2)
 
 # Set and clear the output file for cluster logging
 close(file(log_wnd, open = "w"))
@@ -245,7 +256,7 @@ clusterEvalQ(cl, {
 clusterExport(cl, c("dt_smp", "split"))
 
 # Distribute the parallel parsing of NetCDF files across the workers, with the list of experiments (SSPs) and the range of splits as parameters
-parLapply(cl, nc_exps, fn_wnd, 0:(split-1))
+parRapply(cl = cl, x = m, FUN = fn_wnd)
 
 # Terminate the cluster once finished
 stopCluster(cl)
@@ -257,32 +268,20 @@ stopCluster(cl)
 # Connect to the database
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
-for (i in 1:length(nc_exps)) {
-  
-  # Build the query to drop the table corresponding to the headwind variable and current experiment (SSP), if it exists
-  db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_wnd), "_", tolower(nc_exps[i]), ";", sep = "")
-  
-  # Send the query to the database
-  db_res <- dbSendQuery(db_con, db_qry)
-  
-  # Release the database resource
-  dbClearResult(db_res)
-  
-  # Build the query to create the table corresponding to the headwind variable and current experiment (SSP)
-  db_qry <- paste("CREATE TABLE ", tolower(db_wnd), "_", tolower(nc_exps[i]), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, rwy CHAR(3) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
+# Set the index name
+db_idx <- "idx"
 
-  # Set the index name
-  db_idx <- "idx"
-  
+for (i in 1:length(nc_exps)) {
+
   # Build the query to create the composite index
-  db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_wnd), "_", tolower(nc_exp), " (icao, obs);", sep = "")
-  
+  db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_wnd), "_", tolower(nc_exps[i]), " (icao, obs);", sep = "")
+
   # Send the query to the database
   db_res <- dbSendQuery(db_con, db_qry)
-  
+
   # Release the database resource
   dbClearResult(db_res)
-  
+
 }
 
 # Disconnect from the database
