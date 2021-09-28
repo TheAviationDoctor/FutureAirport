@@ -1,7 +1,7 @@
 ################################################################################
 # scripts/7_headwind_optimized.R                                               #
 # Calculates headwind speed and identifies active runway for each observation  #
-#  Took ~X hours to run on the researchers' config (https://bit.ly/3ChCBAP)    #
+#  Took ~X hours to run on the researcher's config (https://bit.ly/3ChCBAP)    #
 ################################################################################
 
 ################################################################################
@@ -36,7 +36,6 @@ db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 # 
 # # Release the database resource
 # dbClearResult(db_res)
-
 
 # Set the name of the table where the eastward wind data are stored for the current experiment (SSP)
 db_uas <- paste("uas_", tolower(nc_exps), sep = "")

@@ -1,7 +1,7 @@
 ################################################################################
 # scripts/5_rho.R                                                              #
 # Calculates the air density variable from hurs, ps, and tas                   #
-#  Took ~2 hours to run on the researchers' config (https://bit.ly/3ChCBAP)    #
+#  Took ~2 hours to run on the researcher's config (https://bit.ly/3ChCBAP)    #
 ################################################################################
 
 ################################################################################

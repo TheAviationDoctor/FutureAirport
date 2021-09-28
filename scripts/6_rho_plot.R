@@ -1,7 +1,7 @@
 ################################################################################
 # scripts/6_rho_plot.R                                                         #
 # Plots the air density over time                                              #
-#  Took 20 mins. to run on the researchers' config (https://bit.ly/3ChCBAP)    #
+#  Took 20 mins. to run on the researcher's config (https://bit.ly/3ChCBAP)    #
 ################################################################################
 
 ################################################################################

@@ -2,7 +2,8 @@
 # scripts/4_netcdf.R                                                           #
 # Extracts airport-level climatic variables from the NetCDF files              #
 #  and saves them to a database for later processing                           #
-#  Took ~6.5 hours to run on the researchers' config (https://bit.ly/3ChCBAP)  #
+#  Took ~8.25 hours to run on the researcher's config (https://bit.ly/3ChCBAP) #
+#  ~2.5 of which spent indexing the tables at the end                          #
 ################################################################################
 
 ################################################################################
@@ -30,10 +31,16 @@ cat("\014")
 # Connect to the database
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
-# Retrieve the sample airports
+# Build a query to retrieve the sample airports
 db_qry <- paste("SELECT icao, lat, lon FROM", db_pop, "WHERE traffic >", pop_thr, "GROUP BY icao;", sep = " ")
+
+# Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
+
+# Return the restults to a data table
 dt_smp <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = "icao", check.names = TRUE))
+
+# Release the database resource
 dbClearResult(db_res)
 
 # Disconnect from the database
@@ -43,8 +50,11 @@ dbDisconnect(db_con)
 # List the climate variables contained in the NetCDF files                     #
 ################################################################################
 
-nc_files <- list.files(path = nc_path, pattern = "\\.nc$", full.names = TRUE)   # List all the NetCDF files (ending in .nc)
-nc_vars  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 1))           # List all the climatic variables from the NetCDF file names
+# List all the NetCDF files (ending in .nc)
+nc_files <- list.files(path = nc_path, pattern = "\\.nc$", full.names = TRUE)
+
+# List all the climatic variables from the NetCDF file names
+nc_vars  <- unique(lapply(strsplit(basename(nc_files), "_"), "[", 1))
 
 ################################################################################
 # Function to parse the NetCDF file in parallel across multiple workers        #
@@ -64,20 +74,23 @@ fn_parse <- function(nc_var) {
   # Connect the worker to the database
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
   
-  # For each experiment (SSP)
-  for(i in 1:length(nc_exps)) {
+  # Build the query to drop the table corresponding to the climatic variable, if it exists
+  db_qry <- paste("DROP TABLE IF EXISTS", tolower(nc_var), ";", sep = " ")
 
-    # Drop the table corresponding to the climatic variable and experiment (SSP), if it exists
-    db_qry <- paste("DROP TABLE IF EXISTS ", tolower(nc_var), "_", tolower(nc_exps[i]), ";", sep = "")
-    db_res <- dbSendQuery(db_con, db_qry)
-    dbClearResult(db_res)
+  # Send the query to the database
+  db_res <- dbSendQuery(db_con, db_qry)
+  
+  # Release the database resource
+  dbClearResult(db_res)
 
-    # Create the table corresponding to the climatic variable and experiment (SSP)
-    db_qry <- paste("CREATE TABLE ", tolower(nc_var), "_", tolower(nc_exps[i]), " (id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = "")
-    db_res <- dbSendQuery(db_con, db_qry)
-    dbClearResult(db_res)
+  # Build the query to create the table corresponding to the climatic variable
+  db_qry <- paste("CREATE TABLE", tolower(nc_var), "(id INT NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = " ")
 
-  } # End of table creation
+  # Send the query to the database
+  db_res <- dbSendQuery(db_con, db_qry)
+  
+  # Release the database resource
+  dbClearResult(db_res)
 
   ##############################################################################
   # Process each NetCDF file (outer loop)                                      #
@@ -95,8 +108,10 @@ fn_parse <- function(nc_var) {
     # Pull the experiment (SSP) from the NetCDF file's name
     nc_exp <- unique(lapply(strsplit(basename(nc_select[j]), "_"), "[", 4))
 
-    # Parse out the other NetCDF file's attributes and dimensions
-    nc       <- nc_open(nc_select[j])                                           # Open the NetCDF file
+    # Open the NetCDF file
+    nc <- nc_open(nc_select[j])                                           
+    
+    # Parse out the NetCDF file's attributes and dimensions
     nc_atts  <- ncatt_get(nc, 0)                                                # Extract the NetCDF file's attributes
     nc_lat   <- ncvar_get(nc = nc, varid = "lat")                               # Extract the NetCDF file's 1D latitude array
     nc_lon   <- ncvar_get(nc = nc, varid = "lon") - 180                         # Extract the NetCDF file's 1D longitude array. Subtract 180 because the NetCDF longitude convention is 0°-360° but the airports' longitudes are in -180° to 180°
@@ -131,6 +146,7 @@ fn_parse <- function(nc_var) {
       nc_out <- data.table(
         obs  = PCICt::as.POSIXct.PCICt(nc_obs, format = "%Y-%m-%d %H:%M:%S"),   # Time series of the observations. The database won't accept POSIXct as DATETIME so we must simplify the format here
         icao = dt_smp[k, icao],                                                 # Airport ICAO code
+        exp  = as.character(nc_exp),                                            # Experiment (SSP)
         val  = as.vector(nc_val)                                                # Climate variable value for each observation
       )
 
@@ -152,9 +168,9 @@ fn_parse <- function(nc_var) {
     # Output the worker's progress to the log file defined in makeCluster()
     print(paste(Sys.time(), " Worker ", Sys.getpid(), " is writing ", nc_var, " NetCDF file ", j, "/", length(nc_select), " to the database...", sep = ""))
 
-    # Write the data to the table corresponding to the climatic variable and experiment (SSP)
+    # Write the data to the table corresponding to the climatic variable
     # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
-    dbWriteTable(conn = db_con, name = paste(tolower(nc_var), "_", tolower(nc_exp), sep = ""), value = nc_dt, append = TRUE, row.names = FALSE)
+    dbWriteTable(conn = db_con, name = tolower(nc_var), value = nc_dt, append = TRUE, row.names = FALSE)
 
   } # End of the outer loop
   
@@ -162,20 +178,21 @@ fn_parse <- function(nc_var) {
   # Add indices to the database tables                                         #
   ##############################################################################
   
-  # For each experiment (SSP)
-  for(l in 1:length(nc_exps)) {
-
-    # Output the worker's progress to the log file defined in makeCluster()
-    print(paste(Sys.time(), " Worker ", Sys.getpid(), " is indexing table ", tolower(nc_var), "_", tolower(nc_exps[l]), "...", sep = ""))
-    
-    # Create a composite index on the icao and obs columns (after the bulk insert above, not before for performance reasons) to speed up subsequent searches
-    db_idx <- "idx" # Set index name
-    db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(nc_var), "_", tolower(nc_exps[l]), " (icao, obs);", sep = "")
-    db_res <- dbSendQuery(db_con, db_qry)
-    dbClearResult(db_res)
-    
-  } # End of index creation
+  # Output the worker's progress to the log file defined in makeCluster()
+  print(paste(Sys.time(), " Worker ", Sys.getpid(), " is indexing table ", tolower(nc_var), "...", sep = ""))
   
+  # Set index name
+  db_idx <- "idx"
+
+  # Build a query to create a composite index (after the bulk insert above, not before for performance reasons) to speed up subsequent queries
+  db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(nc_var), " (exp, icao, obs);", sep = "")
+
+  # Send the query to the database
+  db_res <- dbSendQuery(db_con, db_qry)
+  
+  # Release the database resource
+  dbClearResult(db_res)
+    
   # Disconnect the worker from the database
   dbDisconnect(db_con)
   

@@ -1,7 +1,7 @@
 ################################################################################
 # scripts/7_headwind.R                                                         #
 # Calculates headwind speed and identifies active runway for each observation  #
-#  Took ~X hours to run on the researchers' config (https://bit.ly/3ChCBAP)    #
+#  Took ~X hours to run on the researcher's config (https://bit.ly/3ChCBAP)    #
 ################################################################################
 
 ################################################################################
