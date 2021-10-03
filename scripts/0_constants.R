@@ -58,6 +58,7 @@ db_grp <- "phd"
 
 # Set the table names and prefixes
 db_pop <- "pop" # population and sample airports
+db_nc  <- "nc"  # Climate data
 db_rho <- "rho" # Air density observations
 db_wnd <- "wnd" # Wind observations
 

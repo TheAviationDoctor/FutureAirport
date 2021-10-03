@@ -29,51 +29,62 @@ cat("\014")
 # Connect to the database
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
-# # Build a query to create a temporary table with only airports above the passenger traffic sampling threshold
-# # The query also replaces each runway's name (e.g., RW26R) with its magnetic heading in degrees (e.g., 260) for later headwind calculation
-# # Lastly, for two runways with the same magnetic heading at a given airport (e.g., RWY26R and RWY26L), the query returns only the one with the longest TODA (i.e., the most favorable case)
-# db_qry <- paste("CREATE TEMPORARY TABLE sample SELECT icao, SUBSTRING(rwy, 3, 2) AS hdg, MAX(toda) FROM", db_pop, "WHERE traffic >", pop_thr, "GROUP BY icao, hdg;", sep = " ")
-# 
-# # Release the database resource
-# dbClearResult(db_res)
-
-# Set the name of the table where the eastward wind data are stored for the current experiment (SSP)
-db_uas <- paste("uas_", tolower(nc_exps), sep = "")
-db_uas
-
-# Set the name of the table where the northward wind data are stored for the current experiment (SSP)
-db_vas <- paste("vas_", tolower(nc_exps), sep = "")
-db_vas
-
-# Build a query to create a temporary table for wind component data for every airport/observation pair
-db_qry <- paste("CREATE TABLE wnd ", paste(paste("SELECT uas.obs, uas.icao, '", nc_exps, "' AS exp, uas.val AS uas, vas.val AS vas FROM ", db_uas, " AS uas, ", db_vas, " AS vas WHERE uas.id = vas.id", sep = ""), collapse = " UNION ALL "), ";", sep = "")
-
-# FOR TESTING ONLY
-print(db_qry)
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
+# Build the query to create a temporary table with only airports above the passenger traffic sampling threshold
+# The query also replaces each runway's name (e.g., RW26R) with its magnetic heading in degrees (e.g., 260) for later headwind calculation
+# Lastly, for two runways with the same magnetic heading at a given airport (e.g., RWY26R and RWY26L), the query returns only the one with the longest TODA (i.e., the most favorable case)
+db_qry <- paste("CREATE TEMPORARY TABLE rwys SELECT icao, SUBSTRING(rwy, 3, 2) AS hdg, MAX(toda) FROM", db_pop, "WHERE traffic >", pop_thr, "GROUP BY icao, hdg;", sep = " ")
 
 # Release the database resource
 dbClearResult(db_res)
 
-# Build a query to count the rows in the temporary table
-db_qry <- "SELECT COUNT(*) FROM wnd;"
+##############################################################################
+# Define a function to return the headwind speed for a given runway          #
+##############################################################################
 
-# FOR TESTING ONLY
-print(db_qry)
+fn_headwind <- function(rwy) {
+  
+  # Calculate the angle (in degrees) between the runway heading and the direction that the wind is coming from
+  alpha <- abs(rwy - wnd_dir)
+  
+  # Calculate and return the headwind speed (in m/s)
+  wnd_spd * cos(alpha * pi / 180)
+  
+}
 
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
+# Extract the list of unique runways for this observation's airport
+rwys <- dt_smp[icao == dt_wnd[i, icao], rwy]
 
-# Return the results
-dt_cnt <- dbFetch(db_res, n = Inf)
+# Calculate the headwind speed for each runway at this observation's airport
+l <- lapply(rwys, fn_headwind)
 
-# Release the database resource
-dbClearResult(db_res)
+# Return the maximum headwind speed across all runways at this observation's airport
+val <- max(unlist(l))
 
-# Show the count
-dt_cnt
+# Return the runway that has the maximum headwind speed (presumed to be the active runway at the time of the observation)
+rwy <- rwys[which.max(unlist(l))]
+
+# Add the headwind and active runway to the data table
+dt_wnd[i, val := val]
+dt_wnd[i, rwy := rwy]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Disconnect from the database
 dbDisconnect(db_con)
