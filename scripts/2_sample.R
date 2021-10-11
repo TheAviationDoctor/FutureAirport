@@ -1,6 +1,10 @@
 ################################################################################
-# scripts/2_sample.R                                                           #
-# Builds the research sample from the population of airports and runways       #
+#    NAME: scripts/2_sample.R                                                  #
+#   INPUT: 8,817 rows from the database table pop created in 1_population.R    #
+# ACTIONS: Subset the airport population data based on a set traffic threshold #
+#          Plot sample characteristics to charts in plots/smp_*                #
+#  OUTPUT: Charts in plots/smp_*                                               #
+# RUNTIME: ~11 seconds on the researcher's config (https://bit.ly/3ChCBAP)     #
 ################################################################################
 
 ################################################################################
@@ -20,7 +24,7 @@ library(rnaturalearth)
 library(scales)
 
 # Import the constants
-source("scripts/0_constants.R")
+source("scripts/0_common.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -35,10 +39,16 @@ cat("\014")
 # Connect to the database
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
-# Retrieve the population data
+# Build the query to retrieve the population data
 db_qry <- paste("SELECT * FROM ", db_pop, ";", sep = "")
+
+# Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
+
+# Return the results
 df_pop <- suppressWarnings(dbFetch(db_res, n = Inf))
+
+# Release the database resource
 dbClearResult(db_res)
 
 # Disconnect from the database
@@ -59,14 +69,14 @@ str(df_smp)
 ################################################################################
 
 # Sample size in absolute terms
-length(unique(df_smp$icao)) # Airports
-nrow(df_smp) # Runways
-sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))]) # Traffic
+length(unique(df_smp$icao))                             # Number of airports
+nrow(df_smp)                                            # Number of runways
+sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))]) # Number of passengers
 
 # Sample size relative to the population
-length(unique(df_smp$icao)) / length(unique(df_pop$icao)) * 100 # Airports
-nrow(df_smp) / nrow(df_pop) * 100 # Runways
-sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))]) / sum(df_pop$traffic[!rev(duplicated(rev(df_pop$icao)))]) * 100 # Traffic
+length(unique(df_smp$icao)) / length(unique(df_pop$icao)) * 100 # Percentage of airports
+nrow(df_smp) / nrow(df_pop) * 100                               # Percentage of runways
+sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))]) / sum(df_pop$traffic[!rev(duplicated(rev(df_pop$icao)))]) * 100 # Percentage of passengers
 
 ################################################################################
 # Test that the sample is representative of the population's latitudes         #
@@ -170,7 +180,7 @@ ggsave(
   paste("smp_world.png"),
   plot = smp_world,
   device = "png",
-  path = "plots/",
+  path = path_plt,
   scale = 1,
   width = 6,
   height = NA,
@@ -194,7 +204,7 @@ ggsave(
   paste("smp_hist_apt_cnt.png"),
   plot = smp_hist_apt_cnt,
   device = "png",
-  path = "plots/",
+  path = path_plt,
   scale = 1,
   width = 6,
   height = NA,
@@ -218,7 +228,7 @@ ggsave(
   paste("smp_hist_apt_tra.png"),
   plot = smp_hist_apt_tra,
   device = "png",
-  path = "plots/",
+  path = path_plt,
   scale = 1,
   width = 6,
   height = NA,
@@ -292,7 +302,7 @@ ggsave(
   paste("smp_apt_dist_cz.png"),
   plot = smp_apt_dist_cz,
   device = "png",
-  path = "plots/",
+  path = path_plt,
   scale = 1,
   width = 6,
   height = NA,
@@ -316,7 +326,7 @@ ggsave(
   paste("smp_tra_dist_cz.png"),
   plot = smp_tra_dist_cz,
   device = "png",
-  path = "plots/",
+  path = path_plt,
   scale = 1,
   width = 6,
   height = NA,

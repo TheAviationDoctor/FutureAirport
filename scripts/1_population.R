@@ -1,6 +1,12 @@
 ################################################################################
-# scripts/1_population.R                                                       #
-# Builds the population of airports and runways                                #
+#    NAME: scripts/1_population.R                                              #
+#   INPUT: CSV files located in data/population (traffic, runways, geolocation)#
+# ACTIONS: Assemble the input files using merge and deduplication              #
+#          Write the resulting dataset of airports and runways to the database #
+#          Plot population characteristics to charts in plots/pop_*            #
+#          Index the database table pop to speed up subsequent queries         #
+#  OUTPUT: 8,817 rows of airport-runway pairs written to the database table pop#
+# RUNTIME: ~2 seconds on the researcher's config (https://bit.ly/3ChCBAP)      #
 ################################################################################
 
 ################################################################################
@@ -19,7 +25,7 @@ library(stringr)
 library(tidyr)
 
 # Import the constants
-source("scripts/0_constants.R")
+source("scripts/0_common.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -32,7 +38,7 @@ cat("\014")
 ################################################################################
 
 # Load the runway data from a CSV file
-df_rwy <- read.csv(file = pop_rwy, header = TRUE, na.strings = c(0, "NULL"), col.names = c("id", "area", "icao", "country", "rwy", "len", "lat", "lon", "toda", "toda.night", "unit"), colClasses = c("integer", "factor", "character", "factor", "character", "integer", "character", "character", "integer", "integer", "factor"))
+df_rwy <- read.csv(file = paste(path_pop, pop_rwy, sep = "/"), header = TRUE, na.strings = c(0, "NULL"), col.names = c("id", "area", "icao", "country", "rwy", "len", "lat", "lon", "toda", "toda.night", "unit"), colClasses = c("integer", "factor", "character", "factor", "character", "integer", "character", "character", "integer", "integer", "factor"))
 
 # Describe the data
 str(df_rwy)
@@ -57,7 +63,7 @@ nrow(df_rwy) / length(unique(df_rwy$icao))
 ################################################################################
 
 # Load the traffic data from a CSV file
-df_tra <- read.csv(file = pop_tra, header = TRUE, col.names = c("iata", "traffic"), colClasses = c("character", "integer"))
+df_tra <- read.csv(file = paste(path_pop, pop_tra, sep = "/"), header = TRUE, col.names = c("iata", "traffic"), colClasses = c("character", "integer"))
 
 # Describe the data
 str(df_tra)
@@ -107,7 +113,7 @@ ggsave(
   paste("pop_bin.png"),
   plot = plot_bin,
   device = "png",
-  path = "plots/",
+  path = path_plt,
   scale = 1,
   width = 6,
   height = NA,
@@ -132,7 +138,7 @@ ggsave(
   paste("pop_tra.png"),
   plot = plot_tra,
   device = "png",
-  path = "plots/",
+  path = path_plt,
   scale = 1,
   width = 6,
   height = NA,
@@ -147,7 +153,7 @@ ggsave(
 ################################################################################
 
 # Load the geolocation data from a CSV file
-df_geo <- read.csv(file = pop_geo, header = TRUE, col.names = c("id", "ident", "type", "name", "lat", "lon", "elev", "cont", "country", "region", "city", "sched", "icao", "iata", "local", "website", "wiki", "keywords"), colClasses = c("integer", "character", "factor", "character", "numeric", "numeric", "numeric", "factor", "factor", "factor", "character", "factor", "character", "character", "character", "character", "character", "character"))
+df_geo <- read.csv(file = paste(path_pop, pop_geo, sep = "/"), header = TRUE, col.names = c("id", "ident", "type", "name", "lat", "lon", "elev", "cont", "country", "region", "city", "sched", "icao", "iata", "local", "website", "wiki", "keywords"), colClasses = c("integer", "character", "factor", "character", "numeric", "numeric", "numeric", "factor", "factor", "factor", "character", "factor", "character", "character", "character", "character", "character", "character"))
 
 # Describe the data
 str(df_geo)

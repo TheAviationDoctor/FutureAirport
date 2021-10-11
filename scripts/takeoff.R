@@ -4,7 +4,7 @@
 ################################################################################
 
 # Import the constants
-source("0_constants.R")
+source("0_common.R")
 
 # Clear the console
 cat("\014")

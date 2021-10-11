@@ -1,32 +1,51 @@
 ################################################################################
-# scripts/0_constants.R                                                        #
-# Sets values of various constants used across the scripts                     #
+#    NAME: scripts/0_common.R                                                  #
+#   INPUT: None                                                                #
+# ACTIONS: Set common settings and constants used across the scripts           #
+#  OUTPUT: Set of defined constants loaded into R's environment                #
+# RUNTIME: <1 second on the researcher's config (https://bit.ly/3ChCBAP)       #
 ################################################################################
 
 ################################################################################
-# Population and sample setting                                                #
+# Project directories                                                          #
 ################################################################################
 
-# Input file locations
-pop_geo <- "data/population/geolocation.csv" # Geolocated airports
-pop_rwy <- "data/population/runways.csv"     # Runway data
-pop_tra <- "data/population/traffic.csv"     # Traffic by airport
+# Directory paths
+path_pop <- "data/population" # Population data
+path_cli <- "data/climate"    # Climate data
+path_plt <- "plots"           # Generated plots
 
-# Traffic threshold for the sample (in passengers per annum)
+################################################################################
+# Project files                                                                #
+################################################################################
+
+# File names
+pop_geo <- "geolocation.csv" # Airport geolocations
+pop_rwy <- "runways.csv"     # Runways
+pop_tra <- "traffic.csv"     # Airport traffic
+cli_esg <- "esgf.csv"        # Output of the ESGF search
+
+
+################################################################################
+# Log files                                                                    #
+################################################################################
+
+log_4 <- "logs/4_import.log"    # For 4_import.R
+log_5 <- "logs/5_transform.log" # 5_transform.R
+
+################################################################################
+# Sample settings                                                              #
+################################################################################
+
+# Airport traffic threshold for the sample (in passengers per annum)
 pop_thr <- 10^6
 
 ################################################################################
 # Climate settings                                                             #
 ################################################################################
 
-# Choice of CMIP6 experiments (Shared Socioeconomic Pathways, or SSPs)
+# CMIP6 experiments (Shared Socioeconomic Pathways, or SSPs)
 nc_exps <- c("ssp126", "ssp245", "ssp370", "ssp585")
-
-# Output of the ESGF search for NetCDF files
-nc_esgf <- "data/climate/esgf/esgf.csv"
-
-# Path to the NetCDF files
-nc_path <- "data/climate/netcdf"
 
 # Latitudinal boundaries for the Earth's climate zones
 nc_lats <- list(
@@ -38,15 +57,6 @@ nc_lats <- list(
 )
 
 ################################################################################
-# Log files                                                                    #
-################################################################################
-
-log_net <- "logs/netcdf.log"    # Log file for 4_netcdf.R
-log_rho <- "logs/rho.log"       # Log file for 5_rho.R
-log_par <- "logs/rho_plot.log"  # Log file for 6_rho_plot.R
-log_wnd <- "logs/wnd.log"       # Log file for 7_headwind.R
-
-################################################################################
 # Database parameters                                                          #
 ################################################################################
 
@@ -56,11 +66,10 @@ db_cnf <- ".my.cnf"
 # Set the group name within the cnf file that contains the connection parameters
 db_grp <- "phd"
 
-# Set the table names and prefixes
-db_pop <- "pop" # population and sample airports
-db_nc  <- "nc"  # Climate data
-db_rho <- "rho" # Air density observations
-db_wnd <- "wnd" # Wind observations
+# Set the table prefixes and names
+db_pop <- "pop" # Population and sample airports resulting from 1_population.R
+db_imp <- "imp" # Climate data imported from the NetCDF files in long format resulting from 4_import.R
+db_nc  <- "nc"  # Climate data transformed in wide/tidy format resulting from 5_transform.R
 
 ################################################################################
 # Natural constants                                                            #
@@ -98,9 +107,13 @@ theta <- 0                                                                      
 Hp  <- 0                                                                        # Geopotential pressure altitude in feet
 
 ################################################################################
-# Unit system                                                                  #
+# Unit system and conversion constants                                         #
 ################################################################################
 
-u     <- "i"                                                                    # Choose "i" for imperial, "m" for metric
+# Unit system to be used in the scripts. Choose "i" for imperial, "m" for metric
+u     <- "i"
+
+# Meters per second to knots
+ms_to_kt <- 1.94384
 
 # EOF

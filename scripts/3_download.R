@@ -1,6 +1,9 @@
 ################################################################################
-# scripts/3_esgf.R                                                             #
-# Query the Earth System Grid Federation (ESGF) for suitable climate models    #
+#    NAME: scripts/3_download.R                                                #
+#   INPUT: Search criteria for the climate models, defined in the script       #
+# ACTIONS: Query the Earth System Grid Federation (ESGF) for climate models    #
+#  OUTPUT: CSV file containing the list of NetCDF files that meet the criteria #
+# RUNTIME: ~4 seconds on the researcher's config (https://bit.ly/3ChCBAP)      #
 ################################################################################
 
 ################################################################################
@@ -12,7 +15,7 @@ library(dplyr)
 library(epwshiftr)
 
 # Import the constants
-source("scripts/0_constants.R")
+source("scripts/0_common.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -75,7 +78,7 @@ nc_files %>%
   summarize(hurs = sum(variable_id == "hurs"), ps = sum(variable_id == "ps"), tas = sum(variable_id == "tas"), uas = sum(variable_id == "uas"), vas = sum(variable_id == "vas"))
 
 # Save the query results to a file for later reference
-write.csv(x = nc_files, file = nc_esgf)
+write.csv(x = nc_files, file = paste(path_cli, cli_esg, sep = "/"))
 
 # The climate model outputs are then downloaded separately using wget as per https://esgf.github.io/esgf-user-support/user_guide.html#download-data-from-esgf-using-wget
 

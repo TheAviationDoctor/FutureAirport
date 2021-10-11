@@ -3,8 +3,9 @@
 .RData
 .RDataTmp
 .Ruserdata
+*.csv
 *.gz
 *.nc
 *.sh
 data/
-logs
+logs/

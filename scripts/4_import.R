@@ -1,10 +1,12 @@
 ################################################################################
-# scripts/4_netcdf.R                                                           #
-# Extracts airport-level climatic variables from the NetCDF files              #
-#  and saves them to a database for later processing                           #
-# Took ~9.5 hours to run on the researcher's config (https://bit.ly/3ChCBAP)   #
-#  of which ~5 hours to parse the files and ~4.5 to index the database table   #
-# The script write 2,213,847,280 rows that occupy 201GB of disk space          #
+#    NAME: scripts/4_import.R                                                  #
+#   INPUT: NetCDF files located in data/climate                                #
+# ACTIONS: Import the NetCDF files into R                                      #
+#          Parse airport-level climatic variables from the NetCDF files        #
+#          Write the resulting climatic dataset to the database table imp      #
+#          Index the database table imp to speed up subsequent queries         #
+#  OUTPUT: 2,213,847,280 rows of climate data written to the database table imp#
+# RUNTIME: ~7.5 hours on the researcher's config (https://bit.ly/3ChCBAP)      #
 ################################################################################
 
 ################################################################################
@@ -16,7 +18,7 @@ library(DBI)
 library(parallel)
 
 # Import the constants
-source("scripts/0_constants.R")
+source("scripts/0_common.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -28,7 +30,7 @@ cat("\014")
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
 ################################################################################
-# Import the sample airports defined in sample.R                               #
+# Import the sample airports defined in 2_sample.R                             #
 ################################################################################
 
 # Build the query to retrieve the sample airports
@@ -47,14 +49,11 @@ dbClearResult(db_res)
 # Set up the database table to store the results (long format)                 #
 ################################################################################
 
-# Set the table name
-db_tmp <- "tmp"
-
 # Connect to the database
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
 
 # Build the query to drop the table, if it exists
-db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_tmp), ";", sep = "")
+db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_imp), ";", sep = "")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
@@ -63,7 +62,7 @@ db_res <- dbSendQuery(db_con, db_qry)
 dbClearResult(db_res)
 
 # Build the query to create the table
-db_qry <- paste("CREATE TABLE", tolower(db_tmp), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, var CHAR(4) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = " ")
+db_qry <- paste("CREATE TABLE", tolower(db_imp), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, var CHAR(4) NOT NULL, val FLOAT NOT NULL, PRIMARY KEY (id));", sep = " ")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
@@ -75,13 +74,13 @@ dbClearResult(db_res)
 # List the NetCDF files (ending in .nc) to be processed                        #
 ################################################################################
 
-nc_files <- list.files(path = nc_path, pattern = "\\.nc$", full.names = TRUE)
+nc_files <- list.files(path = path_cli, pattern = "\\.nc$", full.names = TRUE)
 
 ################################################################################
-# Function to parse the NetCDF files in parallel across multiple workers       #
+# Function to import data from the NetCDF files to a database table            #
 ################################################################################
 
-fn_parse <- function(nc_file) {
+fn_import <- function(nc_file) {
 
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), " Worker ", Sys.getpid(), " is parsing ", basename(nc_file), "...", sep = ""))
@@ -144,37 +143,40 @@ fn_parse <- function(nc_file) {
     # Append the results to the list initialized earlier
     nc_list[[i]] <- nc_apt
     
-  } # End of the airport loop
+  } # End of the for each airport loop
 
   # Combine the outputs of all airport iterations into a data table
-  nc_dt <- rbindlist(nc_list)
+  dt_nc <- rbindlist(nc_list)
   
   # Connect the worker to the database
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
   
   # Write the data to the table corresponding to the climatic variable
   # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
-  dbWriteTable(conn = db_con, name = tolower(db_tmp), value = nc_dt, append = TRUE, row.names = FALSE)
+  dbWriteTable(conn = db_con, name = tolower(db_imp), value = dt_nc, append = TRUE, row.names = FALSE)
     
   # Disconnect the worker from the database
   dbDisconnect(db_con)
   
-}
+} # End of the fn_import function
 
 ################################################################################
 # Handle the parallel computation across multiple cores                        #
 ################################################################################
 
-# Set the number of cores/workers to use in the cluster
+# Set the number of workers to use in the cluster
 cores <- 8
 
-# Set and clear the output file for cluster logging
-close(file(log_net, open = "w"))
+# Set the log file for the cluster
+outfile <- log_4
 
-# Build the cluster of workers and select a file in which to log progress (which can't be printed to the console on the Windows version of RStudio)
-cl <- makeCluster(cores, outfile = log_net)
+# Clear the log file
+close(file(outfile, open = "w"))
 
-# Have each worker load the libraries that they need to handle the fn_parse function defined above
+# Build the cluster of workers
+cl <- makeCluster(cores, outfile = outfile)
+
+# Have each worker load the libraries that they need to handle the fn_import function defined above
 clusterEvalQ(cl, {
   library(data.table)
   library(DBI)
@@ -184,10 +186,10 @@ clusterEvalQ(cl, {
 })
 
 # Pass the required variables from the main scope to the workers' scope
-clusterExport(cl, c("db_cnf", "db_grp", "db_tmp", "df_smp"))
+clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "df_smp"))
 
 # Distribute the parallel parsing of NetCDF files across the workers
-parLapply(cl, nc_files, fn_parse)
+parLapply(cl, nc_files, fn_import)
 
 # Terminate the cluster once finished
 stopCluster(cl)
@@ -200,7 +202,7 @@ stopCluster(cl)
 db_idx <- "idx"
 
 # Build the query to create the index
-db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_tmp), " (exp, icao, obs, var);", sep = "")
+db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_imp), " (icao);", sep = "")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
