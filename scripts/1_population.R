@@ -24,7 +24,7 @@ library(scales)
 library(stringr)
 library(tidyr)
 
-# Import the constants
+# Import the common settings
 source("scripts/0_common.R")
 
 # Start a script timer

@@ -1,8 +1,8 @@
 ################################################################################
 #    NAME: scripts/0_common.R                                                  #
 #   INPUT: None                                                                #
-# ACTIONS: Set common settings and constants used across the scripts           #
-#  OUTPUT: Set of defined constants loaded into R's environment                #
+# ACTIONS: Set common settings used across the scripts                         #
+#  OUTPUT: Set of global constants loaded into R's environment                 #
 # RUNTIME: <1 second on the researcher's config (https://bit.ly/3ChCBAP)       #
 ################################################################################
 
@@ -11,50 +11,29 @@
 ################################################################################
 
 # Directory paths
-path_pop <- "data/population" # Population data
-path_cli <- "data/climate"    # Climate data
-path_plt <- "plots"           # Generated plots
+path_aer <- "data/aeronautical" # Aeronautical data (aircraft and engines)
+path_pop <- "data/population"   # Population data (airports and runways)
+path_cli <- "data/climate"      # Climate data (from CMIP6)
+path_plt <- "plots"             # Generated plots
 
 ################################################################################
 # Project files                                                                #
 ################################################################################
 
 # File names
+aer_act <- "aircraft.csv"    # Aircraft and their engines
 pop_geo <- "geolocation.csv" # Airport geolocations
 pop_rwy <- "runways.csv"     # Runways
 pop_tra <- "traffic.csv"     # Airport traffic
 cli_esg <- "esgf.csv"        # Output of the ESGF search
-
 
 ################################################################################
 # Log files                                                                    #
 ################################################################################
 
 log_4 <- "logs/4_import.log"    # For 4_import.R
-log_5 <- "logs/5_transform.log" # 5_transform.R
-
-################################################################################
-# Sample settings                                                              #
-################################################################################
-
-# Airport traffic threshold for the sample (in passengers per annum)
-pop_thr <- 10^6
-
-################################################################################
-# Climate settings                                                             #
-################################################################################
-
-# CMIP6 experiments (Shared Socioeconomic Pathways, or SSPs)
-nc_exps <- c("ssp126", "ssp245", "ssp370", "ssp585")
-
-# Latitudinal boundaries for the Earth's climate zones
-nc_lats <- list(
-  list(name = "Tropical",   lower = 0,       upper = 23.4365),
-  list(name = "Subropical", lower = 23.4365, upper = 30), # Defined in Cortlett (2013) [https://doi.org/gw6j]
-  list(name = "Temperate",  lower = 23.4365, upper = 66.5635),
-  list(name = "Frigid",     lower = 66.5635, upper = 90),
-  list(name = "All",        lower = 0,       upper = 90)
-)
+log_5 <- "logs/5_transform.log" # For 5_transform.R
+log_6 <- "logs/6_takeoff.log"   # For 6_takeoff.R
 
 ################################################################################
 # Database parameters                                                          #
@@ -69,51 +48,44 @@ db_grp <- "phd"
 # Set the table prefixes and names
 db_pop <- "pop" # Population and sample airports resulting from 1_population.R
 db_imp <- "imp" # Climate data imported from the NetCDF files in long format resulting from 4_import.R
-db_nc  <- "nc"  # Climate data transformed in wide/tidy format resulting from 5_transform.R
+db_cli <- "cli"  # Climate data transformed in wide/tidy format resulting from 5_transform.R
 
 ################################################################################
-# Natural constants                                                            #
+# Airport sample settings                                                      #
 ################################################################################
 
-# Gravitational acceleration, assuming a non-oblate, non-rotating Earth (Blake, 2009; Daidzic, 2016)
-g     <- c(
-  "i" = 32.174,  # In slugs per cubic foot
-  "m" = 9.806665 # In meters per second per second
+# Airport traffic threshold for the sample (in passengers per annum)
+pop_thr <- 10^6
+
+################################################################################
+# Climate settings                                                             #
+################################################################################
+
+# CMIP6 experiments (Shared Socioeconomic Pathways, or SSPs)
+nc_exps <- c("ssp126", "ssp245", "ssp370", "ssp585")
+
+################################################################################
+# Runway settings                                                              #
+################################################################################
+
+# Dimensionless coefficient of rolling friction. Values below are taken from Filippone (2012), Table 9.3 unless mentioned otherwise
+mu <- c(
+  "blake" = .0165, # Value used by Blake (2009), p. 18-11
+  "dca"   = .02,   # Value for dry concrete/asphalt. Recommended as typical by ESDU 85029 (p. 32)
+  "htg"   = .04,   # Value for hard turf and gravel
+  "sdg"   = .05,   # Value for short and dry grass
+  "lg"    = .10,   # Value for long grass
+  "sg_lo" = .10,   # Value for soft ground (low softness)
+  "sg_mi" = .20,   # Value for soft ground (medium softness)
+  "sg_hi" = .30    # Value for soft ground (high softness)
 )
 
-# Air density at sea level under ISA conditions
-rho   <- c(
-  "i" = 0.0765, # In pounds per cubic foot
-  "m" = 1.225   # In kilograms per cubic meter
-)
-
 ################################################################################
-# Runway assumptions                                                           #
+# References                                                                   #
 ################################################################################
 
-mu    <- c(                                                                     # Dimensionless coefficient of rolling friction. ESDU 85029 (p. 32) suggests .02 as a typical value. Values below are taken from Filippone (2012), Table 9.3
-  "blake" = .0165,                                                              # Value used in the Blake (2009) example, p. 18-11
-  "dca"   = .02,                                                                # Value for dry concrete/asphalt
-  "htg"   = .04,                                                                # Value for hard turf and gravel
-  "sdg"   = .05,                                                                # Value for short and dry grass
-  "lg"    = .10,                                                                # Value for long grass
-  "sg_lo" = .10,                                                                # Value for soft ground (low softness)
-  "sg_mi" = .20,                                                                # Value for soft ground (medium softness)
-  "sg_hi" = .30                                                                 # Value for soft ground (high softness)
-)
-
-theta <- 0                                                                      # Runway slope in degrees. Assumed to be zero as a positive slope in one runway heading would cancel out the negative slope in the reciprocal heading
-
-Hp  <- 0                                                                        # Geopotential pressure altitude in feet
-
-################################################################################
-# Unit system and conversion constants                                         #
-################################################################################
-
-# Unit system to be used in the scripts. Choose "i" for imperial, "m" for metric
-u     <- "i"
-
-# Meters per second to knots
-ms_to_kt <- 1.94384
+# Filippone, A. (2012). Advanced Aircraft Flight Performance. https://doi.org/gdjz
+# Sun et al. (2018). Aircraft Drag Polar Estimation Based on a Stochastic Hierarchical Model. Eighth SESAR Innovation Days, 3rd – 7th December 2018. https://www.sesarju.eu/sites/default/files/documents/sid/2018/papers/SIDs_2018_paper_75.pdf
+# Sun et al. (2020). OpenAP: An Open-Source Aircraft Performance Model for Air Transportation Studies and Simulations. https://doi.org/g2tj
 
 # EOF

@@ -4,7 +4,7 @@
 ################################################################################
 
 # Import the constants
-source("0_common.R")
+source("scripts/0_common.R")
 
 # Clear the console
 cat("\014")
@@ -54,6 +54,30 @@ T     <- rbind(                                                                 
 CT1 <- .13899E+06                                                               # First coefficient of max climb / takeoff thrust as per BADA 3
 CT2 <- .45045E+05                                                               # Second coefficient of max climb / takeoff thrust as per BADA 3
 CT3 <- .10941E-09                                                               # Third coefficient of max climb / takeoff thrust as per BADA 3
+
+################################################################################
+# Constants definition                                                         #
+################################################################################
+
+g <- 32.174                                                                     # Gravitational acceleration constant in slugs per cubic foot, assuming a non-oblate, non-rotating Earth
+
+################################################################################
+# Variables definition - Atmosphere                                            #
+################################################################################
+
+rho <- .002377                                                                  # Air density in slugs per cubic foot
+
+w   <- 0                                                                        # Starting headwind in knots
+
+################################################################################
+# Variable definition - Runway                                                 #
+################################################################################
+
+mu    <- .0165                                                                  # Dimensionless coefficient of rolling friction  used in the Blake (2009) example, p. 18-11
+
+theta <- 0                                                                      # Runway slope in degrees. Assumed to be zero as a positive slope in one runway heading would cancel out the negative slope in the reciprocal heading
+
+Hp  <- 0                                                                        # Geopotential pressure altitude in feet
 
 ################################################################################
 # Calculate the acceleration at each TAS increment                             #

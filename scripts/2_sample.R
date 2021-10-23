@@ -23,7 +23,7 @@ library(rgeos)
 library(rnaturalearth)
 library(scales)
 
-# Import the constants
+# Import the common settings
 source("scripts/0_common.R")
 
 # Start a script timer

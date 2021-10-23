@@ -11,8 +11,8 @@
 # Load required libraries
 library(parallel)
 
-# Import the constants
-source("scripts/0_constants.R")
+# Import the common settings
+source("scripts/0_common.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -40,8 +40,8 @@ fn_rho_plot <- function(lat) {
   # Build a query to average the air density for each experiment (SSP) separately, across all sample airports within each of the latitude brackets defined earlier
   ifelse(
     lat$name == "All",
-    db_qry <- paste("SELECT obs, AVG(rho) AS avg_rho, exp FROM", db_nc, "GROUP BY obs, exp;", sep = " "),
-    db_qry <- paste("WITH cte1 AS (SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", pop_thr," AND ABS(lat) BETWEEN ", lat$lower," AND ", lat$upper,") ", paste("SELECT obs, AVG(rho) AS avg_rho, exp FROM ", db_nc, " INNER JOIN cte1 ON ", db_nc, ".icao = cte1.icao GROUP BY obs, exp", sep = ""), ";", sep = "")
+    db_qry <- paste("SELECT obs, AVG(rho) AS avg_rho, exp FROM", db_cli, "GROUP BY obs, exp;", sep = " "),
+    db_qry <- paste("WITH cte1 AS (SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", pop_thr," AND ABS(lat) BETWEEN ", lat$lower," AND ", lat$upper,") ", paste("SELECT obs, AVG(rho) AS avg_rho, exp FROM ", db_cli, " INNER JOIN cte1 ON ", db_cli, ".icao = cte1.icao GROUP BY obs, exp", sep = ""), ";", sep = "")
   )
 
   # Send the query to the database
@@ -99,6 +99,15 @@ fn_rho_plot <- function(lat) {
 ################################################################################
 # Handle the parallel computation across multiple cores                        #
 ################################################################################
+
+# Latitudinal boundaries for the Earth's climate zones
+nc_lats <- list(
+  list(name = "Tropical",   lower = 0,       upper = 23.4365),
+  list(name = "Subropical", lower = 23.4365, upper = 30), # Defined in Cortlett (2013) [https://doi.org/gw6j]
+  list(name = "Temperate",  lower = 23.4365, upper = 66.5635),
+  list(name = "Frigid",     lower = 66.5635, upper = 90),
+  list(name = "All",        lower = 0,       upper = 90)
+)
 
 # Set the number of cores/workers to use in the cluster. Here we set as many workers as there are world climate zones for which we want to plot average rho
 cores <- length(nc_lats)

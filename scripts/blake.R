@@ -42,7 +42,7 @@ S     <- 1951                                                                   
 
 CL    <- 1.6087                                                                 # Dimensionless lift coefficient (taken from BADA)
 
-CD    <- .08 + mu * CL                                                       # Dimensionless drag coefficient (adjusted so that CD - mu * CL = .08 as per Blake's (2009) example)
+CD    <- .08 + mu * CL                                                          # Dimensionless drag coefficient (adjusted so that CD - mu * CL = .08 as per Blake's (2009) example)
 
 ################################################################################
 # Variables definition - Speeds                                                #
@@ -74,7 +74,7 @@ coef(model)[2] # For every knot of change in TAS, the thrust T changes by this m
 # Use the model to predict thrust at every TAS
 T_hat <- vector(length = length(T)) # Initialize the estimate vector, of the same length as T
 T_hat[1] <- T[1]  # Starting thrust at zero TAS
-for (i in 2:10){
+for (i in 2:10) {
   T_hat[i] <- T_hat[i-1] + (TAS[i] - TAS[i-1]) * coef(model)[2] # Estimate thrust at each TAS
   T_hat[i] <- round(T_hat[i], digits = 0)                       # Round off the thrust value
 }

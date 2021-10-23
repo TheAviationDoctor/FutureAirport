@@ -18,7 +18,7 @@ library(data.table)
 library(DBI)
 library(parallel)
 
-# Import the constants
+# Import the common settings
 source("scripts/0_common.R")
 
 # Start a script timer
@@ -60,7 +60,7 @@ nrow(dt_smp)
 ################################################################################
 
 # Build the query to drop the table, if it exists
-db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_nc), ";", sep = "")
+db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_cli), ";", sep = "")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
@@ -69,7 +69,7 @@ db_res <- dbSendQuery(db_con, db_qry)
 dbClearResult(db_res)
 
 # Build the query to create the table
-db_qry <- paste("CREATE TABLE", tolower(db_nc), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, hurs FLOAT NOT NULL, ps FLOAT NOT NULL, tas FLOAT NOT NULL, uas FLOAT NOT NULL, vas FLOAT NOT NULL, rho FLOAT NOT NULL, wnd_dir FLOAT NOT NULL, wnd_spd FLOAT NOT NULL, wnd_hdw FLOAT NOT NULL, rwy CHAR(5) NOT NULL, toda SMALLINT NOT NULL, PRIMARY KEY (id));", sep = " ")
+db_qry <- paste("CREATE TABLE", tolower(db_cli), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, hurs FLOAT NOT NULL, ps FLOAT NOT NULL, tas FLOAT NOT NULL, uas FLOAT NOT NULL, vas FLOAT NOT NULL, rho FLOAT NOT NULL, wnd_dir FLOAT NOT NULL, wnd_spd FLOAT NOT NULL, wnd_hdw FLOAT NOT NULL, rwy CHAR(5) NOT NULL, toda SMALLINT NOT NULL, PRIMARY KEY (id));", sep = " ")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
@@ -173,7 +173,7 @@ fn_transform <- function(apt) {
     
   # Write the data to the table corresponding to the climatic variable
   # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
-  dbWriteTable(conn = db_con, name = tolower(db_nc), value = dt_nc[, ..cols], append = TRUE, row.names = FALSE)
+  dbWriteTable(conn = db_con, name = tolower(db_cli), value = dt_nc[, ..cols], append = TRUE, row.names = FALSE)
   
   # Disconnect the worker from the database
   dbDisconnect(db_con)
@@ -206,7 +206,7 @@ clusterEvalQ(cl, {
 })
 
 # Pass the required variables from the main scope to the workers' scope
-clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_nc", "dt_smp"))
+clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "dt_smp"))
 
 # Build a list of unique airports to assign to the workers
 apts <- unique(dt_smp[, icao], by = "icao")
@@ -225,7 +225,7 @@ stopCluster(cl)
 db_idx <- "idx"
 
 # Build the query to create the index
-db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_nc), " (exp, icao, obs);", sep = "")
+db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_cli), " (exp, icao, obs);", sep = "")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
