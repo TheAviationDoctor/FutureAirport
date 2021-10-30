@@ -171,7 +171,7 @@ fn_transform <- function(apt) {
   # Select which columns to write to the database and in which order
   cols <- c("obs", "icao", "exp", "hurs", "ps", "tas", "uas", "vas", "rho", "wnd_dir", "wnd_spd", "wnd_hdw", "rwy", "toda")
     
-  # Write the data to the table corresponding to the climatic variable
+  # Write the data
   # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
   dbWriteTable(conn = db_con, name = tolower(db_cli), value = dt_nc[, ..cols], append = TRUE, row.names = FALSE)
   

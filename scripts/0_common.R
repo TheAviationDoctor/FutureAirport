@@ -43,12 +43,14 @@ log_6 <- "logs/6_takeoff.log"   # For 6_takeoff.R
 db_cnf <- ".my.cnf"
 
 # Set the group name within the cnf file that contains the connection parameters
+# This is also the schema name
 db_grp <- "phd"
 
 # Set the table prefixes and names
 db_pop <- "pop" # Population and sample airports resulting from 1_population.R
 db_imp <- "imp" # Climate data imported from the NetCDF files in long format resulting from 4_import.R
-db_cli <- "cli"  # Climate data transformed in wide/tidy format resulting from 5_transform.R
+db_cli <- "cli" # Climate data transformed in wide/tidy format resulting from 5_transform.R
+db_tko <- "tko" # Takeoff performance calculation outputs resulting from 6_takeoff.R
 
 ################################################################################
 # Airport sample settings                                                      #
@@ -63,22 +65,6 @@ pop_thr <- 10^6
 
 # CMIP6 experiments (Shared Socioeconomic Pathways, or SSPs)
 nc_exps <- c("ssp126", "ssp245", "ssp370", "ssp585")
-
-################################################################################
-# Runway settings                                                              #
-################################################################################
-
-# Dimensionless coefficient of rolling friction. Values below are taken from Filippone (2012), Table 9.3 unless mentioned otherwise
-mu <- c(
-  "blake" = .0165, # Value used by Blake (2009), p. 18-11
-  "dca"   = .02,   # Value for dry concrete/asphalt. Recommended as typical by ESDU 85029 (p. 32)
-  "htg"   = .04,   # Value for hard turf and gravel
-  "sdg"   = .05,   # Value for short and dry grass
-  "lg"    = .10,   # Value for long grass
-  "sg_lo" = .10,   # Value for soft ground (low softness)
-  "sg_mi" = .20,   # Value for soft ground (medium softness)
-  "sg_hi" = .30    # Value for soft ground (high softness)
-)
 
 ################################################################################
 # References                                                                   #

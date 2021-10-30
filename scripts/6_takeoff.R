@@ -4,7 +4,7 @@
 # ACTIONS: Estimate relationship between thrust and airspeed from Blake (2009) #
 #          Calculate the takeoff distance required (TODR)                      #
 #          Write the resulting TODR to the database table cli                  #
-#  OUTPUT: 442,769,456 rows of database table cli updated with one new column  #
+#  OUTPUT: 442,769,456 rows of database table tko containing takeoff data      #
 # RUNTIME: ~X hours on the researcher's config (https://bit.ly/3ChCBAP)        #
 ################################################################################
 
@@ -29,17 +29,38 @@ start_time <- Sys.time()
 cat("\014")
 
 ################################################################################
-# Import the supporting data                                                   #
+# Prepare the simulation                                                       #
 ################################################################################
-
+  
   ##############################################################################
-  # Import the runway data                                                     #
+  # Set up the database table to store the takeoff performance calculations    #
+  # Unlike in the other scripts, we don't drop the table if it exists already  #
+  # This allows for incremental adds to the table over several script runs     #
   ##############################################################################
   
   # Connect to the database
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
   
-  # Build the query to retrieve the sample airports
+  # Build a query to create the table
+  db_qry <- paste("CREATE TABLE IF NOT EXISTS", tolower(db_tko), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, rwy CHAR(5) NOT NULL, act CHAR(4) NOT NULL, T_inc DECIMAL(3,2) NOT NULL, m_dec FLOAT NOT NULL, PRIMARY KEY (id));", sep = " ")
+  
+  # Send the query to the database
+  db_res <- dbSendQuery(db_con, db_qry)
+  
+  # Release the database resource
+  dbClearResult(db_res)
+  
+  # Disconnect from the database
+  dbDisconnect(db_con)
+  
+  ##############################################################################
+  # Import the sample of airports and runways                                  #
+  ##############################################################################
+  
+  # Connect to the database
+  db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+  
+  # Build a query to retrieve the sample airports
   db_qry <- paste("SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", pop_thr, ";", sep = "")
   
   # Send the query to the database
@@ -56,13 +77,18 @@ cat("\014")
   
   ##############################################################################
   # Import the aeronautical data, including, for all aircraft to be modeled:   #
-  #  Max takeoff thrust Tmax in N from Sun et al. (2020)                       #
-  #  Max takeoff weight MTOW in kg from Sun et al. (2020)                      #
-  #  Wing area S in square meters from Sun et al. (2020)                       #
-  #  Dimensionless coefficient of lift CL - not sourced yet                    #
-  #  Dimensionless coefficient of drag CD as per Sun et al. (2018)             #
-  #  Stall speed Vs in knots in takeoff configuration - not sourced yet        #
-  #  1st, 2nd, and 3rd coefficients of maximum thrust at takeoff - not sourced #
+  # aircraft:  Aircraft model (e.g., A320, B737)                               #
+  #      eng:  Engine model (e.g., CFM56-5B4, Trent 1000-E2)                   #
+  #     Tmax: Maximum static sea-level thrust at takeoff in newtons            #
+  #     MTOW: Maximum takeoff mass in kilograms                                #
+  #        S:    Total wing area in square meters                              #
+  #       CL:   Dimensionless coefficient of lift in takeoff configuration     #
+  #       CD:   Dimensionless coefficient of drag in takeoff configuration     #
+  #       Vs:   Stall speed in meters per second in takeoff configuration      #
+  #      CT1:  First coefficient of maximum thrust at takeoff                  #
+  #      CT2:  Second coefficient of maximum thrust at takeoff                 #
+  #      CT3:  Third coefficient of maximum thrust at takeoff                  #
+  # Data is sourced from Sun et al. (2018, 2020)                               #
   ##############################################################################
   
   # Load the aircraft and engine data from a CSV file
@@ -74,15 +100,18 @@ cat("\014")
   
 fn_takeoff <- function(apt) {
   
+  # Output the worker's progress to the log file defined in makeCluster()
+  print(paste(Sys.time(), " Worker ", Sys.getpid(), " is parsing airport ", apt, "...", sep = ""))
+  
   ##############################################################################
-  # Retrieve the takeoff conditions at the current airport                     #
+  # Import the takeoff conditions at the current airport                       #
   ##############################################################################
   
   # Connect the worker to the database
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
   
-  # Build the query to retrieve the takeoff conditions
-  db_qry <- paste("SELECT id, obs, exp, tas, ps, rho, wnd_hdw, rwy, toda FROM ", db_cli, " WHERE icao = '", apt, "' LIMIT 1;", sep = "")
+  # Build a query to retrieve the takeoff conditions
+  db_qry <- paste("SELECT id, obs, exp, tas, ps, rho, wnd_hdw, rwy, toda FROM ", db_cli, " WHERE icao = '", apt, "' LIMIT 3;", sep = "")
   
   # Send the query to the database
   db_res <- suppressWarnings(dbSendQuery(db_con, db_qry))
@@ -92,23 +121,25 @@ fn_takeoff <- function(apt) {
   
   # Release the database resource
   dbClearResult(db_res)
-  
-  # Disconnect the worker from the database
-  dbDisconnect(db_con)
-  
+
   ##############################################################################
   # Define airport-level simulation inputs                                     #
   ##############################################################################
   
-  # Natural inputs
-  g <- 9.806665 # Gravitational acceleration in meters per second squared, assuming a non-oblate, non-rotating Earth (Blake, 2009; Daidzic, 2016)
+  # Natural and unit conversion inputs
+  g <- 9.806665          # Gravitational acceleration in meters per second squared, assuming a non-oblate, non-rotating Earth (Blake, 2009; Daidzic, 2016)
+  
+  # Function to convert feet to meters
+  fn_f_to_m <- function(ft) {
+    ft / 3.280839895
+  }
   
   # Aircraft inputs
   act <- "A320"                         # Aircraft model
   CL  <- dt_aer[aircraft == act, CL]    # Dimensionless coefficient of lift in takeoff (non-clean) configuration
   CD  <- dt_aer[aircraft == act, CD]    # Dimensionless coefficient of drag in takeoff (non-clean) configuration
-  # m   <- dt_aer[aircraft == act, MTOW]  # Aircraft mass in kilograms
-  m   <- 68000  # Aircraft mass in kilograms
+  m   <- dt_aer[aircraft == act, MTOW]  # Aircraft mass in kilograms
+  m   <- 240000 / 2.205                 # FOR TESTING ONLY
   S   <- dt_aer[aircraft == act, S]     # Wing surface area in square meters
   W   <- m * g                          # Aircraft weight in newtons
   
@@ -118,18 +149,26 @@ fn_takeoff <- function(apt) {
   CT2  <- dt_aer[aircraft == act, CT2]  # Second coefficient of maximum takeoff thrust
   CT3  <- dt_aer[aircraft == act, CT2]  # Third coefficient of maximum takeoff thrust
   
-  # Airport inputs
-  mu <- mu["blake"]                     # Coefficient of rolling friction
+  # Dimensionless coefficients of rolling friction. Values below are taken from Filippone (2012), Table 9.3 unless mentioned otherwise
+  mu_array <- c(
+    "blake" = .0165, # Value used by Blake (2009), p. 18-11
+    "dca"   = .02,   # Value for dry concrete/asphalt. Recommended as typical by ESDU 85029 (p. 32)
+    "htg"   = .04,   # Value for hard turf and gravel
+    "sdg"   = .05,   # Value for short and dry grass
+    "lg"    = .10,   # Value for long grass
+    "sg_lo" = .10,   # Value for soft ground (low softness)
+    "sg_mi" = .20,   # Value for soft ground (medium softness)
+    "sg_hi" = .30    # Value for soft ground (high softness)
+  )
+  
+  # Choose which coefficient of rolling friction to use in the simulation
+  mu <- mu_array["blake"]
   
   # Simulation settings
-  int <- 30                             # Resolution / number of integration steps (i.e., number of speed increments between zero and minimum takeoff speed)
-  
-  ##############################################################################
-  # Define airport-level simulation outputs                                    #
-  ##############################################################################
-  
-  # Initialize a data table to hold the results for the current airport
-  dt_apt <- data.table()
+  int <- 10 # Simulation resolution / number of integration steps (i.e., number of speed increments between zero and minimum takeoff speed)
+
+  # Define a list to hold the data in each iteration of the loop
+  tko_list <- list()
   
   ##############################################################################
   # For each climate observation at the current airport                        #
@@ -142,17 +181,18 @@ fn_takeoff <- function(apt) {
     ############################################################################
       
     # Climate inputs
-    exp <- dt_smp[i, exp]          # Climate experiment (SSP)
-    hdw <- dt_smp[i, wnd_hdw]      # Headwind in meters per second at the active runway
-    oat <- dt_smp[i, tas] - 273.15 # Outside air temperature converted from kelvins to degrees Celsius
-    obs <- dt_smp[i, obs]          # Date and time
-    rho <- dt_smp[i, rho]          # Air density in kilograms per cubic meter
-    ps  <- dt_smp[i, ps]           # Air pressure in pascals
+    exp <- dt_smp[i, exp]               # Climate experiment (SSP)
+    hdw <- dt_smp[i, wnd_hdw]           # Headwind in meters per second at the active runway
+    oat <- dt_smp[i, tas]               # Outside air temperature in kelvins
+    obs <- dt_smp[i, obs]               # Date and time
+    rho <- dt_smp[i, rho]               # Air density in kilograms per cubic meter
+    ps  <- dt_smp[i, ps]                # Air pressure in pascals
     
     # Runway inputs
-    rwy   <- dt_smp[i, rwy]        # Active runway (based on the prevailing wind at the time of the observation)
-    theta <- 0                     # Runway slope (theta) in degrees
-
+    rwy   <- dt_smp[i, rwy]             # Active runway (based on the prevailing wind at the time of the observation)
+    toda  <- fn_f_to_m(dt_smp[i, toda]) # Takeoff distance available converted from feet to meters
+    theta <- 0                          # Runway slope (theta) in degrees
+    
     ############################################################################
     # Calculate the speed at which lift L is equal to weight W                 #
     ############################################################################
@@ -162,7 +202,7 @@ fn_takeoff <- function(apt) {
 
     # Define groundspeed increments. Headwind decreases the terminal groundspeed
     Vgnd <- seq(from = 0, to = V2min - hdw, length = int)
-
+    
     # Define airspeed increments. Headwind increases the starting airspeed
     Vtas <- seq(from = 0 + hdw, to = V2min, length = int)
     
@@ -172,7 +212,7 @@ fn_takeoff <- function(apt) {
     
     # Calculate the lift force in newtons at each airspeed increment
     L <- .5 * rho * Vtas^2 * S * CL
-    
+
     # Calculate the drag force in newtons at each airspeed increment
     D <- .5 * rho * Vtas^2 * S * CD
     
@@ -190,104 +230,189 @@ fn_takeoff <- function(apt) {
     # Simulate the acceleration of the aircraft along the runway               #
     ############################################################################
     
-    # Calculate the dynamic pressure at each airspeed increment
-    q <- (rho * Vtas^2) / 2
+    # Initialize the regulatory takeoff distance required so that it is greater than TODA, for the while loop
+    todr <- toda + 1
     
-    # Acceleration in meters per second squared
-    a <- g / W * (Trto * 2 - (mu * W) - (CD - (mu * CL)) * (q * S) - (W * sin(theta)))
+    # Print the current aircraft mass
+    # print(paste("Starting thrust is", Trto, "newtons.", sep = " "))
+    # print(paste("Starting mass is", m, "kilograms.", sep = " "))
+    
+    while (todr >= toda) {
+      
+      # Calculate the dynamic pressure at each airspeed increment
+      q <- (rho * Vtas^2) / 2
+      
+      # Calculate the acceleration of the aircraft along the runway in meters per second squared
+      a <- g / W * (Trto * 2 - (mu * W) - (CD - (mu * CL)) * (q * S) - (W * sin(theta)))
+      
+      # Calculate the average acceleration (i.e., midpoint acceleration)
+      a_avg <- frollmean(x = a, n = 2, fill = head(a, 1), align = "right")
+      
+      # Calculate the average groundspeed between two speed increments
+      Vgnd_avg <- frollmean(x = Vgnd, n = 2, fill = 0, align = "right")
+      
+      # Calculate the difference between two speed increments
+      Vgnd_inc <- Vgnd - shift(x = Vgnd, n = 1, fill = 0, type = "lag")
+      
+      # Calculate the distance in meters covered in each increment
+      dis <- Vgnd_avg * Vgnd_inc / a_avg
+      
+      # Increment the cumulative (total) distance by that incremental distance
+      cum <- cumsum(x = dis)
+      
+      # Calculate the regulatory takeoff distance (115% of the calculated takeoff distance)
+      todr <- max(cum) * 1.15
+      
+      # For as long as the regulatory takeoff distance required (TODR) exceeds the takeoff distance available (TODA),
+      #  we increase the reduced takeoff thrust by one percent at a time. If we reach maximum thrust and it still is not enough,
+      #  we then decrease the aircraft mass one kilogram at a time until the TODR fits within the TODA
+      if (Trto < Tmax) {
+        Trto <- Trto + Tmax  * .01
+        # print(paste("New thrust is", round(Trto, digits = 2), "N.", sep = " "))
+      } else {
+        # m <- m - 1
+        m <- (240000 / 2.205) - 1
+        W <- m * g
+        # print(paste("New mass is", round(m, digits = 2), "kg.", sep = " "))
+      }
+
+    }
+
+    ############################################################################
+    # Return results to the log file (for calibration, testing, and debugging) #
+    # This section can safely be commented out to speed up script execution    #
+    ############################################################################
+    
+    # Assemble the simulation steps into a data table
+    dt_out <- data.table(
+      Vgnd     = Vgnd,     # Groundspeed in meters per second
+      Vtas     = Vtas,     # Airspeed in meters per second
+      L        = L,        # Lift in newtons
+      W        = W,        # Weight in newtons
+      D        = D,        # Drag in newtons
+      q        = q,        # Dynamic pressure
+      a        = a,        # Acceleration in meters per second squared
+      a_avg    = a_avg,    # Average acceleration between the two speed increments
+      Vgnd_avg = Vgnd_avg, # Average speed between the two speed increments in meters per second
+      Vgnd_inc = Vgnd_inc, # Speed increment in meters per second
+      dis      = dis,      # Distance in meters covered between the two speed increments
+      cum      = cum       # Cumulative distance in meters covered up to this increment
+    )
+    
+    # Display in the log file
+    width <- 150
+    options(width = width)
+    print(paste(rep("#", width), collapse = ""))
+    print(paste(act, "at", apt, "departing from", rwy, "on", obs, "under", exp, "with", round(hdw, digits = 1), "m/s headwind, an OAT of", oat - 273.15, "degrees C, and a QNH of", ps / 100, "hPa:", sep = " "))
+    print(dt_out)
     
     ############################################################################
-    # Step integration of distance as per Table 18-2 of Blake (2019)           #
-    ############################################################################
-    
-    # Calculate the average acceleration (i.e., midpoint acceleration)
-    a_avg <- frollmean(x = a, n = 2, fill = head(a, 1), align = "right")
-    
-    # Calculate the average speed between two speed increments
-    Vgnd_avg <- frollmean(x = Vgnd, n = 2, fill = 0, align = "right")
-    
-    # Calculate the difference between two speed increments
-    Vgnd_inc <- Vgnd - shift(x = Vgnd, n = 1, fill = 0, type = "lag")
-    
-    # Calculate the distance covered in each increment
-    dis <- Vgnd_avg * Vgnd_inc / a_avg
-    
-    # Increment the cumulative (total) distance by that incremental distance
-    cum <- cumsum(x = dis)
-    
-    ############################################################################
-    # Return results                                                           #
+    # Write the the takeoff performance calculations to the database           #
     ############################################################################
     
     # Assemble the results into a data table
-    dt_obs <- data.table(
-      icao     = rep(apt, int),
-      obs      = rep(obs, int),
-      exp      = rep(exp, int),
-      rwy      = rep(rwy, int),
-      hdw      = rep(hdw, int),
-      ps       = rep(ps, int),
-      oat      = rep(oat, int),
-      act      = rep(act, int),
-      Tmax     = rep(Tmax, int),
-      Trto     = rep(Trto, int),
-      CL       = rep(CL, int),
-      CD       = rep(CD, int),
-      V2min    = rep(V2min, int),
-      Vgnd     = Vgnd,
-      Vtas     = Vtas,
-      L        = L,
-      W        = W,
-      D        = D,
-      q        = q,
-      a        = a,
-      a_avg    = a_avg,
-      Vgnd_avg = Vgnd_avg,
-      Vgnd_inc = Vgnd_inc,
-      dis      = dis,
-      cum      = cum
+    dt_res <- data.table(
+      obs   = obs,                                                 # Date and time of the observation
+      icao  = apt,                                                 # Airport ICAO code
+      exp   = exp,                                                 # Climate experiment (SSP)
+      rwy   = rwy,                                                 # Active runway at the time of the observation
+      act   = act,                                                 # Aircraft type
+      T_inc = (Tmax - Trto) / Tmax,                                # Percentage of thrust reduction from Tmax
+      m_dec = round(dt_aer[aircraft == act, MTOW] - m, digits = 0) # Kilograms of payload that had to be removed from the aircraft
     )
     
-    # Bind the per-observation results to the per-airport data table
-    
-    # Display it in the log file
-    width <- 240
-    options(width = width)
-    print(paste(rep("#", width), collapse = ""))
-    print(dt_obs)
-    print(paste(rep("#", width), collapse = ""))
-    
+    # Append the results to the list initialized earlier
+    tko_list[[i]] <- dt_res
+
   } # End of the loop
   
+  # Combine the outputs of all takeoff simulations at the current airport into a data table
+  dt_tko <- rbindlist(tko_list)
+  
+  # Write the data
+  # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
+  dbWriteTable(conn = db_con, name = tolower(db_tko), value = dt_tko, append = TRUE, row.names = FALSE)
+  
+  # Disconnect the worker from the database
+  dbDisconnect(db_con)
+    
 } # End of the fn_takeoff function
 
 ################################################################################
 # Handle the parallel computation across multiple cores                        #
 ################################################################################
-
-# Set the number of workers to use in the cluster
-cores <- 12
-
-# Set the log file for the cluster
-outfile <- log_6
-
-# Clear the log file
-close(file(outfile, open = "w"))
-
-# Build the cluster of workers
-cl <- makeCluster(cores, outfile = outfile)
-
-# Have each worker load the libraries that they need to handle the fn_import function defined above
-clusterEvalQ(cl, {
-  library(data.table)
-  library(DBI)
-})
-
-# Pass the required variables from the main scope to the workers' scope
-clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "dt_aer", "mu"))
-
+  
+  ##############################################################################
+  # Prepare the cluster                                                        #
+  ##############################################################################
+  
+  # Set the number of workers to use in the cluster
+  cores <- 12
+  
+  # Set the log file for the cluster
+  outfile <- log_6
+  
+  # Clear the log file
+  close(file(outfile, open = "w"))
+  
+  # Build the cluster of workers
+  cl <- makeCluster(cores, outfile = outfile)
+  
+  # Have each worker load the libraries that they need to handle the fn_import function defined above
+  clusterEvalQ(cl, {
+    library(data.table)
+    library(DBI)
+  })
+  
+  # Pass the required variables from the main scope to the workers' scope
+  clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "db_tko", "dt_aer"))
+  
+  ##############################################################################
+  # Import the airports that were already processed so we can skip them        #
+  # This allows for incremental adds to the table over several script runs     #
+  ##############################################################################
+  
+  # Connect to the database
+  db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+  
+  # Build a query to check if the takeoff table already exists in the database
+  db_qry <- paste("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '", db_grp,"' AND table_name = '", db_tko,"';", sep = "")
+  
+  # Send the query to the database
+  db_res <- dbSendQuery(db_con, db_qry)
+  
+  # Return the results to a data frame
+  df_exi <- suppressWarnings(dbFetch(db_res, n = Inf))
+  
+  # Release the database resource
+  dbClearResult(db_res)
+  
+  # If the takeoff table already exists in the database
+  if(df_exi == 1) {
+    
+    # Build a query to retrieve the airports that were already processed
+    db_qry <- paste("SELECT DISTINCT icao FROM ", db_tko, ";", sep = "")
+    
+    # Send the query to the database
+    db_res <- dbSendQuery(db_con, db_qry)
+    
+    # Return the results to a data frame
+    df_pro <- suppressWarnings(dbFetch(db_res, n = Inf))
+    
+    # Release the database resource
+    dbClearResult(db_res)
+    
+    # Remove the airports already processed from the sample
+    df_smp <- subset(df_smp, !(icao %in% df_pro$icao))
+    print(paste(nrow(df_pro), "airports exist in the database table", db_tko,"and will be ommitted from the simulation.", nrow(df_smp), "airports remain.", sep = " "))
+    
+  }
+  
+  # Disconnect from the database
+  dbDisconnect(db_con)
+  
 # LIMIT NUMBER OF AIRPORTS FOR TESTING ONLY - REMOVE BEFORE GO-LIVE
-df_smp <- head(df_smp, 1)
+df_smp <- head(df_smp, 12)
 
 # Distribute the unique airports across the workers
 parLapply(cl, df_smp$icao, fn_takeoff)

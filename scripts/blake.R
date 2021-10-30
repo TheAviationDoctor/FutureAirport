@@ -40,7 +40,7 @@ W <- 240000                                                                     
 
 S     <- 1951                                                                   # Reference wing area in square feet
 
-CL    <- 1.6087                                                                 # Dimensionless lift coefficient (taken from BADA)
+CL    <- 1.6087                                                                 # Dimensionless lift coefficient
 
 CD    <- .08 + mu * CL                                                          # Dimensionless drag coefficient (adjusted so that CD - mu * CL = .08 as per Blake's (2009) example)
 
