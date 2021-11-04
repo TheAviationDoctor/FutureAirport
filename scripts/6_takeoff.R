@@ -35,7 +35,7 @@ cat("\014")
   ##############################################################################
   # Set up the database table to store the takeoff performance calculations    #
   # Unlike in the other scripts, we don't drop the table if it exists already  #
-  # This allows for incremental adds to the table over several script runs     #
+  # This allows the user to break up the script's execution over several runs  #
   ##############################################################################
   
   # Connect to the database
@@ -50,15 +50,9 @@ cat("\014")
   # Release the database resource
   dbClearResult(db_res)
   
-  # Disconnect from the database
-  dbDisconnect(db_con)
-  
   ##############################################################################
   # Import the sample of airports and runways                                  #
   ##############################################################################
-  
-  # Connect to the database
-  db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
   
   # Build a query to retrieve the sample airports
   db_qry <- paste("SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", pop_thr, ";", sep = "")
@@ -77,23 +71,26 @@ cat("\014")
   
   ##############################################################################
   # Import the aeronautical data, including, for all aircraft to be modeled:   #
-  # aircraft:  Aircraft model (e.g., A320, B737)                               #
-  #      eng:  Engine model (e.g., CFM56-5B4, Trent 1000-E2)                   #
-  #     Tmax: Maximum static sea-level thrust at takeoff in newtons            #
-  #     MTOW: Maximum takeoff mass in kilograms                                #
-  #        S:    Total wing area in square meters                              #
-  #       CL:   Dimensionless coefficient of lift in takeoff configuration     #
-  #       CD:   Dimensionless coefficient of drag in takeoff configuration     #
-  #       Vs:   Stall speed in meters per second in takeoff configuration      #
-  #      CT1:  First coefficient of maximum thrust at takeoff                  #
-  #      CT2:  Second coefficient of maximum thrust at takeoff                 #
-  #      CT3:  Third coefficient of maximum thrust at takeoff                  #
-  # Data is sourced from Sun et al. (2018, 2020)                               #
+  #  model: Aircraft model (e.g., A320, B737)                                  #
+  # engine: Engine model (e.g., CFM56-5B4, Trent 1000-E2)                      #
+  #   Tmax: Maximum static sea-level thrust at takeoff in newtons              #
+  #   MTOW: Maximum takeoff mass in kilograms                                  #
+  #      S: Total wing area in square meters                                   #
+  #     CL: Dimensionless coefficient of lift in takeoff configuration         #
+  #     CD: Dimensionless coefficient of drag in takeoff configuration         #
+  # Data were sourced from Sun et al. (2018, 2020)                             #
   ##############################################################################
   
-  # Load the aircraft and engine data from a CSV file
-  dt_aer <- fread(file = paste(path_aer, aer_act, sep = "/"), header = TRUE, colClasses = c("character", "factor", "integer", "integer", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
-
+  dt_act <- data.table(
+    model  = c("A319", "A320", "A321", "A332", "A333", "A343", "A359", "A388", "B734", "B737", "B738", "B739", "B744", "B748", "B772", "B773", "B77w", "B788", "B789"),
+    engine = c("CFM56-5B7", "CFM56-5B4", "CFM56-5B1", "Trent 772", "Trent 772", "CFM56-5C3", "Trent XWB-84", "GP7270", "CFM56-3B-2", "CFM56-7B26", "CFM56-7B26", "CFM56-7B26", "RB211-524G", "GEnx-2B67", "PW4090", "Trent 892", "GE90-115B", "Trent 1000-E2", "Trent 1000-K2"),
+    Tmax   = c(120100, 117900, 133450, 320300, 320300, 144570, 379000, 332390, 98300, 116990, 116990, 116990, 253000, 299800, 408300, 411480, 513900, 268000, 350900),
+    MTOW   = c(75500, 78000, 93500, 230000, 242000, 276000, 280000, 560000, 68000, 70000, 79000, 85100, 396800, 447700, 297000, 299300, 351500, 228000, 254000),
+    S      = c(124, 124, 128, 361.6, 361.6, 363.1, 442, 845, 91.4, 124.6, 124.6, 124.6, 525.6, 554, 427.8, 427.8, 436.8, 377, 377),
+    CL     = rep(1.6087, 19),
+    CD     = c(0.074, 0.078, 0.091, 0.074, 0.075, 0.075, 0.075, 0.059, 0.081, 0.077, 0.076, 0.08, 0.076, 0.079, 0.083, 0, 0.085, 0.071, 0.074)
+  )
+  
 ################################################################################
 # Define a function to simulate takeoffs at each airport                       #
 ################################################################################
@@ -111,7 +108,7 @@ fn_takeoff <- function(apt) {
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
   
   # Build a query to retrieve the takeoff conditions
-  db_qry <- paste("SELECT id, obs, exp, tas, ps, rho, wnd_hdw, rwy, toda FROM ", db_cli, " WHERE icao = '", apt, "' LIMIT 3;", sep = "")
+  db_qry <- paste("SELECT id, obs, exp, tas, ps, rho, wnd_hdw, rwy, toda FROM ", db_cli, " WHERE icao = '", apt, "' LIMIT 1;", sep = "")
   
   # Send the query to the database
   db_res <- suppressWarnings(dbSendQuery(db_con, db_qry))
@@ -145,9 +142,6 @@ fn_takeoff <- function(apt) {
   
   # Engine inputs
   Tmax <- dt_aer[aircraft == act, Tmax] # Maximum sea-level static thrust under ISA conditions
-  CT1  <- dt_aer[aircraft == act, CT1]  # First coefficient of maximum takeoff thrust
-  CT2  <- dt_aer[aircraft == act, CT2]  # Second coefficient of maximum takeoff thrust
-  CT3  <- dt_aer[aircraft == act, CT2]  # Third coefficient of maximum takeoff thrust
   
   # Dimensionless coefficients of rolling friction. Values below are taken from Filippone (2012), Table 9.3 unless mentioned otherwise
   mu_array <- c(
@@ -230,50 +224,63 @@ fn_takeoff <- function(apt) {
     # Simulate the acceleration of the aircraft along the runway               #
     ############################################################################
     
-    # Initialize the regulatory takeoff distance required so that it is greater than TODA, for the while loop
-    todr <- toda + 1
-    
     # Print the current aircraft mass
     # print(paste("Starting thrust is", Trto, "newtons.", sep = " "))
     # print(paste("Starting mass is", m, "kilograms.", sep = " "))
     
-    while (todr >= toda) {
-      
-      # Calculate the dynamic pressure at each airspeed increment
-      q <- (rho * Vtas^2) / 2
-      
+    # Calculate the dynamic pressure at each airspeed increment
+    q <- (rho * Vtas^2) / 2
+        
+    # Calculate the takeoff distance required (TODR), incrementing the thrust and decreasing the weight iteratively as needed
+    repeat {
+
       # Calculate the acceleration of the aircraft along the runway in meters per second squared
       a <- g / W * (Trto * 2 - (mu * W) - (CD - (mu * CL)) * (q * S) - (W * sin(theta)))
       
-      # Calculate the average acceleration (i.e., midpoint acceleration)
+      # Calculate the average acceleration (i.e., midpoint acceleration) between two groundspeed increments
       a_avg <- frollmean(x = a, n = 2, fill = head(a, 1), align = "right")
       
-      # Calculate the average groundspeed between two speed increments
+      # Calculate the average groundspeed between two groundspeed increments
       Vgnd_avg <- frollmean(x = Vgnd, n = 2, fill = 0, align = "right")
       
-      # Calculate the difference between two speed increments
+      # Calculate the groundspeed difference between two groundspeed increments
       Vgnd_inc <- Vgnd - shift(x = Vgnd, n = 1, fill = 0, type = "lag")
       
-      # Calculate the distance in meters covered in each increment
+      # Calculate the distance in meters covered between two groundspeed increments
       dis <- Vgnd_avg * Vgnd_inc / a_avg
       
-      # Increment the cumulative (total) distance by that incremental distance
+      # Increment the cumulative (running total) distance accordingly
       cum <- cumsum(x = dis)
       
-      # Calculate the regulatory takeoff distance (115% of the calculated takeoff distance)
+      # Calculate the regulatory takeoff distance (115% of the running total)
       todr <- max(cum) * 1.15
       
       # For as long as the regulatory takeoff distance required (TODR) exceeds the takeoff distance available (TODA),
-      #  we increase the reduced takeoff thrust by one percent at a time. If we reach maximum thrust and it still is not enough,
-      #  we then decrease the aircraft mass one kilogram at a time until the TODR fits within the TODA
-      if (Trto < Tmax) {
-        Trto <- Trto + Tmax  * .01
-        # print(paste("New thrust is", round(Trto, digits = 2), "N.", sep = " "))
+      if (todr > toda) {
+        
+        # For as long as the current takeoff thrust is below maximum thrust
+        if (Trto < Tmax) {
+          
+          # We increase the takeoff thrust by one percent at a time
+          Trto <- Trto + Tmax * .01
+          
+        # However, if the takeoff thrust is already at its maximum
+        } else {
+        
+          # We decrease the takeoff mass instead, by one kilogram at a time
+          # m <- m - 1
+          m <- (240000 / 2.205) - 1
+          
+          # And calculate the takeoff weight again
+          W <- m * g
+        }
+        
+      # However, if the TODR is below or at TODA,
       } else {
-        # m <- m - 1
-        m <- (240000 / 2.205) - 1
-        W <- m * g
-        # print(paste("New mass is", round(m, digits = 2), "kg.", sep = " "))
+        
+        # We exit the repeat loop
+        break;
+        
       }
 
     }
@@ -365,7 +372,7 @@ fn_takeoff <- function(apt) {
   })
   
   # Pass the required variables from the main scope to the workers' scope
-  clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "db_tko", "dt_aer"))
+  clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "db_tko", "dt_act"))
   
   ##############################################################################
   # Import the airports that were already processed so we can skip them        #
@@ -412,10 +419,10 @@ fn_takeoff <- function(apt) {
   dbDisconnect(db_con)
   
 # LIMIT NUMBER OF AIRPORTS FOR TESTING ONLY - REMOVE BEFORE GO-LIVE
-df_smp <- head(df_smp, 12)
+df_apt <- head(df_apt, 1)
 
 # Distribute the unique airports across the workers
-parLapply(cl, df_smp$icao, fn_takeoff)
+parLapply(cl, df_apt$icao, fn_takeoff)
 
 # Terminate the cluster once finished
 stopCluster(cl)
