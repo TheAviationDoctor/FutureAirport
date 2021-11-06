@@ -44,13 +44,16 @@ df_rwy <- read.csv(file = paste(path_pop, pop_rwy, sep = "/"), header = TRUE, na
 str(df_rwy)
 
 # Retain only the variables of interest
-df_rwy <- subset(df_rwy, select = c("icao", "rwy", "len", "toda"))
+df_rwy <- subset(df_rwy, select = c("icao", "rwy", "toda"))
 
 # Count missing TODAs
 sum(is.na(df_rwy$toda))
 
 # Remove the missing TODAs
 df_rwy <- na.omit(df_rwy)
+
+# Convert the TODAs from feet to meters
+df_rwy$toda <- floor(df_rwy$toda / 3.280839895)
 
 # Count unique observations (runways)
 length(unique(df_rwy$icao))
@@ -273,7 +276,7 @@ db_res <- dbSendQuery(db_con, db_qry)
 dbClearResult(db_res)
 
 # Create the population table
-db_qry <- paste("CREATE TABLE ", tolower(db_pop), " (id INT NOT NULL AUTO_INCREMENT, icao CHAR(4) NOT NULL, iata CHAR(3) NOT NULL, traffic INT NOT NULL, name CHAR(", max(nchar(df_pop$name)),") NOT NULL, lat FLOAT NOT NULL, lon FLOAT NOT NULL, rwy CHAR(5) NOT NULL, len SMALLINT NOT NULL, toda SMALLINT NOT NULL, PRIMARY KEY (id));", sep = "")
+db_qry <- paste("CREATE TABLE ", tolower(db_pop), " (id INT NOT NULL AUTO_INCREMENT, icao CHAR(4) NOT NULL, iata CHAR(3) NOT NULL, traffic INT NOT NULL, name CHAR(", max(nchar(df_pop$name)),") NOT NULL, lat FLOAT NOT NULL, lon FLOAT NOT NULL, rwy CHAR(5) NOT NULL, toda SMALLINT NOT NULL, PRIMARY KEY (id));", sep = "")
 db_res <- dbSendQuery(db_con, db_qry)
 dbClearResult(db_res)
 

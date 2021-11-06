@@ -167,7 +167,7 @@ fn_import <- function(nc_file) {
 # Set the number of workers to use in the cluster
 cores <- 8
 
-# Set the log file for the cluster
+# Set the log file for the cluster defined in 0_common.R
 outfile <- log_4
 
 # Clear the log file

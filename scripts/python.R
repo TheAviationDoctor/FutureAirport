@@ -3,8 +3,6 @@ cat("\014")
 
 library("reticulate")
 
-openap <- import("openap")
+source_python("scripts/6_thrust.py")
 
-# py_run_file("scripts/6_takeoff.py")
-
-py_config()
+py_thrust(0, 0)

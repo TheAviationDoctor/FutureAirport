@@ -124,26 +124,26 @@ fn_transform <- function(apt) {
   # Inputs
   hurs <- dt_nc[, hurs] / 100    # Near-surface relative humidity in %
   ps   <- dt_nc[, ps]   / 100    # Near-surface air pressure in mbar
-  tas  <- dt_nc[, tas]  - 273.15 # Near-surface air temperature in °C
-  es0  <- 6.1078                  # Reference saturation vapor pressure at 0°C in mbar
-  Rd   <- 287.058                 # Specific gas constant for dry air, in J/(kg·K)
-  Rv   <- 461.495                 # Specific gas constant for water vapor, in J/(kg·K)
-  pol  <- 0.99999683 +            # Requires tas in °C
-    tas * (-0.90826951E-02 +
-      tas * (0.78736169E-04 +
-        tas * (-0.61117958E-06 +
-          tas * (0.43884187E-08 +
-            tas * (-0.29883885E-10 +
-              tas * (0.21874425E-12 +
-                tas * (-0.17892321E-14 +
-                  tas * (0.11112018E-16 +
-                    tas * (-0.30994571E-19)))))))))
+  tas  <- dt_nc[, tas]           # Near-surface air temperature in K
+  es0  <- 6.1078                 # Reference saturation vapor pressure at 0°C in mbar
+  Rd   <- 287.058                # Specific gas constant for dry air, in J/(kg·K)
+  Rv   <- 461.495                # Specific gas constant for water vapor, in J/(kg·K)
+  pol  <- 0.99999683 +           # Requires tas in °C
+    (tas - 273.15) * (-0.90826951E-02 +
+      (tas - 273.15) * (0.78736169E-04 +
+        (tas - 273.15) * (-0.61117958E-06 +
+          (tas - 273.15) * (0.43884187E-08 +
+            (tas - 273.15) * (-0.29883885E-10 +
+              (tas - 273.15) * (0.21874425E-12 +
+                (tas - 273.15) * (-0.17892321E-14 +
+                  (tas - 273.15) * (0.11112018E-16 +
+                    (tas - 273.15) * (-0.30994571E-19)))))))))
   
   # Outputs
   esw <- es0 / pol^8 # Saturation vapor pressure at tas, in mbar
   pv  <- esw * hurs  # Partial pressure of water vapor, in mbar
   pd  <- ps - pv     # Partial pressure of dry air, in mbar
-  rho <- ((pd / (Rd * (tas + 273.15))) + (pv / (Rv * (tas + 273.15)))) * 100 # Total air density in kg/m3. Requires tas in K
+  rho <- ((pd / (Rd * tas)) + (pv / (Rv * tas))) * 100 # Total air density in kg/m3. Requires tas in K
   
   # Save the air density to a new column
   dt_nc[, rho := rho]
@@ -187,7 +187,7 @@ fn_transform <- function(apt) {
 # Set the number of workers to use in the cluster
 cores <- 12
 
-# Set the log file for the cluster
+# Set the log file for the cluster defined in 0_common.R
 outfile <- log_5
 
 # Clear the log file
@@ -218,14 +218,14 @@ parLapply(cl, apts, fn_transform)
 stopCluster(cl)
 
 ################################################################################
-# Add a composite index to the database table                                  #
+# Add an index to the database table                                           #
 ################################################################################
 
 # Set the index name
 db_idx <- "idx"
 
 # Build the query to create the index
-db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_cli), " (exp, icao, obs);", sep = "")
+db_qry <- paste("CREATE INDEX ", tolower(db_idx), " ON ", tolower(db_cli), " (icao);", sep = "")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
