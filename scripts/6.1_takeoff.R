@@ -31,122 +31,35 @@ cat("\014")
 # Prepare the simulation                                                       #
 ################################################################################
   
-  ##############################################################################
-  # Set up the database table to store the takeoff performance calculations    #
-  # Unlike in the other scripts, we don't drop the table if it exists already  #
-  # This allows the user to break up the script's execution over several runs  #
-  ##############################################################################
+  # Set up the database table to store the takeoff calculations 
+  fn_set_tbl(db_tko)
   
-  # Connect to the database
-  db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+  # Import the simulation airports from the database
+  dt_apt <- fn_imp_apt(pop_thr)
   
-  # Build a query to create the table
-  db_qry <- paste("CREATE TABLE IF NOT EXISTS", tolower(db_tko), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, rwy CHAR(5) NOT NULL, act CHAR(4) NOT NULL, T_inc DECIMAL(3,2) NOT NULL, m_dec FLOAT NOT NULL, PRIMARY KEY (id));", sep = " ")
+  # Import the simulation aircraft from the database
+  # act <- c("a20n", "b38m", "a359", "b789")
+  act <- c("a20n")
   
-  # Send the query to the database
-  db_res <- dbSendQuery(db_con, db_qry)
+  # Return the aircraft characteristics
+  dt_act <- fn_imp_act(act)
+  print(dt_act)
   
-  # Release the database resource
-  dbClearResult(db_res)
+  # Select which runway surface friction coefficient to simulate
+  mu <- fn_imp_rwy("dca_esdu")
   
-  ##############################################################################
-  # Import the sample of airports to simulate                                  #
-  ##############################################################################
-  
-  # Build a query to retrieve the sample airports
-  db_qry <- paste("SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", pop_thr, ";", sep = "")
-  
-  # Send the query to the database
-  db_res <- dbSendQuery(db_con, db_qry)
-  
-  # Return the results to a data frame
-  df_apt <- suppressWarnings(dbFetch(db_res, n = Inf))
-  
-  # Release the database resource
-  dbClearResult(db_res)
-  
-  ##############################################################################
-  # Remove the airports that were already processed from the sample            #
-  # This allows for incremental adds to the table over several script runs     #
-  ##############################################################################
-  
-  # Build a query to check if the simulation outputs table already exists in the database
-  db_qry <- paste("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '", db_grp,"' AND table_name = '", db_tko,"';", sep = "")
-  
-  # Send the query to the database
-  db_res <- dbSendQuery(db_con, db_qry)
-  
-  # Return the results to a data frame
-  df_exi <- suppressWarnings(dbFetch(db_res, n = Inf))
-  
-  # Release the database resource
-  dbClearResult(db_res)
-  
-  # If the takeoff table already exists in the database
-  if(df_exi == 1) {
-    
-    # Build a query to retrieve the airports that were already processed
-    db_qry <- paste("SELECT DISTINCT icao FROM ", db_tko, ";", sep = "")
-    
-    # Send the query to the database
-    db_res <- dbSendQuery(db_con, db_qry)
-    
-    # Return the results to a data frame
-    df_pro <- suppressWarnings(dbFetch(db_res, n = Inf))
-    
-    # Release the database resource
-    dbClearResult(db_res)
-    
-    # Remove the airports already processed from the sample
-    df_apt <- subset(df_apt, !(icao %in% df_pro$icao))
-    print(paste(nrow(df_pro), "airports exist in the database table", db_tko,"and will be ommitted from the simulation.", nrow(df_apt), "airports remain.", sep = " "))
-    
-  }
-  
-  # Disconnect from the database
-  dbDisconnect(db_con)
-  
-  ##############################################################################
-  # Set simulation parameters                                                  #
-  ##############################################################################
-  
-  # Define runway friction coefficients from Filippone (2012), Table 9.3 unless mentioned otherwise
-  mu_options <- c(
-    "blake" = .0165, # Value used by Blake (2009), p. 18-11
-    "dca"   = .02,   # Value for dry concrete/asphalt recommended by ESDU 85029 (p. 32)
-    "htg"   = .04,   # Value for hard turf and gravel
-    "sdg"   = .05,   # Value for short and dry grass
-    "lg"    = .10,   # Value for long grass
-    "sg_lo" = .10,   # Value for soft ground (low softness)
-    "sg_mi" = .20,   # Value for soft ground (medium softness)
-    "sg_hi" = .30    # Value for soft ground (high softness)
-  )
-  
-  # Define the aircraft characteristics from Sun et al. (2018, 2020)
-  dt_act <- data.table(
-    act  = c("A320", "A359", "B738", "B789"),                             # Aircraft type
-    eng  = c("CFM56-5B4", "Trent XWB-84", "CFM56-7B26", "Trent 1000-K2"), # Engine type
-    n    = rep(2L, 4),                                                    # Engine count in units
-    bpr  = c(5.9, 9.01, 5.1, 9.04),                                       # Engine bypass ratio
-    slst = c(117900, 379000, 116990, 350900),                             # Engine sea-level static maximum thrust in newtons (per engine)
-    m    = c(78000, 280000, 79000, 254000),                               # Maximum aircraft takeoff mass in kilograms
-    S    = c(124, 442, 124.6, 377),                                       # Total wing area (incl. flaps/slats at takeoff) in m²
-    CL   = rep(1.6087, 4),                                                # Dimensionless coefficient of lift in takeoff configuration
-    CD   = c(.078, .075, .076, .074)                                      # Dimensionless coefficient of drag in takeoff configuration
-  )
-
 ################################################################################
 # Define a function to simulate takeoffs at each airport                       #
 ################################################################################
   
 fn_takeoff <- function(apt) {
-
+  
   ##############################################################################
   # Import the time series of environmental observations at the current airport#
   ##############################################################################
   
-  # Retrieve the observations
-  dt_smp <- fn_imp_obs(apt)
+  # Retrieve the observations. The second argument is either "live" for actual data, or "test" for calibration data
+  dt_smp <- fn_imp_obs(apt, "live")
   
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), " Worker ", Sys.getpid(), " started simulating ", nrow(dt_smp)," takeoffs at airport ", apt, "...", sep = ""))
@@ -164,19 +77,15 @@ fn_takeoff <- function(apt) {
     # Define simulation inputs                                                 #
     ############################################################################
     
-    # Natural constants
-    g <- 9.806665                         # Gravitational acceleration in m/s², assuming a non-oblate, non-rotating Earth (Blake, 2009; Daidzic, 2016)
-    
     # Aircraft characteristics
-    aircraft <- "A320"                    # Aircraft type
-    n    <- dt_act[act == aircraft, n]    # Engine count in units
-    bpr  <- dt_act[act == aircraft, bpr]  # Engine bypass ratio
-    slst <- dt_act[act == aircraft, slst] # Engine sea-level static maximum thrust in N (per engine)
-    m    <- dt_act[act == aircraft, m]    # Maximum aircraft takeoff mass in kg
-    S    <- dt_act[act == aircraft, S]    # Total wing surface area (incl. flaps/slats in takeoff configuration) in m²
-    CL   <- dt_act[act == aircraft, CL]   # Dimensionless coefficient of lift in takeoff configuration
-    CD   <- dt_act[act == aircraft, CD]   # Dimensionless coefficient of drag in takeoff configuration
-
+    # n    <- dt_act[type == act, n]    # Engine count in units
+    n    <- dt_act[, n]    # Engine count in units
+    bpr  <- dt_act[, bpr]  # Engine bypass ratio
+    slst <- dt_act[, slst] # Engine sea-level static maximum thrust in N (per engine)
+    m    <- dt_act[, m]    # Maximum aircraft takeoff mass in kg
+    S    <- dt_act[, S]    # Total wing surface area (incl. flaps/slats in takeoff configuration) in m²
+    CD   <- dt_act[, cd0]  # Dimensionless coefficient of drag in clean configuration
+    
     # Climate inputs
     exp <- dt_smp[i, exp]                 # Climate experiment (SSP)
     hdw <- dt_smp[i, wnd_hdw]             # Headwind in meters per second at the active runway
@@ -189,12 +98,7 @@ fn_takeoff <- function(apt) {
     rwy   <- dt_smp[i, rwy]               # Active runway (based on the prevailing wind at the time of the observation)
     toda  <- dt_smp[i, toda]              # Takeoff distance available in m
     theta <- 0                            # Runway slope in °
-    mu    <- mu_options["dca"]            # Type of runway surface
     
-    # Operational and regulatory inputs
-    spd <- 1.2                            # Safety factor to apply to the speed at which lift equals weight
-    dis <- 1.15                           # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
-    rto <- .75                            # Minimum percentage of takeoff thrust permissible under reduced takeoff thrust operations as per FAA Advisory Circular 25-13 (1988)
     
     # Simulation settings
     int <- 10                             # Simulation resolution / number of integration steps
@@ -218,13 +122,13 @@ fn_takeoff <- function(apt) {
       # Calculate the weight force in N                                        #
       ##########################################################################
       
-      W <- g * m
+      W <- fn_sim_wgt(m)
       
       ##########################################################################
       # Calculate the minimum takeoff airspeed in m/s                          #
       ##########################################################################
       
-      Vtko <- fn_tko_speed(W, S, CL, rho, spd)
+      Vtko <- fn_sim_spd(W, S, CL, rho, spd)
       
       ##########################################################################
       # Create airspeed intervals up to the minimum takeoff airspeed           #
@@ -239,52 +143,40 @@ fn_takeoff <- function(apt) {
       Vgnd <- seq(from = 0, to = Vtko - hdw, length = int)
       
       ##########################################################################
-      # Calculate the lift force in N at each airspeed increment               #
+      # Calculate the lift force in N                                          #
       ##########################################################################
       
-      L <- fn_tko_lift(rho, Vtas, S, CL)
+      L <- fn_sim_lft(rho, Vtas, S, CL)
       
       ##########################################################################
-      # Calculate the drag force in N at each airspeed increment               #
+      # Calculate the drag force in N                                          #
       ##########################################################################
       
-      D <- fn_tko_drag(rho, Vtas, S, CD)
+      D <- fn_sim_drg(rho, Vtas, S, CD)
       
       ##########################################################################
-      # Calculate the propulsive force (maximum takeoff thrust) in N           #
+      # Calculate the propulsive force F in N                                  #
       ##########################################################################
       
-      Fmax <- fn_tko_thrust(n, bpr, slst, ps, tas, Vtas)
-      
+      F <- fn_sim_thr(n, bpr, slst, ps, tas, Vtas, rto)
+
       ##########################################################################
-      # Calculate the propulsive force (reduced takeoff thrust) in N           #
-      ##########################################################################
-      
-      Frto <- Fmax * rto
-      
-      ##########################################################################
-      # Calculate the dynamic pressure at each airspeed increment              #
+      # Calculate the dynamic pressure q in Pa                                 #
       ##########################################################################
       
-      q <- fn_tko_dyn_press(rho, Vtas)
+      q <- fn_sim_dyn(rho, Vtas)
       
       ##########################################################################
-      # Calculate the aircraft acceleration in m/s² at each airspeed increment #
+      # Calculate the acceleration a in m/s²                                   #
       ##########################################################################
       
-      a <- fn_tko_accel(g, W, Frto, mu, CD, CL, q, S, theta)
+      a <- fn_sim_accel(g, W, Frto, mu, CD, CL, q, S, theta)
       
       ##########################################################################
-      # Calculate the cumulative distance in m covered by the aircraft         #
+      # Calculate the regulatory takeoff distance required in m                #
       ##########################################################################
       
-      cum <- fn_tko_dist(a, Vgnd)
-      
-      ##########################################################################
-      # Calculate the regulatory takeoff distance required (TODR) in m         #
-      ##########################################################################
-      
-      todr <- max(cum) * dis
+      todr <- fn_sim_tdr(a, Vgnd, dis)
       
       ##########################################################################
       # Check if the takeoff distance required fits within that available      #
@@ -392,13 +284,13 @@ fn_takeoff <- function(apt) {
   })
   
   # Pass the required variables from the main scope to the workers' scope
-  clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "db_tko", "dt_act", "mu_options", "fn_imp_obs", "fn_tko_speed", "fn_tko_lift", "fn_tko_drag", "fn_tko_thrust", "fn_tko_dyn_press", "fn_tko_accel", "fn_tko_dist"))
+  clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "db_tko", "dt_act", "mu", "fn_imp_obs", "fn_sim_wgt", "fn_sim_spd", "fn_sim_lft", "fn_sim_drg", "fn_sim_thr", "fn_sim_dyn", "fn_sim_acc", "fn_sim_tdr"))
   
 # LIMIT NUMBER OF AIRPORTS FOR TESTING ONLY - REMOVE BEFORE GO-LIVE
-df_apt <- head(df_apt, 1)
+df_apt <- head(dt_apt, 1)
 
 # Distribute the unique airports across the workers
-parLapply(cl, df_apt$icao, fn_takeoff)
+parLapply(cl, dt_apt, fn_takeoff)
 
 # Terminate the cluster once finished
 stopCluster(cl)

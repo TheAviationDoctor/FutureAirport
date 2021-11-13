@@ -11,18 +11,19 @@
 ################################################################################
 
 # Directory paths
-path_aer <- "data/aeronautical" # Aeronautical data (aircraft and engines)
-path_pop <- "data/population"   # Population data (airports and runways)
-path_cli <- "data/climate"      # Climate data (from CMIP6)
-path_plt <- "plots"             # Generated plots
+path_aer <- "data/aer" # Aeronautical data (aircraft and engines)
+path_pop <- "data/pop" # Population data (airports and runways)
+path_cli <- "data/cli" # Climate data (from CMIP6)
+path_plt <- "plots"    # Generated plots
 
 ################################################################################
 # Project files                                                                #
 ################################################################################
 
 # File names
-aer_act <- "aircraft.csv"    # Aircraft and their engines
-pop_geo <- "geolocation.csv" # Airport geolocations
+aer_act <- "aircraft.csv"    # Aircraft characteristics
+aer_mu  <- "mu.csv"          # Runway friction coefficients
+pop_geo <- "geolocation.csv" # Airport locations
 pop_rwy <- "runways.csv"     # Runways
 pop_tra <- "traffic.csv"     # Airport traffic
 cli_esg <- "esgf.csv"        # Output of the ESGF search
