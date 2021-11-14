@@ -13,7 +13,6 @@
 #  DATA HANDLING FUNCTIONS                                                     #
 #   - fn_imp_apt = Import the simulation airports                              #
 #   - fn_imp_act = Import the simulation aircraft                              #
-#   - fn_imp_rwy = Import the runway surface friction coefficient              #
 #   - fn_imp_obs = Import the simulation conditions                            #
 #  SIMULATION FUNCTIONS                                                        #
 #   - fn_sim_wgt = Calculate the weight force W in N                           #
@@ -31,12 +30,22 @@
 ################################################################################
 
 const <- list(
+  # Natural constants
   "g"        = 9.806665,    # Gravitational acceleration constant in m/s², assuming a non-oblate, non-rotating Earth (Blake, 2009; Daidzic, 2016)
   "ms_to_kt" = 1.9438445,   # Factor to convert speed from m/s to kt
   "m_to_ft"  = 3.280839895, # Factor to convert distance from m to ft
-  "reg_spd"  = 1.2,         # Percentage of the speed at which lift equals weight to consider as the minimum takeoff speed
-  "reg_dis"  = 1.15,        # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
-  "reg_rto"  = .75          # Minimum percentage of takeoff thrust permissible under reduced takeoff thrust operations as per FAA Advisory Circular 25-13 (1988)
+  "gamma"    = 1.401,       # Adiabatic index (a.k.a., heat capacity ratio) for dry air
+  "ps_isa"   = 101325L,     # Air pressure in Pa at sea level under international standard atmospheric conditions
+  "Rd"       = 287.058,     # Specific gas constant for dry air in J/(kg·K)
+  # Runway constants
+  "mu"       = .02,         # Dimensionless coefficient of friction for dry concrete/asphalt at the runway-tire interface (ESDU 85029, p. 32)
+  "theta"    = 0L,          # Runway slope in °
+  # Regulatory constants
+  "reg_spd"  = 120L,        # Percentage of the speed at which lift equals weight to consider as the minimum takeoff speed
+  "reg_dis"  = 115L,        # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
+  "reg_rto"  = 25L,         # Maximum percentage of takeoff thrust reduction permissible FAA Advisory Circular 25-13 (1988)
+  # Simulation constants
+  "int"      = 10L          # Simulation resolution / number of integration steps
 )
 
 ################################################################################
@@ -44,8 +53,49 @@ const <- list(
 ################################################################################
   
   ##############################################################################
+  # Set up a dummy data database table for simulation calibration based on:    #
+  #  table = name of the database table to set up                              #
+  # Unlike in the other scripts, we don't drop the table if it exists already  #
+  # This allows the user to break up the script's execution over several runs  #
+  ##############################################################################
+  
+  fn_set_tst <- function(table) {
+    
+    # Import the dummy climatic data from the CSV file into a data table
+    dt_tst <- fread(file = paste(path_cli, cli_tst, sep = "/"), header = TRUE, colClasses = c("integer", "character", "factor", "factor", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "factor", "integer"))
+
+    # Connect to the database
+    db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+    
+    # Build the query to drop the table, if it exists
+    db_qry <- paste("DROP TABLE IF EXISTS ", tolower(table), ";", sep = "")
+    
+    # Send the query to the database
+    db_res <- dbSendQuery(db_con, db_qry)
+    
+    # Release the database resource
+    dbClearResult(db_res)
+    
+    # Build a query to create the table using the same structure as the table holding the actual climatic variables
+    db_qry <- paste("CREATE TABLE ", tolower(table), " LIKE ", tolower(db_cli), ";", sep = " ")
+    
+    # Send the query to the database
+    db_res <- dbSendQuery(db_con, db_qry)
+    
+    # Release the database resource
+    dbClearResult(db_res)
+    
+    # Write the dummy data to the table
+    dbWriteTable(conn = db_con, name = tolower(table), value = dt_tst, append = TRUE, row.names = FALSE)
+    
+    # Disconnect from the database
+    dbDisconnect(db_con)
+    
+  }
+  
+  ##############################################################################
   # Set up the database table to store the takeoff calculations based on:      #
-  #  table = name of the database table to be set up                           #
+  #  table = name of the database table to set up                              #
   # Unlike in the other scripts, we don't drop the table if it exists already  #
   # This allows the user to break up the script's execution over several runs  #
   ##############################################################################
@@ -56,7 +106,7 @@ const <- list(
     db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
     
     # Build a query to create the table
-    db_qry <- paste("CREATE TABLE IF NOT EXISTS", tolower(table), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, rwy CHAR(5) NOT NULL, act CHAR(4) NOT NULL, T_inc DECIMAL(3,2) NOT NULL, m_dec FLOAT NOT NULL, PRIMARY KEY (id));", sep = " ")
+    db_qry <- paste("CREATE TABLE IF NOT EXISTS", tolower(table), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, act CHAR(4) NOT NULL, j SMALLINT UNSIGNED NOT NULL, rto DECIMAL(3,2) NOT NULL, rem FLOAT NOT NULL, PRIMARY KEY (id));", sep = " ")
     
     # Send the query to the database
     db_res <- dbSendQuery(db_con, db_qry)
@@ -68,82 +118,95 @@ const <- list(
     dbDisconnect(db_con)
     
   }
-
+  
 ################################################################################
 # DATA HANDLING FUNCTIONS                                                      #
 ################################################################################
 
   ##############################################################################
+  # Function fn_imp_apt                                                        #
   # Import the simulation airports from the database based on:                 #
-  #  thr = traffic threshold above which to select airports                    #
+  #  mode = whether to import live or test airports                            #
   ##############################################################################
   
-  fn_imp_apt <- function(thr) {
+  fn_imp_apt <- function(mode) {
     
     ############################################################################
     # Retrieve the ICAO codes of airports above the traffic threshold          #
     ############################################################################
     
-    # Connect to the database
-    db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+    if (mode == "live") {
     
-    # Build a query to retrieve the sample airports above the traffic threshold
-    db_qry <- paste("SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", pop_thr, ";", sep = "")
-    
-    # Send the query to the database
-    db_res <- dbSendQuery(db_con, db_qry)
-    
-    # Return the results to a data table
-    dt_smp <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = "icao", check.names = FALSE))
-    
-    # Release the database resource
-    dbClearResult(db_res)
-    
-    ############################################################################
-    # Exclude airports that were already processed by earlier simulations      #
-    # This allows for incremental simulation runs                              #
-    ############################################################################
-    
-    # Build a query to check if the simulation outputs table already exists in the database
-    db_qry <- paste("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '", db_grp,"' AND table_name = '", db_tko,"';", sep = "")
-    
-    # Send the query to the database
-    db_res <- dbSendQuery(db_con, db_qry)
-    
-    # Return the results to a data table
-    tbl_exists <- suppressWarnings(as.logical(dbFetch(db_res, n = Inf)))
-    
-    # Release the database resource
-    dbClearResult(db_res)
-    
-    # If the takeoff table already exists in the database
-    if(tbl_exists == TRUE) {
+      # Connect to the database
+      db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
       
-      # Build a query to retrieve the airports that were already processed
-      db_qry <- paste("SELECT DISTINCT icao FROM ", db_tko, ";", sep = "")
+      # Build a query to retrieve the sample airports above the traffic threshold
+      db_qry <- paste("SELECT DISTINCT icao FROM ", db_pop, " WHERE traffic > ", pop_thr, ";", sep = "")
       
       # Send the query to the database
       db_res <- dbSendQuery(db_con, db_qry)
       
       # Return the results to a data table
-      dt_exc <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = "icao", check.names = FALSE))
+      dt_smp <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = "icao", check.names = FALSE))
       
       # Release the database resource
       dbClearResult(db_res)
       
-      # Remove the airports already processed from the sample (inverse left outer join)
-      dt_out <- dt_smp[!dt_exc]
+      ##########################################################################
+      # Exclude airports that were already processed by earlier simulations    #
+      # This allows for incremental simulation runs                            #
+      ##########################################################################
+      
+      # Build a query to check if the simulation outputs table already exists in the database
+      db_qry <- paste("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '", db_grp,"' AND table_name = '", db_tko,"';", sep = "")
+      
+      # Send the query to the database
+      db_res <- dbSendQuery(db_con, db_qry)
+      
+      # Return the results to a data table
+      tbl_exists <- suppressWarnings(as.logical(dbFetch(db_res, n = Inf)))
+      
+      # Release the database resource
+      dbClearResult(db_res)
+      
+      # If the takeoff table already exists in the database
+      if (tbl_exists == TRUE) {
+        
+        # Build a query to retrieve the airports that were already processed
+        db_qry <- paste("SELECT DISTINCT icao FROM ", db_tko, ";", sep = "")
+        
+        # Send the query to the database
+        db_res <- dbSendQuery(db_con, db_qry)
+        
+        # Return the results to a data table
+        dt_exc <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = "icao", check.names = FALSE))
+        
+        # Release the database resource
+        dbClearResult(db_res)
+        
+        # Remove the airports already processed from the sample (inverse left outer join)
+        dt_out <- dt_smp[!dt_exc]
+        
+      }
+      
+      # Disconnect from the database
+      dbDisconnect(db_con)
+    
+    } else {
+      
+      # Create a data.table with just one dummy airport
+      dt_out <- data.table(
+        icao = "XXXX"
+      )
       
     }
-    
-    # Disconnect from the database
-    dbDisconnect(db_con)
     
     return(dt_out)
     
   }
   
   ##############################################################################
+  # Function fn_imp_act                                                        #
   # Import the simulation aircraft from a CSV file based on:                   #
   #  act = aircraft type                                                       #
   ##############################################################################
@@ -159,56 +222,35 @@ const <- list(
   }
   
   ##############################################################################
-  # Import the runway surface friction coefficient from a CSV file based on:   #
-  #  type = runway surface type                                                #
-  ##############################################################################
-  
-  fn_imp_rwy <- function(rwy) {
-    
-    # Import runway surface data from the CSV file into a data table
-    dt_mu <- fread(file = paste(path_aer, aer_mu, sep = "/"), header = TRUE, colClasses = c("character", "character", "numeric", "character"))
-    
-    # Extract the friction coefficient for the selected runway surface type
-    mu <- as.numeric(dt_mu[type == rwy, "mu"])
-    
-    # Return the data table filtered for the selected runway surface
-    return(mu)
-    
-  }
-  
-  ##############################################################################
+  # Function fn_imp_obs                                                        #
   # Import the simulation conditions from the database based on:               #
   #  apt  = airport's four-letter ICAO code                                    #
-  #  mode = "live" for actual data, "test" for calibration data                #
   ##############################################################################
   
   fn_imp_obs <- function(apt, mode) {
     
-    if (mode == "live") {
-      
-      # Connect to the database
-      db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
-      
-      # Build a query to retrieve the takeoff conditions
-      db_qry <- paste("SELECT id, obs, exp, tas, ps, rho, wnd_hdw, rwy, toda FROM ", db_cli, " WHERE exp = 'ssp126' AND icao = '", apt, "' LIMIT 1;", sep = "")
-      
-      # Send the query to the database
-      db_res <- suppressWarnings(dbSendQuery(db_con, db_qry))
-      
-      # Return the results
-      dt_obs <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = "id", check.names = FALSE))
-      
-      # Release the database resource
-      dbClearResult(db_res)
-      
-      # Disconnect from the database
-      dbDisconnect(db_con)
-      
-    } else if (mode == "test") {
-      
-      # Import a test CSV
-      
-    }
+    # Direct to either the live or test climatic database table
+    ifelse(mode == "live", db_tbl <- db_cli, db_tbl <- db_tst)
+
+    # Connect to the database
+    db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+    
+    # Build a query to retrieve the takeoff conditions
+    db_qry <- paste("SELECT id, obs, exp, tas, ps, rho, wnd_hdw, rwy, toda FROM ", db_tbl, " WHERE icao = '", apt, "' LIMIT 5;", sep = "")
+    
+    # Send the query to the database
+    db_res <- suppressWarnings(dbSendQuery(db_con, db_qry))
+    
+    # Return the results
+    dt_obs <- suppressWarnings(setDT(dbFetch(db_res, n = Inf), key = "id", check.names = FALSE))
+    
+    # Release the database resource
+    dbClearResult(db_res)
+    
+    # Disconnect from the database
+    dbDisconnect(db_con)
+    
+    # Return the results
     return(dt_obs)
     
   }
@@ -220,7 +262,6 @@ const <- list(
   ##############################################################################
   # Function fn_sim_wgt                                                        #
   # Calculate the weight force W in N based on:                                #
-  #  g   = Gravitational acceleration constant in m/s²                         #
   #  m   = aircraft mass in kg                                                 #
   ##############################################################################
   
@@ -242,20 +283,19 @@ const <- list(
   #  CL  = dimensionless coefficient of lift in takeoff configuration          #
   #  hdw = headwind in m/s at the active runway                                #
   #  rho = air density in kg/m³                                                #
-  #  int = number of integration steps of the simulation                       #
   # Adapted from Blake (2009)                                                  #
   ##############################################################################
   
-  fn_sim_spd <- function(W, S, CL, rho, hdw, int) {
+  fn_sim_spd <- function(W, S, CL, rho, hdw) {
     
     # Calculate minimum takeoff speed in m/s and add the safety margin factor
-    Vtko <- sqrt( W / (.5 * S * rho * CL) ) * const$reg_spd
+    Vtko <- sqrt( W / (.5 * S * rho * CL) ) * (const$reg_spd / 100)
     
     # Create airspeed intervals up to the minimum takeoff airspeed
-    Vtas <- seq(from = 0 + hdw, to = Vtko, length = int)
+    Vtas <- seq(from = 0 + hdw, to = Vtko, length = const$int)
     
     # Create groundspeed intervals up to the minimum takeoff airspeed
-    Vgnd <- seq(from = 0, to = Vtko - hdw, length = int)
+    Vgnd <- seq(from = 0, to = Vtko - hdw, length = const$int)
     
     V <- list("tko" = Vtko, "tas" = Vtas, "gnd" = Vgnd)
     
@@ -308,29 +348,21 @@ const <- list(
   #  n    = engine count in units                                              #
   #  bpr  = Engine bypass ratio                                                #
   #  slst = Engine sea-level static maximum thrust in N (per engine)           #
+  #  rto  = Percentage of takeoff thrust reduction as regulatorily permissible #
   # Adapted from Sun et al. (2020)                                             #
   ##############################################################################
   
-  fn_sim_thr <- function(n, bpr, slst, ps, tas, Vtas) {
-    
-    # Set the adiabatic index (a.k.a., heat capacity ratio) for dry air
-    gamma <- 1.401
-    
-    # Set the specific gas constant for dry air in J/(kg·K)
-    Rd <- 287.058
+  fn_sim_thr <- function(n, bpr, slst, ps, tas, Vtas, rto) {
     
     # Calculate the speed of sound in m/s for the given temperature
     # TODO: model it for humid air using http://resource.npl.co.uk/acoustics/techguides/speedair/
-    Vsnd <- sqrt(gamma * Rd * tas)
+    Vsnd <- sqrt(const$gamma * const$Rd * tas)
     
     # Calculate the mach number
     Vmach <- Vtas / Vsnd
-    
-    # Set the air pressure in Pa at sea level under international standard atmospheric conditions
-    ps_isa <- 101325L
-    
+
     # Calculate the air pressure ratio
-    dP = ps / ps_isa
+    dP = ps / const$ps_isa
     
     # Calculate the coefficients of thrust
     G0 <- 0.0606 * bpr + 0.6337
@@ -345,7 +377,7 @@ const <- list(
     Fmax <- thrust_ratio * slst * n
     
     # Apply the maximum takeoff thrust reduction permissible
-    Frto <- Fmax * const$reg_rto
+    Frto <- Fmax * (100 - rto) / 100
     
     # Assemble the results into a list
     F <- list("max" = Fmax, "rto" = Frto)
@@ -376,22 +408,19 @@ const <- list(
   ##############################################################################
   # Function fn_sim_acc                                                        #
   # Calculate the acceleration a in m/s² based on:                             #
-  #  g     = gravitational acceleration in m/s²                                #
   #  W     = aircraft weight in N                                              #
   #  F     = propulsive force in N                                             #
-  #  mu    = dimensionless runway friction coefficient                         #
   #  CD    = dimensionless coefficient of drag                                 #
   #  CL    = dimensionless coefficient of lift                                 #
   #  q     = dynamic pressure                                                  #
   #  S     = total wing area (incl. flaps/slats at takeoff) in m²              #
-  #  theta = runway slope in °                                                 #
   # Adapted from Blake (2009)                                                  #
   ##############################################################################
   
-  fn_sim_acc <- function(W, F, mu, CD, CL, q, S, theta) {
+  fn_sim_acc <- function(W, F, CD, CL, q, S) {
     
     # Calculate the acceleration of the aircraft in m/s along the runway
-    a <- const$g / W * (F * 2 - (mu * W) - (CD - (mu * CL)) * (q * S) - (W * sin(theta)))
+    a <- const$g / W * (F * 2 - (const$mu * W) - (CD - (const$mu * CL)) * (q * S) - (W * sin(const$theta)))
     
     # Return the results
     return(a)
@@ -422,7 +451,7 @@ const <- list(
     cum <- cumsum(x = inc)
     
     # Add the regulatory safety margin as per 14 CFR § 25.113 (1998)
-    todr <- cum * const$reg_dis
+    todr <- cum * (const$reg_dis / 100)
     
     # Assemble the results into a list
     dist <- list("inc" = inc, "cum" = cum, "todr" = todr)
@@ -438,10 +467,10 @@ const <- list(
   # Adapted from Sun et al. (2020)                                             #
   ##############################################################################
   
-  fn_drag <- function(m, V, rho, cd0, k, path_angle) {
+  # fn_drag <- function(m, V, rho, cd0, k, path_angle) {
     
     # Convert airspeed to knots
-    V <- V * ms_to_kt
+    # V <- V * ms_to_kt
     
     # Convert altitude to feet
     # alt <- fn_m_to_ft(alt)
@@ -457,25 +486,25 @@ const <- list(
     
     
     
-    gamma <- path_angle * pi / 180
-    
-    S = 121
-    
-    L <- m * g * cos(gamma)
-    qS
-    cL <- L /
-    
-    cD <- cd0 + k + cl^2
-    
-    D <- cd * qS
-    
-    
+    # gamma <- path_angle * pi / 180
+    # 
+    # S = 121
+    # 
+    # L <- m * g * cos(gamma)
+    # qS
+    # cL <- L /
+    # 
+    # cD <- cd0 + k + cl^2
+    # 
+    # D <- cd * qS
     
     
     
     
-  }
-  
+    
+    
+  # }
+  # 
   # fn_drag(79000, 150, 1.225, .017, .038, 0)
 
 

@@ -27,6 +27,7 @@ pop_geo <- "geolocation.csv" # Airport locations
 pop_rwy <- "runways.csv"     # Runways
 pop_tra <- "traffic.csv"     # Airport traffic
 cli_esg <- "esgf.csv"        # Output of the ESGF search
+cli_tst <- "dummy.csv"       # Dummy climatic variables for takeoff simulation calibration
 
 ################################################################################
 # Log files                                                                    #
@@ -51,6 +52,7 @@ db_grp <- "phd"
 db_pop <- "pop" # Population and sample airports resulting from 1_population.R
 db_imp <- "imp" # Climate data imported from the NetCDF files in long format resulting from 4_import.R
 db_cli <- "cli" # Climate data transformed in wide/tidy format resulting from 5_transform.R
+db_tst <- "dum" # Dummy climatic variables for takeoff simulation calibration
 db_tko <- "tko" # Takeoff performance calculation outputs resulting from 6_takeoff.R
 
 ################################################################################
