@@ -43,7 +43,6 @@ cat("\014")
   
   # Return the aircraft characteristics
   dt_act <- fn_imp_act(act)
-  print(dt_act)
   
   # Select which runway surface friction coefficient to simulate
   mu <- fn_imp_rwy("dca_esdu")
@@ -51,11 +50,12 @@ cat("\014")
 ################################################################################
 # Define a function to simulate takeoffs at each airport                       #
 ################################################################################
-  
+
+# For a given airport apt
 fn_takeoff <- function(apt) {
   
   ##############################################################################
-  # Import the time series of environmental observations at the current airport#
+  # Import the simulation conditions from the database                         #
   ##############################################################################
   
   # Retrieve the observations. The second argument is either "live" for actual data, or "test" for calibration data
@@ -78,31 +78,36 @@ fn_takeoff <- function(apt) {
     ############################################################################
     
     # Aircraft characteristics
-    # n    <- dt_act[type == act, n]    # Engine count in units
-    n    <- dt_act[, n]    # Engine count in units
-    bpr  <- dt_act[, bpr]  # Engine bypass ratio
-    slst <- dt_act[, slst] # Engine sea-level static maximum thrust in N (per engine)
-    m    <- dt_act[, m]    # Maximum aircraft takeoff mass in kg
-    S    <- dt_act[, S]    # Total wing surface area (incl. flaps/slats in takeoff configuration) in m²
-    CD   <- dt_act[, cd0]  # Dimensionless coefficient of drag in clean configuration
+    # n    <- dt_act[type == act, n]    # Old format
+    n    <- dt_act[, n]       # Engine count in units
+    bpr  <- dt_act[, bpr]     # Engine bypass ratio
+    slst <- dt_act[, slst]    # Engine sea-level static maximum thrust in N (per engine)
+    m    <- dt_act[, m]       # Maximum aircraft takeoff mass in kg
+    S    <- dt_act[, S]       # Total wing surface area (incl. flaps/slats in takeoff configuration) in m²
+CL <- .5
+    CD   <- dt_act[, cd0]     # Dimensionless coefficient of drag in clean configuration
     
     # Climate inputs
-    exp <- dt_smp[i, exp]                 # Climate experiment (SSP)
-    hdw <- dt_smp[i, wnd_hdw]             # Headwind in meters per second at the active runway
-    tas <- dt_smp[i, tas]                 # Outside air temperature in K
-    obs <- dt_smp[i, obs]                 # Date and time
-    rho <- dt_smp[i, rho]                 # Air density in kg/m³
-    ps  <- dt_smp[i, ps]                  # Air pressure in Pa
+    exp <- dt_smp[i, exp]     # Climate experiment (SSP)
+    hdw <- dt_smp[i, wnd_hdw] # Headwind in meters per second at the active runway
+    tas <- dt_smp[i, tas]     # Outside air temperature in K
+    obs <- dt_smp[i, obs]     # Date and time
+    rho <- dt_smp[i, rho]     # Air density in kg/m³
+    ps  <- dt_smp[i, ps]      # Air pressure in Pa
     
     # Runway inputs
-    rwy   <- dt_smp[i, rwy]               # Active runway (based on the prevailing wind at the time of the observation)
-    toda  <- dt_smp[i, toda]              # Takeoff distance available in m
-    theta <- 0                            # Runway slope in °
+    rwy   <- dt_smp[i, rwy]   # Active runway (based on the prevailing wind at the time of the observation)
+    toda  <- dt_smp[i, toda]  # Takeoff distance available in m
+    theta <- 0                # Runway slope in °
     
     
     # Simulation settings
-    int <- 10                             # Simulation resolution / number of integration steps
-    j   <- 0                              # Initialize a counter for simulation iterations
+    int <- 10                 # Simulation resolution / number of integration steps
+    j   <- 0                  # Initialize a counter for simulation iterations
+    
+    # Log file display options
+    width <- 150
+    options(width = width)    # Column width in the log file before word wrap
     
     ############################################################################
     # Simulate the takeoff from first principles                               #
@@ -128,55 +133,43 @@ fn_takeoff <- function(apt) {
       # Calculate the minimum takeoff airspeed in m/s                          #
       ##########################################################################
       
-      Vtko <- fn_sim_spd(W, S, CL, rho, spd)
-      
-      ##########################################################################
-      # Create airspeed intervals up to the minimum takeoff airspeed           #
-      ##########################################################################
-      
-      Vtas <- seq(from = 0 + hdw, to = Vtko, length = int)
-      
-      ##########################################################################
-      # Create groundspeed intervals up to the minimum takeoff airspeed        #
-      ##########################################################################
-      
-      Vgnd <- seq(from = 0, to = Vtko - hdw, length = int)
+      V <- fn_sim_spd(W, S, CL, rho, hdw, int)
       
       ##########################################################################
       # Calculate the lift force in N                                          #
       ##########################################################################
       
-      L <- fn_sim_lft(rho, Vtas, S, CL)
+      L <- fn_sim_lft(rho, V$tas, S, CL)
       
       ##########################################################################
       # Calculate the drag force in N                                          #
       ##########################################################################
       
-      D <- fn_sim_drg(rho, Vtas, S, CD)
+      D <- fn_sim_drg(rho, V$tas, S, CD)
       
       ##########################################################################
       # Calculate the propulsive force F in N                                  #
       ##########################################################################
       
-      F <- fn_sim_thr(n, bpr, slst, ps, tas, Vtas, rto)
+      F <- fn_sim_thr(n, bpr, slst, ps, tas, V$tas)
 
       ##########################################################################
       # Calculate the dynamic pressure q in Pa                                 #
       ##########################################################################
       
-      q <- fn_sim_dyn(rho, Vtas)
+      q <- fn_sim_dyn(rho, V$tas)
       
       ##########################################################################
       # Calculate the acceleration a in m/s²                                   #
       ##########################################################################
       
-      a <- fn_sim_accel(g, W, Frto, mu, CD, CL, q, S, theta)
+      a <- fn_sim_acc(W, F$rto, mu, CD, CL, q, S, theta)
       
       ##########################################################################
-      # Calculate the regulatory takeoff distance required in m                #
+      # Calculate the horizontal takeoff distance in m                         #
       ##########################################################################
       
-      todr <- fn_sim_tdr(a, Vgnd, dis)
+      dis <- fn_sim_dis(a, V$gnd)
       
       ##########################################################################
       # Check if the takeoff distance required fits within that available      #
@@ -185,9 +178,9 @@ fn_takeoff <- function(apt) {
       # Once TODR <= TODA, break out of the repeat loop                        #
       ##########################################################################
       
-      if (todr > toda) {
+      if (max(dis$todr) > toda) {
         
-        ifelse(rto < 1, rto <- rto + .01, m <- m - 1)
+        ifelse(const$reg_rto < 1, const$reg_rto <- const$reg_rto + .01, m <- m - 1)
           
       } else {
         
@@ -204,23 +197,25 @@ fn_takeoff <- function(apt) {
     
     # Assemble the simulation steps into a data table
     dt_out <- data.table(
-      Vgnd     = round(Vgnd, digits = 1), # Groundspeed in m/s
-      Vtas     = round(Vtas, digits = 1), # Airspeed in m/s
-      W        = round(W, digits = 1),    # Weight in N
-      L        = round(L, digits = 1),    # Lift in N
-      D        = round(D, digits = 1),    # Drag in N
-      q        = round(q, digits = 1),    # Dynamic pressure
-      a        = round(a, digits = 1),    # Acceleration in m/s²
-      cum      = round(cum, digits = 1)   # Cumulative takeoff distance in m
+      Vgnd     = round(V$gnd, digits = 1),   # Groundspeed in m/s
+      Vtas     = round(V$tas, digits = 1),   # Airspeed in m/s
+      W        = round(W, digits = 1),       # Weight in N
+      Fmax     = round(F$max, digits = 1),   # Max propulsive force in N
+      Frto     = round(F$rto, digits = 1),   # Reduced propulsive force in N
+      L        = round(L, digits = 1),       # Lift in N
+      D        = round(D, digits = 1),       # Drag in N
+      q        = round(q, digits = 1),       # Dynamic pressure
+      a        = round(a, digits = 1),       # Acceleration in m/s²
+      inc      = round(dis$inc, digits = 1), # Incremental takeoff distance in m
+      cum      = round(dis$cum, digits = 1), # Cumulative takeoff distance in m
+      todr     = round(dis$todr, digits = 1) # Regulatory takeoff distance required in m
     )
     
     # Display in the log file
-    width <- 150
-    options(width = width)
     print(paste(rep("#", width), collapse = ""))
-    print(paste("Takeoff", i, "-", aircraft, "at", apt, "departing from", rwy, "on", obs, "Z under", toupper(exp), "with", round(hdw, digits = 1), "m/s headwind, an OAT of", tas, "K, and a QNH of", ps, "Pa:", sep = " "))
+    print(paste("Takeoff", i, "-", dt_act[, type], "at", apt, "departing from", rwy, "on", obs, "Z under", toupper(exp), "with", round(hdw, digits = 1), "m/s headwind, an OAT of", tas, "K, and a QNH of", ps, "Pa:", sep = " "))
     print(dt_out)
-    print(paste("Thrust increased by ", (rto - .75) * 100, "% and mass decreased by ", dt_act[act == aircraft, m] - m, " kg after ", j, " iterations.", sep = ""))
+    print(paste("Thrust increased by ", (const$reg_rto - .75) * 100, "% and mass decreased by ", dt_act[, m] - m, " kg after ", j, " iterations.", sep = ""))
     
     ############################################################################
     # Write the the takeoff performance calculations to the database           #
@@ -284,10 +279,10 @@ fn_takeoff <- function(apt) {
   })
   
   # Pass the required variables from the main scope to the workers' scope
-  clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "db_tko", "dt_act", "mu", "fn_imp_obs", "fn_sim_wgt", "fn_sim_spd", "fn_sim_lft", "fn_sim_drg", "fn_sim_thr", "fn_sim_dyn", "fn_sim_acc", "fn_sim_tdr"))
+  clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "db_tko", "dt_act", "mu", "const", "fn_imp_obs", "fn_sim_wgt", "fn_sim_spd", "fn_sim_lft", "fn_sim_drg", "fn_sim_thr", "fn_sim_dyn", "fn_sim_acc", "fn_sim_dis"))
   
 # LIMIT NUMBER OF AIRPORTS FOR TESTING ONLY - REMOVE BEFORE GO-LIVE
-df_apt <- head(dt_apt, 1)
+dt_apt <- head(dt_apt, 1)
 
 # Distribute the unique airports across the workers
 parLapply(cl, dt_apt, fn_takeoff)
