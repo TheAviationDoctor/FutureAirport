@@ -22,6 +22,7 @@ path_plt <- "plots"    # Generated plots
 
 # File names
 aer_act <- "aircraft.csv"    # Aircraft characteristics
+aer_cal <- "calibration.csv" # Takeoff performance calibration data
 aer_mu  <- "mu.csv"          # Runway friction coefficients
 pop_geo <- "geolocation.csv" # Airport locations
 pop_rwy <- "runways.csv"     # Runways
@@ -49,10 +50,11 @@ db_cnf <- ".my.cnf"
 db_grp <- "phd"
 
 # Set the table prefixes and names
-db_pop <- "pop" # Population and sample airports resulting from 1_population.R
-db_imp <- "imp" # Climate data imported from the NetCDF files in long format resulting from 4_import.R
+db_act <- "act" # Aircraft characteristics for the takeoff simulation
+db_cal <- "cal" # Calibration data used in 6_calibration.R
 db_cli <- "cli" # Climate data transformed in wide/tidy format resulting from 5_transform.R
-db_tst <- "dum" # Dummy climatic variables for takeoff simulation calibration
+db_imp <- "imp" # Climate data imported from the NetCDF files in long format resulting from 4_import.R
+db_pop <- "pop" # Population and sample airports resulting from 1_population.R
 db_tko <- "tko" # Takeoff performance calculation outputs resulting from 6_takeoff.R
 
 ################################################################################
@@ -70,9 +72,40 @@ pop_thr <- 10^6
 nc_exps <- c("ssp126", "ssp245", "ssp370", "ssp585")
 
 ################################################################################
+# Takeoff simulation settings                                                  #
+################################################################################
+
+const <- list(
+  # Natural constants
+  "g"          = 9.806665,    # Gravitational acceleration constant in m/s², assuming a non-oblate, non-rotating Earth (Blake, 2009; Daidzic, 2016)
+  "ms_to_kt"   = 1.9438445,   # Factor to convert speed from m/s to kt
+  "m_to_ft"    = 3.280839895, # Factor to convert distance from m to ft
+  "gamma"      = 1.401,       # Adiabatic index (a.k.a., heat capacity ratio) for dry air
+  "ps_isa"     = 101325L,     # Air pressure in Pa at sea level under international standard atmospheric conditions
+  "Rd"         = 287.058,     # Specific gas constant for dry air in J/(kg·K)
+  # Runway constants
+  "mu"         = .02,         # Dimensionless coefficient of friction for dry concrete/asphalt at the runway-tire interface (ESDU 85029, p. 32)
+  "theta"      = 0L,          # Runway slope in °
+  # Regulatory constants
+  "reg_spd"    = 100L,        # Percentage of the speed at which lift equals weight to consider as the minimum takeoff speed
+  "reg_dis"    = 115L,        # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
+  "reg_rto"    = 0L,         # Maximum percentage of takeoff thrust reduction permissible FAA Advisory Circular 25-13 (1988)
+  # Calibration constants
+  "hurs"       = 0L,          # Sea-level relative humidity in % at ISA
+  "ps"         = 101325,      # Sea-level air pressure in Pa at ISA
+  "tas"        = 273.15,      # Sea-level air temperature in K at ISA
+  "rho"        = 1.225,       # Sea-level air density in kg/m³ at ISA
+  "hdw"        = 0L,          # Headwind in m/s
+  # Simulation constants
+  "flap_angle" = 15L,         # Flap deflection angle in takeoff configuration
+  "int"        = 10L          # Simulation resolution / number of integration steps
+)
+
+################################################################################
 # References                                                                   #
 ################################################################################
 
+# Blake, W. (2009). Jet Transport Performance Methods.
 # Filippone, A. (2012). Advanced Aircraft Flight Performance. https://doi.org/gdjz
 # Sun et al. (2018). Aircraft Drag Polar Estimation Based on a Stochastic Hierarchical Model. Eighth SESAR Innovation Days, 3rd – 7th December 2018. https://www.sesarju.eu/sites/default/files/documents/sid/2018/papers/SIDs_2018_paper_75.pdf
 # Sun et al. (2020). OpenAP: An Open-Source Aircraft Performance Model for Air Transportation Studies and Simulations. https://doi.org/g2tj

@@ -16,6 +16,7 @@
 #   - fn_imp_obs = Import the simulation conditions                            #
 #  SIMULATION FUNCTIONS                                                        #
 #   - fn_sim_wgt = Calculate the weight force W in N                           #
+#   - fn_sim_vlo = Calculate the speed in m/s at which lift L equals weight W  #
 #   - fn_sim_spd = Calculate the takeoff speeds V in m/s                       #
 #   - fn_sim_lft = Calculate the lift force L in N                             #
 #   - fn_sim_drg = Calculate the drag force D in N                             #
@@ -26,73 +27,9 @@
 ################################################################################
 
 ################################################################################
-# Set constants used by the functions                                          #
-################################################################################
-
-const <- list(
-  # Natural constants
-  "g"        = 9.806665,    # Gravitational acceleration constant in m/s², assuming a non-oblate, non-rotating Earth (Blake, 2009; Daidzic, 2016)
-  "ms_to_kt" = 1.9438445,   # Factor to convert speed from m/s to kt
-  "m_to_ft"  = 3.280839895, # Factor to convert distance from m to ft
-  "gamma"    = 1.401,       # Adiabatic index (a.k.a., heat capacity ratio) for dry air
-  "ps_isa"   = 101325L,     # Air pressure in Pa at sea level under international standard atmospheric conditions
-  "Rd"       = 287.058,     # Specific gas constant for dry air in J/(kg·K)
-  # Runway constants
-  "mu"       = .02,         # Dimensionless coefficient of friction for dry concrete/asphalt at the runway-tire interface (ESDU 85029, p. 32)
-  "theta"    = 0L,          # Runway slope in °
-  # Regulatory constants
-  "reg_spd"  = 120L,        # Percentage of the speed at which lift equals weight to consider as the minimum takeoff speed
-  "reg_dis"  = 115L,        # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
-  "reg_rto"  = 25L,         # Maximum percentage of takeoff thrust reduction permissible FAA Advisory Circular 25-13 (1988)
-  # Simulation constants
-  "int"      = 10L          # Simulation resolution / number of integration steps
-)
-
-################################################################################
 # HOUSEKEEPING FUNCTIONS                                                       #
 ################################################################################
-  
-  ##############################################################################
-  # Set up a dummy data database table for simulation calibration based on:    #
-  #  table = name of the database table to set up                              #
-  # Unlike in the other scripts, we don't drop the table if it exists already  #
-  # This allows the user to break up the script's execution over several runs  #
-  ##############################################################################
-  
-  fn_set_tst <- function(table) {
-    
-    # Import the dummy climatic data from the CSV file into a data table
-    dt_tst <- fread(file = paste(path_cli, cli_tst, sep = "/"), header = TRUE, colClasses = c("integer", "character", "factor", "factor", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "factor", "integer"))
 
-    # Connect to the database
-    db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
-    
-    # Build the query to drop the table, if it exists
-    db_qry <- paste("DROP TABLE IF EXISTS ", tolower(table), ";", sep = "")
-    
-    # Send the query to the database
-    db_res <- dbSendQuery(db_con, db_qry)
-    
-    # Release the database resource
-    dbClearResult(db_res)
-    
-    # Build a query to create the table using the same structure as the table holding the actual climatic variables
-    db_qry <- paste("CREATE TABLE ", tolower(table), " LIKE ", tolower(db_cli), ";", sep = " ")
-    
-    # Send the query to the database
-    db_res <- dbSendQuery(db_con, db_qry)
-    
-    # Release the database resource
-    dbClearResult(db_res)
-    
-    # Write the dummy data to the table
-    dbWriteTable(conn = db_con, name = tolower(table), value = dt_tst, append = TRUE, row.names = FALSE)
-    
-    # Disconnect from the database
-    dbDisconnect(db_con)
-    
-  }
-  
   ##############################################################################
   # Set up the database table to store the takeoff calculations based on:      #
   #  table = name of the database table to set up                              #
@@ -214,7 +151,7 @@ const <- list(
   fn_imp_act <- function(act) {
     
     # Import aircraft data from the CSV file into a data table
-    dt_act <- fread(file = paste(path_aer, aer_act, sep = "/"), header = TRUE, colClasses = c("character", "character", "factor", "integer", "numeric", "integer", "integer", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+    dt_act <- fread(file = paste(path_aer, aer_act, sep = "/"), header = TRUE, colClasses = c("character", "character", "factor", "integer", "numeric", "integer", "integer", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "integer", "numeric", "numeric"))
     
     # Return the data table filtered for the selected aircraft
     return(dt_act[type %in% act])
@@ -276,31 +213,66 @@ const <- list(
   }
   
   ##############################################################################
-  # Function fn_sim_spd                                                        #
-  # Calculate the takeoff speeds V in m/s based on:                            #
+  # Function fn_sim_vlo                                                        #
+  # Calculate the speed in m/s at which lift L equals weight W based on:       #
   #  W   = aircraft weight in N                                                #
   #  S   = aircraft wing area in m²                                            #
   #  CL  = dimensionless coefficient of lift in takeoff configuration          #
-  #  hdw = headwind in m/s at the active runway                                #
   #  rho = air density in kg/m³                                                #
   # Adapted from Blake (2009)                                                  #
   ##############################################################################
   
-  fn_sim_spd <- function(W, S, CL, rho, hdw) {
+  fn_sim_vlo <- function(W, S, cL, rho) {
     
-    # Calculate minimum takeoff speed in m/s and add the safety margin factor
-    Vtko <- sqrt( W / (.5 * S * rho * CL) ) * (const$reg_spd / 100)
+    # Calculate the speed in m/s at which lift L equals weight W and apply the safety margin factor
+    Vlof <- sqrt( W / (.5 * S * rho * cL) ) * (const$reg_spd / 100)
+    
+    # Return the result
+    return(Vlof)
+    
+  }
+  
+  ##############################################################################
+  # Function fn_sim_spd                                                        #
+  # Calculate the takeoff speeds V in m/s based on:                            #
+  #  W    = aircraft weight in N                                               #
+  #  S    = aircraft wing area in m²                                           #
+  #  CL   = dimensionless coefficient of lift in takeoff configuration         #
+  #  hdw  = headwind in m/s at the active runway                               #
+  #  Vlof = speed in m/s at which lift L equals weight W                       #
+  # Adapted from Blake (2009)                                                  #
+  ##############################################################################
+  
+  fn_sim_spd <- function(hdw, Vlof) {
     
     # Create airspeed intervals up to the minimum takeoff airspeed
-    Vtas <- seq(from = 0 + hdw, to = Vtko, length = const$int)
+    Vtas <- seq(from = 0 + hdw, to = Vlof, length = const$int)
     
     # Create groundspeed intervals up to the minimum takeoff airspeed
-    Vgnd <- seq(from = 0, to = Vtko - hdw, length = const$int)
+    Vgnd <- seq(from = 0, to = Vlof - hdw, length = const$int)
     
-    V <- list("tko" = Vtko, "tas" = Vtas, "gnd" = Vgnd)
+    V <- list("tas" = Vtas, "gnd" = Vgnd)
     
     # Return the results
     return(V)
+    
+  }
+  
+  ##############################################################################
+  # Function fn_sim_dyn                                                        #
+  # Calculate the dynamic pressure q in Pa based on:                           #
+  #  rho  = air density in kg/m³                                               #
+  #  Vtas = true airspeed in m/s                                               #
+  # Adapted from Blake (2009)                                                  #
+  ##############################################################################
+  
+  fn_sim_dyn <- function(rho, Vtas) {
+    
+    # Calculate the dynamic pressure
+    q <- .5 * rho * Vtas^2
+    
+    # Return the results
+    return(q)
     
   }
   
@@ -313,10 +285,10 @@ const <- list(
   #  CL   = Dimensionless coefficient of lift in takeoff configuration         #
   ##############################################################################
   
-  fn_sim_lft <- function(rho, Vtas, S, CL) {
+  fn_sim_lft <- function(q, S, CL) {
     
     # Calculate the lift force in N
-    L <- .5 * rho * Vtas^2 * S * CL
+    L <- q * S * CL
     
     # Return the results
     return(L)
@@ -332,10 +304,10 @@ const <- list(
   #  CD   = Dimensionless coefficient of drag in takeoff configuration         #
   ##############################################################################
   
-  fn_sim_drg <- function(rho, Vtas, S, CD) {
+  fn_sim_drg <- function(q, S, CD) {
     
     # Calculate the drag force in N
-    D <- .5 * rho * Vtas^2 * S * CD
+    D <- q * S * CD
     
     # Return the results
     return(D)
@@ -388,39 +360,21 @@ const <- list(
   }
   
   ##############################################################################
-  # Function fn_sim_dyn                                                        #
-  # Calculate the dynamic pressure q in Pa based on:                           #
-  #  rho  = air density in kg/m³                                               #
-  #  Vtas = true airspeed in m/s                                               #
-  # Adapted from Blake (2009)                                                  #
-  ##############################################################################
-  
-  fn_sim_dyn <- function(rho, Vtas) {
-    
-    # Calculate the dynamic pressure
-    q <- .5 * rho * Vtas^2
-    
-    # Return the results
-    return(q)
-    
-  }
-  
-  ##############################################################################
   # Function fn_sim_acc                                                        #
   # Calculate the acceleration a in m/s² based on:                             #
   #  W     = aircraft weight in N                                              #
   #  F     = propulsive force in N                                             #
-  #  CD    = dimensionless coefficient of drag                                 #
-  #  CL    = dimensionless coefficient of lift                                 #
+  #  cD    = dimensionless coefficient of drag                                 #
+  #  cL    = dimensionless coefficient of lift                                 #
   #  q     = dynamic pressure                                                  #
   #  S     = total wing area (incl. flaps/slats at takeoff) in m²              #
   # Adapted from Blake (2009)                                                  #
   ##############################################################################
   
-  fn_sim_acc <- function(W, F, CD, CL, q, S) {
+  fn_sim_acc <- function(W, F, cD, cL, q, S) {
     
     # Calculate the acceleration of the aircraft in m/s along the runway
-    a <- const$g / W * (F * 2 - (const$mu * W) - (CD - (const$mu * CL)) * (q * S) - (W * sin(const$theta)))
+    a <- const$g / W * (F * 2 - (const$mu * W) - (cD - (const$mu * cL)) * (q * S) - (W * sin(const$theta)))
     
     # Return the results
     return(a)
@@ -429,12 +383,14 @@ const <- list(
   
   ##############################################################################
   # Function fn_sim_dis                                                        #
-  # Calculate the horizontal takeoff distance in m                             #
+  # Calculate the horizontal takeoff distances in m based on:                  #
+  #  a    = acceleration in m/s²                                               #
+  #  Vgnd = groundspeed in m/s                                                 #
   # Adapted from Blake (2009)                                                  #
   ##############################################################################
   
   fn_sim_dis <- function(a, Vgnd) {
-  
+    
     # Calculate the average acceleration (i.e., midpoint acceleration) between two groundspeed increments
     a_avg <- frollmean(x = a, n = 2, fill = head(a, 1), align = "right")
     
@@ -450,109 +406,55 @@ const <- list(
     # Increment the cumulative (running total) distance accordingly
     cum <- cumsum(x = inc)
     
-    # Add the regulatory safety margin as per 14 CFR § 25.113 (1998)
-    todr <- cum * (const$reg_dis / 100)
+    # Calculate the airborne distance to screen height based on Gratton et al. (2020)
+    ad <- .3048 * (35 / cos(7.7))
     
-    # Assemble the results into a list
-    dist <- list("inc" = inc, "cum" = cum, "todr" = todr)
+    # Add the regulatory safety margin as per 14 CFR § 25.113 (1998)
+    todr <- (max(cum) + ad) * (const$reg_dis / 100)
     
     # Return the results
-    return(dist)
+    return(todr)
     
   }
   
   ##############################################################################
-  # Function ??????????                                                        #
+  # Function fn_sim_cff                                                        #
   # Calculate various drag parameters                                          #
   # Adapted from Sun et al. (2020)                                             #
   ##############################################################################
   
-  # fn_drag <- function(m, V, rho, cd0, k, path_angle) {
+  fn_sim_cff <- function(cD0, k, lambda_f, cfc, SfS, flap_angle, m, S, span) {
+
+    # Calculate the drag coefficient component attributable to flaps
+    delta_cD_flaps <- lambda_f * cfc^1.38 * SfS * sin(flap_angle * pi / 180)^2
     
-    # Convert airspeed to knots
-    # V <- V * ms_to_kt
+    # Calculate the drag coefficient component attributable to the landing gear
+    delta_cD_gear <- m * const$g * S * 3.16E-5 * m^-.215
     
-    # Convert altitude to feet
-    # alt <- fn_m_to_ft(alt)
+    # Calculate the total drag coefficient in non-clean configuration
+    cD0_total <- cD0 + delta_cD_flaps + delta_cD_gear
     
+    # Calculate the Oswald efficiency factor for the selected flap deflection (for wing-mounted engines)
+    delta_e_flaps <- .0026 * flap_angle
     
+    # Calculate the aspect ratio
+    ar <- span^2 / S
     
+    # Calculate the lift-induced coefficient k in non-clean configuration
+    k_total <- 1 / (1 / k + pi * ar * delta_e_flaps)
     
+    # Calculate the coefficient of lift in non-clean configuration
+    cL <- m * const$g / ( q * S )
     
+    # Calculate the coefficient of drag in non-clean configuration
+    cD <- cD0_total + k_total * cL^2
     
+    # Assemble the results
+    c <- list("D" = cD, "L" = cL)
     
+    # Return the results
+    return(c)
     
-    
-    
-    
-    
-    # gamma <- path_angle * pi / 180
-    # 
-    # S = 121
-    # 
-    # L <- m * g * cos(gamma)
-    # qS
-    # cL <- L /
-    # 
-    # cD <- cd0 + k + cl^2
-    # 
-    # D <- cd * qS
-    
-    
-    
-    
-    
-    
-  # }
-  # 
-  # fn_drag(79000, 150, 1.225, .017, .038, 0)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  }
 
 # EOF
