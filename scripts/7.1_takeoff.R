@@ -29,41 +29,28 @@ start_time <- Sys.time()
 # Clear the console
 cat("\014")
 
-################################################################################
-# Prepare the simulation                                                       #
-################################################################################
-  
-  # Create a database table with test data to calibrate the simulation
-  fn_set_tst(db_tst)
-  
-  # Create a database table to store the simulation outputs 
-  fn_set_tbl(db_tko)
-  
-  # Run the simulation on "live" or "test" climatic data
-  mode <- "test"
-    
-  # Import the simulation airports from the database
-  dt_apt <- fn_imp_apt(mode)
-  
-  # Choose which aircraft to simulate
-  act <- c("a320")
-  
-  # Return the aerodynamic and propulsive characteristics of the selected aircraft to a data table
-  dt_act <- fn_imp_act(act)
-  
+# Import the aircraft data
+dt_act <- fn_imp_act()
+
+# Create a database table to store the simulation outputs 
+fn_set_tbl(db_tko)
+
+# Import the simulation airports from the database
+dt_apt <- fn_imp_apt()
+
 ################################################################################
 # Define a function to simulate takeoffs at each airport                       #
 ################################################################################
 
-# For a given airport
+# For a given airport (one per cluster)
 fn_takeoff <- function(apt) {
   
   ##############################################################################
   # Import the simulation conditions from the database                         #
   ##############################################################################
   
-  # Retrieve the climatic observations
-  dt_smp <- fn_imp_obs(apt, mode)
+  # Retrieve the climatic observations at the current airport
+  dt_smp <- fn_imp_obs(apt)
 
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), " Worker ", Sys.getpid(), " started simulating ", nrow(dt_smp)," takeoffs at airport ", apt, "...", sep = ""))

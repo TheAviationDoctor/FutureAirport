@@ -39,7 +39,7 @@
 fn_imp_act <- function() {
   
   # Import the aircraft data from the CSV file into a data table
-  dt_act <- fread(file = paste(path_aer, aer_act, sep = "/"), header = TRUE, colClasses = c("character", "character", "factor", "integer", "numeric", "integer", "integer", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
+  dt_act <- fread(file = paste(path_aer, aer_act, sep = "/"), header = TRUE, colClasses = c("character", "character", "factor", "integer", "numeric", "integer", "integer", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"))
   
   # Filter for selected aircraft
   dt_act <- dt_act[type %in% sim$aircraft]
@@ -207,25 +207,25 @@ fn_set_tko <- function() {
 # Adapted from Sun et al. (2020)                                               #
 ################################################################################
 
-fn_sim_cd <- function(lambda_f, cfc, SfS, cD0, k, span, m, S, cL) {
+fn_sim_cd <- function(cL) {
   
   # Calculate the drag coefficient component attributable to flaps/slats in takeoff configuration
-  delta_cD_flaps <- lambda_f * cfc^1.38 * SfS * sin(sim$flap_angle * pi / 180)^2
+  delta_cD_flaps <- dt_act[, lambda_f] * dt_act[, cfc]^1.38 * dt_act[, SfS] * sin(sim$flap_angle * pi / 180)^2
   
   # Calculate the drag coefficient component attributable to the landing gear
-  delta_cD_gear <- m * sim$g / S * 3.16E-5 * m^-.215
+  delta_cD_gear <- dt_act[, m] * sim$g / dt_act[, S] * 3.16E-5 * dt_act[, m]^-.215
   
   # Calculate the total drag coefficient in non-clean configuration
-  cD0_total <- cD0 + delta_cD_flaps + delta_cD_gear
+  cD0_total <- dt_act[, cD0] + delta_cD_flaps + delta_cD_gear
   
   # Calculate the Oswald efficiency factor for the selected flap deflection (for wing-mounted engines)
   delta_e_flaps <- .0026 * sim$flap_angle
   
   # Calculate the aspect ratio
-  ar <- span^2 / S
+  ar <- dt_act[, span]^2 / dt_act[, S]
   
   # Calculate the lift-induced coefficient k in non-clean configuration
-  k_total <- 1 / (1 / k + pi * ar * delta_e_flaps)
+  k_total <- 1 / (1 / dt_act[, k] + pi * ar * delta_e_flaps)
   
   # Calculate the drag coefficient in non-clean configuration
   cD <- cD0_total + k_total * cL^2
@@ -284,11 +284,29 @@ fn_sim_vlo <- function(W, S, cL, rho) {
 
 fn_sim_spd <- function(hdw, Vlof) {
   
+  # Create a function to vectorize the default seq() base function
+  seq_vec <- Vectorize(seq.default, vectorize.args = c("from", "to"))
+  
   # Create airspeed intervals up to the minimum takeoff airspeed
-  Vtas <- seq(from = 0 + hdw, to = Vlof, length = sim$int)
+  # Vtas <- seq(from = 0 + hdw, to = Vlof, length = sim$int)
+  dt_out <- data.table(
+    Vgnd = "numeric",
+    Vtas = "numeric",
+    q    = "numeric",
+    L    = "numeric",
+    D    = "numeric",
+    Fmax = "numeric",
+    Frto = "numeric",
+    a    = "numeric"
+  )
+  
+  dt_out[, Vtas := seq_vec(from = 0 + hdw, to = Vlof, length = sim$int)]
+  # Vtas <- seq_vec(from = 0 + hdw, to = Vlof, length = sim$int)
+  # print(Vtas)
   
   # Create groundspeed intervals up to the minimum takeoff airspeed
-  Vgnd <- seq(from = 0, to = Vlof - hdw, length = sim$int)
+  # Vgnd <- seq(from = 0, to = Vlof - hdw, length = sim$int)
+  Vgnd <- seq_vec(from = 0, to = Vlof - hdw, length = sim$int)
   
   V <- list("tas" = Vtas, "gnd" = Vgnd)
   
@@ -430,7 +448,8 @@ fn_sim_acc <- function(W, F, cD, cL, q, S) {
 fn_sim_dis <- function(a, Vgnd) {
   
   # Calculate the average acceleration (i.e., midpoint acceleration) between two groundspeed increments
-  a_avg <- frollmean(x = a, n = 2, fill = head(a, 1), align = "right")
+  # a_avg <- frollmean(x = a, n = 2, fill = head(a, 1), align = "right")
+  a_avg <- frollmean(x = a, n = 2, fill = 0, align = "right")
   
   # Calculate the average groundspeed between two groundspeed increments
   Vgnd_avg <- frollmean(x = Vgnd, n = 2, fill = 0, align = "right")
@@ -509,6 +528,17 @@ fn_sim_tko <- function(m, S, cL, cD, n, bpr, slst, hdw, ps, rho, tas) {
   # Calculate the speed in m/s at which lift L equals weight W, based on the estimated cL
   Vlof <- fn_sim_vlo(W, S, cL, rho)
   
+  dt_out <- data.table(
+    Vgnd = "numeric",
+    Vtas = "numeric",
+    q    = "numeric",
+    L    = "numeric",
+    D    = "numeric",
+    Fmax = "numeric",
+    Frto = "numeric",
+    a    = "numeric"
+  )
+  
   # Calculate the takeoff speeds V in m/s
   V <- fn_sim_spd(hdw, Vlof)
   
@@ -529,8 +559,6 @@ fn_sim_tko <- function(m, S, cL, cD, n, bpr, slst, hdw, ps, rho, tas) {
   
   # Calculate the horizontal takeoff distance in m
   todr <- fn_sim_dis(a, V$gnd)
-  
-  return(todr)
   
 }
 

@@ -72,10 +72,10 @@ pop_thr <- 10^6
 nc_exps <- c("ssp126", "ssp245", "ssp370", "ssp585")
 
 ################################################################################
-# Takeoff simulation settings                                                  #
+# Takeoff simulation constants and settings                                    #
 ################################################################################
 
-const <- list(
+sim <- list(
   # Natural constants
   "g"          = 9.806665,    # Gravitational acceleration constant in m/s², assuming a non-oblate, non-rotating Earth (Blake, 2009; Daidzic, 2016)
   "ms_to_kt"   = 1.9438445,   # Factor to convert speed from m/s to kt
@@ -87,17 +87,17 @@ const <- list(
   "mu"         = .02,         # Dimensionless coefficient of friction for dry concrete/asphalt at the runway-tire interface (ESDU 85029, p. 32)
   "theta"      = 0L,          # Runway slope in °
   # Regulatory constants
-  "reg_spd"    = 100L,        # Percentage of the speed at which lift equals weight to consider as the minimum takeoff speed
   "reg_dis"    = 115L,        # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
-  "reg_rto"    = 0L,         # Maximum percentage of takeoff thrust reduction permissible FAA Advisory Circular 25-13 (1988)
+  "reg_rto"    = 25L,         # Maximum percentage of takeoff thrust reduction permissible FAA Advisory Circular 25-13 (1988)
   # Calibration constants
   "hurs"       = 0L,          # Sea-level relative humidity in % at ISA
   "ps"         = 101325,      # Sea-level air pressure in Pa at ISA
   "tas"        = 273.15,      # Sea-level air temperature in K at ISA
   "rho"        = 1.225,       # Sea-level air density in kg/m³ at ISA
   "hdw"        = 0L,          # Headwind in m/s
-  # Simulation constants
-  "flap_angle" = 15L,         # Flap deflection angle in takeoff configuration
+  # Simulation settings
+  "aircraft"   = c("A320"),   # Aircraft to simulate
+  "flap_angle" = 10L,         # Flap deflection angle in takeoff configuration
   "int"        = 10L          # Simulation resolution / number of integration steps
 )
 
