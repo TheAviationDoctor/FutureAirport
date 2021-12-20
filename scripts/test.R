@@ -1,47 +1,16 @@
-# Set air density under ISA
-rho <- 1.225
+# Define the function
 
-# Set iterations
-int <- 10
+fn_test <- function(i) {
 
-# Set headwind
-hdw <- 0
+  W <- 9.806665 * dt[i, m]
+  todr <- W / 2
 
-# Set mass
-m <- 78000
+}
 
-# Set wing surface area
-S <- 121
+# Load the data
 
-# Set gravitational constant
-g <- 9.806665
+dt <- fread("output.csv")
 
-# Set a speed range
-Vtas <- seq(from = 0 + hdw, to = 100, length = const$int)
+dt[, todr:= sapply(1:nrow(dt), fn_test)]
 
-# Calculate the dynamic pressure
-q <- .5 * rho * Vtas^2
-
-q
-
-# Calculate the coefficient of lift in non-clean configuration
-cL <- m * g / ( q * S )
-
-cL
-
-# Calculate lift for each speed
-L <- q * S * cL
-
-L
-
-# Calculate takeoff speed
-# Vtko <- sqrt( (m * g) / (.5 * S * rho * cL) )
-
-# Vtko
-
-q * cL
-
-plot(Vtas, q)
-
-
-
+dt

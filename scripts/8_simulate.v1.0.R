@@ -21,7 +21,7 @@ library(parallel)
 source("scripts/0_common.R")
 
 # Import the simulation functions
-source("scripts/6.0_functions.R")
+source("scripts/6_model.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -45,24 +45,23 @@ dt_apt <- fn_imp_apt()
 # For a given airport (one per cluster)
 fn_takeoff <- function(apt) {
   
+  # Output the worker's progress to the log file defined in makeCluster()
+  print(paste(Sys.time(), " Worker ", Sys.getpid(), " started simulating takeoffs at airport ", apt, "...", sep = ""))
+  
   ##############################################################################
-  # Import the simulation conditions from the database                         #
+  # Import the climatic observations from the database                         #
   ##############################################################################
   
   # Retrieve the climatic observations at the current airport
-  dt_smp <- fn_imp_obs(apt)
-
-  # Output the worker's progress to the log file defined in makeCluster()
-  print(paste(Sys.time(), " Worker ", Sys.getpid(), " started simulating ", nrow(dt_smp)," takeoffs at airport ", apt, "...", sep = ""))
+  dt <- fn_imp_obs(apt)
+  
+  # Merge the climatic observations with the aircraft data
   
   # Define a list to hold the data in each iteration of the loop
   tko_list <- list()
   
-  ##############################################################################
-  # For each climate observation at the current airport                        #
-  ##############################################################################
-  
-  for (i in 1:nrow(dt_smp)) {
+  # For each observation
+  for (i in 1:nrow(dt)) {
     
     ############################################################################
     # Simulate the takeoff from first principles                               #
@@ -104,19 +103,19 @@ fn_takeoff <- function(apt) {
       # Calculate the speed in m/s at which lift L equals weight W             #
       ##########################################################################
       
-      Vlof <- fn_sim_vlo(W, dt_act[, S], dt_act[, cL], dt_smp[i, rho])
+      Vlof <- fn_sim_vlo(W, dt_act[, S], dt_act[, cL], dt[i, rho])
       
       ##########################################################################
       # Calculate the takeoff speeds V in m/s                                  #
       ##########################################################################
       
-      V <- fn_sim_spd(W, dt_act[, S], dt_act[, cL], dt_smp[i, wnd_hdw])
+      V <- fn_sim_spd(W, dt_act[, S], dt_act[, cL], dt[i, wnd_hdw])
       
       ##########################################################################
       # Calculate the dynamic pressure q in Pa                                 #
       ##########################################################################
       
-      q <- fn_sim_dyn(dt_smp[i, rho], V$tas)
+      q <- fn_sim_dyn(dt[i, rho], V$tas)
       
       ##########################################################################
       # Calculate the lift force in N                                          #
@@ -134,7 +133,7 @@ fn_takeoff <- function(apt) {
       # Calculate the propulsive force F in N                                  #
       ##########################################################################
       
-      F <- fn_sim_thr(dt_act[, n], dt_act[, bpr], dt_act[, slst], dt_smp[i, ps], dt_smp[i, tas], V$tas, rto)
+      F <- fn_sim_thr(dt_act[, n], dt_act[, bpr], dt_act[, slst], dt[i, ps], dt[i, tas], V$tas, rto)
       
       ##########################################################################
       # Calculate the acceleration a in m/s²                                   #
@@ -155,7 +154,7 @@ fn_takeoff <- function(apt) {
       # Once TODR <= TODA, break out of the repeat loop                        #
       ##########################################################################
       
-      if (max(dis$todr) > dt_smp[i, toda]) {
+      if (max(dis$todr) > dt[i, toda]) {
         
         ifelse(rto > 0, rto <- rto - 1, m <- m - 1)
         
@@ -175,14 +174,14 @@ fn_takeoff <- function(apt) {
     # # Assemble the simulation outputs into a data table
     dt_out <- data.table(
       i        = i,                                     # Simulated takeoff number
-      obs      = dt_smp[i, obs],                        # Date and time of the simulated takeoff
-      # exp      = toupper(dt_smp[i, exp]),               # Climate experiment
+      obs      = dt[i, obs],                        # Date and time of the simulated takeoff
+      # exp      = toupper(dt[i, exp]),               # Climate experiment
       icao     = apt,                                   # Airport ICAO code
       act      = toupper(dt_act[, type]),               # Aircraft type
-      # rwy      = dt_smp[i, rwy],                        # Active runway
-      hdw      = round(dt_smp[i, wnd_hdw], digits = 1), # Headwind in m/s
-      tas      = round(dt_smp[i, tas], digits = 1),     # Outside air temperature in K
-      ps       = round(dt_smp[i, ps], digits = 1),      # Barometric pressure in Pa
+      # rwy      = dt[i, rwy],                        # Active runway
+      hdw      = round(dt[i, wnd_hdw], digits = 1), # Headwind in m/s
+      tas      = round(dt[i, tas], digits = 1),     # Outside air temperature in K
+      ps       = round(dt[i, ps], digits = 1),      # Barometric pressure in Pa
       Vgnd     = round(V$gnd, digits = 1),              # Groundspeed in m/s
       Vtas     = round(V$tas, digits = 1),              # Airspeed in m/s
       Fmax     = round(F$max, digits = 1),              # Max propulsive force in N
@@ -199,7 +198,7 @@ fn_takeoff <- function(apt) {
       inc      = round(dis$inc, digits = 1),            # Incremental takeoff distance in m
       cum      = round(dis$cum, digits = 1),            # Cumulative takeoff distance in m
       todr     = round(dis$todr, digits = 1),           # Regulatory takeoff distance required in m
-      toda     = dt_smp[i, toda]                        # Takeoff distance available in m
+      toda     = dt[i, toda]                        # Takeoff distance available in m
     )
 
     # Set a large column width to avoid table wrap in the log file
@@ -215,9 +214,9 @@ fn_takeoff <- function(apt) {
     ############################################################################
     
     dt_res <- data.table(
-      obs      = dt_smp[i, obs],                 # Date and time of the simulated takeoff
+      obs      = dt[i, obs],                 # Date and time of the simulated takeoff
       icao     = apt,                            # Airport ICAO code
-      exp      = dt_smp[i, exp],                 # Climate experiment
+      exp      = dt[i, exp],                 # Climate experiment
       act      = dt_act[, type],                 # Aircraft type
       rto      = rto,                            # Percentage of takeoff thrust reduction
       rem      = dt_act[, m] - m,                # Mass in kg of payload that had to be removed from the aircraft
@@ -259,7 +258,7 @@ fn_takeoff <- function(apt) {
   ##############################################################################
   
   # Set the number of workers to use in the cluster
-  cores <- 12
+  cores <- 6
   
   # Set the log file for the cluster defined in 0_common.R
   outfile <- log_6
@@ -277,7 +276,7 @@ fn_takeoff <- function(apt) {
   })
   
   # Pass the required variables from the main scope to the workers' scope
-  clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "db_tko", "db_tst", "dt_act", "const", "mode", "fn_imp_obs", "fn_sim_wgt", "fn_sim_cff", "fn_sim_spd", "fn_sim_lft", "fn_sim_drg", "fn_sim_thr", "fn_sim_dyn", "fn_sim_acc", "fn_sim_dis"))
+  clusterExport(cl, c("db_cnf", "db_grp", "db_imp", "db_cli", "db_tko", "db_tst", "dt_act", "fn_imp_obs", "fn_sim_wgt", "fn_sim_cff", "fn_sim_spd", "fn_sim_lft", "fn_sim_drg", "fn_sim_thr", "fn_sim_dyn", "fn_sim_acc", "fn_sim_dis"))
   
 # LIMIT NUMBER OF AIRPORTS FOR TESTING ONLY - REMOVE BEFORE GO-LIVE
 dt_apt <- head(dt_apt, 1)

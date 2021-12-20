@@ -53,25 +53,6 @@ fn_imp_act <- function() {
 }
 
 ##############################################################################
-# Function fn_imp_cal                                                        #
-# Import the calibration data from the CSV file                              #
-# Calibration data is taken from the respective OEM aircraft manuals         #
-##############################################################################
-
-fn_imp_cal <- function() {
-  
-  # Import the takeoff performance calibration data from the CSV file into a data table
-  dt_cal <- fread(file = paste(path_aer, aer_cal, sep = "/"), header = TRUE, colClasses = c("factor", "numeric", "numeric"))
-  
-  # Filter for selected aircraft
-  dt_cal <- dt_cal[type %in% sim$aircraft]
-  
-  # Remove rows that do not have complete corresponding aircraft data
-  dt_cal <- dt_cal[type %in% dt_act[, type]]
-  
-}
-
-##############################################################################
 # Function fn_imp_apt                                                        #
 # Import the simulation airports from the database                           #
 ##############################################################################
@@ -148,7 +129,7 @@ fn_imp_apt <- function() {
 #  apt  = airport's four-letter ICAO code                                    #
 ##############################################################################
 
-fn_imp_obs <- function(apt, mode) {
+fn_imp_obs <- function(apt) {
 
   # Connect to the database
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
@@ -203,29 +184,30 @@ fn_set_tko <- function() {
 ################################################################################
 
 ################################################################################
-# Calculate the total (lift-independent + lift-induced) drag coefficient cD    #
+# Function fn_sim_cd                                                           #
+# Calculate the dimensionless drag coefficient cD                              #
 # Adapted from Sun et al. (2020)                                               #
 ################################################################################
 
-fn_sim_cd <- function(lambda_f, cfc, SfS, cD0, k, span, m, S, cL) {
+fn_sim_cd <- function(dt, cL) {
   
   # Calculate the drag coefficient component attributable to flaps/slats in takeoff configuration
-  delta_cD_flaps <- lambda_f * cfc^1.38 * SfS * sin(sim$flap_angle * pi / 180)^2
+  delta_cD_flaps <- dt[, lambda_f] * dt[, cfc]^1.38 * dt[, SfS] * sin(sim$flap_angle * pi / 180)^2
   
   # Calculate the drag coefficient component attributable to the landing gear
-  delta_cD_gear <- m * sim$g / S * 3.16E-5 * m^-.215
+  delta_cD_gear <- dt[, m] * sim$g / dt[, S] * 3.16E-5 * dt[, m]^-.215
   
   # Calculate the total drag coefficient in non-clean configuration
-  cD0_total <- cD0 + delta_cD_flaps + delta_cD_gear
+  cD0_total <- dt[, cD0] + delta_cD_flaps + delta_cD_gear
   
   # Calculate the Oswald efficiency factor for the selected flap deflection (for wing-mounted engines)
   delta_e_flaps <- .0026 * sim$flap_angle
   
   # Calculate the aspect ratio
-  ar <- span^2 / S
+  ar <- dt[, span]^2 / dt[, S]
   
   # Calculate the lift-induced coefficient k in non-clean configuration
-  k_total <- 1 / (1 / k + pi * ar * delta_e_flaps)
+  k_total <- 1 / (1 / dt[, k] + pi * ar * delta_e_flaps)
   
   # Calculate the drag coefficient in non-clean configuration
   cD <- cD0_total + k_total * cL^2
@@ -235,11 +217,11 @@ fn_sim_cd <- function(lambda_f, cfc, SfS, cD0, k, span, m, S, cL) {
   
 }
 
-##############################################################################
-# Function fn_sim_wgt                                                        #
-# Calculate the weight force W in N based on:                                #
-#  m   = aircraft mass in kg                                                 #
-##############################################################################
+################################################################################
+# Function fn_sim_wgt                                                          #
+# Calculate the weight force W in N based on:                                  #
+#  m   = aircraft mass in kg                                                   #
+################################################################################
 
 fn_sim_wgt <- function(m) {
   
@@ -251,17 +233,17 @@ fn_sim_wgt <- function(m) {
   
 }
 
-##############################################################################
-# Function fn_sim_vlo                                                        #
-# Calculate the speed in m/s at which lift L equals weight W based on:       #
-#  W   = aircraft weight in N                                                #
-#  rho = air density in kg/m³                                                #
-#  S   = total wing surface area in takeoff configuration in m²              #
-#  CL  = dimensionless coefficient of lift in takeoff configuration          #
-# Adapted from Blake (2009)                                                  #
-##############################################################################
+################################################################################
+# Function fn_sim_vlo                                                          #
+# Calculate the speed in m/s at which lift L equals weight W based on:         #
+#  W   = aircraft weight in N                                                  #
+#  S   = wing surface area in m²                                               #
+#  cL  = dimensionless lift coefficient                                        #
+#  rho = air density in kg/m³                                                  #
+# Adapted from Blake (2009)                                                    #
+################################################################################
 
-fn_sim_vlo <- function(W, S, cL, rho) {
+fn_sim_vlo <- function(W, rho, S, cL) {
   
   # Calculate the speed in m/s at which lift L equals weight W
   Vlof <- sqrt( W / (.5 * rho * S * cL) )
@@ -271,16 +253,16 @@ fn_sim_vlo <- function(W, S, cL, rho) {
   
 }
 
-##############################################################################
-# Function fn_sim_spd                                                        #
-# Calculate the takeoff speeds V in m/s based on:                            #
-#  W    = aircraft weight in N                                               #
-#  S    = total wing surface area in takeoff configuration in m²             #
-#  CL   = dimensionless coefficient of lift in takeoff configuration         #
-#  hdw  = headwind in m/s at the active runway                               #
-#  Vlof = speed in m/s at which lift L equals weight W                       #
-# Adapted from Blake (2009)                                                  #
-##############################################################################
+################################################################################
+# Function fn_sim_spd                                                          #
+# Calculate the takeoff speeds V in m/s based on:                              #
+#  W    = aircraft weight in N                                                 #
+#  S    = wing surface area in m²                                              #
+#  cL   = dimensionless lift coefficient                                       #
+#  hdw  = headwind in m/s at the active runway                                 #
+#  Vlof = speed in m/s at which lift L equals weight W                         #
+# Adapted from Blake (2009)                                                    #
+################################################################################
 
 fn_sim_spd <- function(hdw, Vlof) {
   
@@ -297,13 +279,13 @@ fn_sim_spd <- function(hdw, Vlof) {
   
 }
 
-##############################################################################
-# Function fn_sim_dyn                                                        #
-# Calculate the dynamic pressure q in Pa based on:                           #
-#  rho  = air density in kg/m³                                               #
-#  Vtas = true airspeed in m/s                                               #
-# Adapted from Blake (2009)                                                  #
-##############################################################################
+################################################################################
+# Function fn_sim_dyn                                                          #
+# Calculate the dynamic pressure q in Pa based on:                             #
+#  rho  = air density in kg/m³                                                 #
+#  Vtas = true airspeed in m/s                                                 #
+# Adapted from Blake (2009)                                                    #
+################################################################################
 
 fn_sim_dyn <- function(rho, Vtas) {
   
@@ -315,52 +297,54 @@ fn_sim_dyn <- function(rho, Vtas) {
   
 }
 
-##############################################################################
-# Function fn_sim_lft                                                        #
-# Calculate the lift force L in N based on:                                  #
-#  rho  = air density in kg/m³                                               #
-#  Vtas = true airspeed in m/s                                               #
-#  S    = total wing surface area in takeoff configuration in m²             #
-#  CL   = Dimensionless coefficient of lift in takeoff configuration         #
-##############################################################################
+################################################################################
+# Function fn_sim_lft                                                          #
+# Calculate the lift force L in N based on:                                    #
+#  q    = dynamic pressure in Pa                                               #
+#  Vtas = true airspeed in m/s                                                 #
+#  S    = wing surface area in m²                                              #
+#  cL   = dimensionless lift coefficient                                       #
+################################################################################
 
-fn_sim_lft <- function(q, S, CL) {
+fn_sim_lft <- function(q, S, cL) {
   
   # Calculate the lift force in N
-  L <- q * S * CL
+  L <- q * S * cL
   
   # Return the results
   return(L)
   
 }
 
-##############################################################################
-# Function fn_sim_drg                                                        #
-# Calculate the drag force D in N based on:                                  #
-#  rho  = air density in kg/m³                                               #
-#  Vtas = true airspeed in m/s                                               #
-#  S    = total wing surface area in takeoff configuration in m²             #
-#  CD   = Dimensionless coefficient of drag in takeoff configuration         #
-##############################################################################
+################################################################################
+# Function fn_sim_drg                                                          #
+# Calculate the drag force D in N based on:                                    #
+#  q  = dynamic pressure in Pa                                                 #
+#  S  = wing surface area in m²                                                #
+#  cD = dimensionless drag coefficient                                         #
+################################################################################
 
-fn_sim_drg <- function(q, S, CD) {
+fn_sim_drg <- function(q, S, cD) {
   
   # Calculate the drag force in N
-  D <- q * S * CD
+  D <- q * S * cD
   
   # Return the results
   return(D)
   
 }
 
-##############################################################################
-# Function fn_sim_thr                                                        #
-# Calculate the propulsive force F in N based on:                            #
-#  n    = engine count in units                                              #
-#  bpr  = engine bypass ratio                                                #
-#  slst = engine sea-level static maximum thrust in N (per engine)           #
-# Adapted from Sun et al. (2020)                                             #
-##############################################################################
+################################################################################
+# Function fn_sim_thr                                                          #
+# Calculate the propulsive force F in N based on:                              #
+#  n    = engine count in units                                                #
+#  bpr  = engine bypass ratio                                                  #
+#  slst = engine sea-level static maximum thrust in N (per engine)             #
+#  ps   = air pressure in Pa                                                   #
+#  tas  = air temperature in K                                                 #
+#  Vtas = airspeed in m/s                                                      #
+# Adapted from Sun et al. (2020)                                               #
+################################################################################
 
 fn_sim_thr <- function(n, bpr, slst, ps, tas, Vtas) {
   
@@ -397,17 +381,17 @@ fn_sim_thr <- function(n, bpr, slst, ps, tas, Vtas) {
   
 }
 
-##############################################################################
-# Function fn_sim_acc                                                        #
-# Calculate the acceleration a in m/s² based on:                             #
-#  W     = aircraft weight in N                                              #
-#  F     = propulsive force in N                                             #
-#  cD    = dimensionless coefficient of drag                                 #
-#  cL    = dimensionless coefficient of lift                                 #
-#  q     = dynamic pressure                                                  #
-#  S     = total wing area (incl. flaps/slats at takeoff) in m²              #
-# Adapted from Blake (2009)                                                  #
-##############################################################################
+################################################################################
+# Function fn_sim_acc                                                          #
+# Calculate the acceleration a in m/s² based on:                               #
+#  W  = aircraft weight in N                                                   #
+#  F  = propulsive force in N                                                  #
+#  cD = dimensionless drag coefficient                                         #
+#  cL = dimensionless lift coefficient                                         #
+#  q  = dynamic pressure in Pa                                                 #
+#  S  = wing surface area in m²                                                #
+# Adapted from Blake (2009)                                                    #
+################################################################################
 
 fn_sim_acc <- function(W, F, cD, cL, q, S) {
   
@@ -419,13 +403,13 @@ fn_sim_acc <- function(W, F, cD, cL, q, S) {
   
 }
 
-##############################################################################
-# Function fn_sim_dis                                                        #
-# Calculate the horizontal takeoff distances in m based on:                  #
-#  a    = acceleration in m/s²                                               #
-#  Vgnd = groundspeed in m/s                                                 #
-# Adapted from Blake (2009)                                                  #
-##############################################################################
+################################################################################
+# Function fn_sim_dis                                                          #
+# Calculate the horizontal takeoff distances in m based on:                    #
+#  a    = acceleration in m/s²                                                 #
+#  Vgnd = groundspeed in m/s                                                   #
+# Adapted from Blake (2009)                                                    #
+################################################################################
 
 fn_sim_dis <- function(a, Vgnd) {
   
@@ -456,82 +440,91 @@ fn_sim_dis <- function(a, Vgnd) {
   
 }
 
-# ##############################################################################
-# # Function fn_sim_cff                                                        #
-# # Calculate various drag parameters                                          #
-# # Adapted from Sun et al. (2020)                                             #
-# ##############################################################################
-# 
-# fn_sim_cff <- function(cD0, k, lambda_f, cfc, SfS, flap_angle, m, S, span) {
+################################################################################
+# Function fn_sim_tko                                                          #
+# Wrapper function for the takeoff simulation based on:                        #
+#  m    = aircraft mass in kg                                                  #
+#  S    = wing surface area in m²                                              #
+#  cL   = dimensionless coefficient of lift                                    #
+#  cD   = dimensionless coefficient of drag                                    #
+#  n    = engine count in units                                                #
+#  bpr  = engine bypass ratio                                                  #
+#  slst = engine sea-level static maximum thrust in N (per engine)             #
+#  hdw  = headwind in m/s                                                      #
+#  ps   = air pressure in Pa                                                   #
+#  rho  = air density in kg/m³                                                 #
+#  tas  = air temperature in K                                                 #
+################################################################################
+
+# fn_sim_tko <- function(m, S, cL, cD, n, bpr, slst, hdw, ps, rho, tas) {
 #   
-#   # Calculate the drag coefficient component attributable to flaps
-#   delta_cD_flaps <- lambda_f * cfc^1.38 * SfS * sin(flap_angle * pi / 180)^2
+#   # Calculate the weight force in N
+#   W <- fn_sim_wgt(m)
 #   
-#   # Calculate the drag coefficient component attributable to the landing gear
-#   delta_cD_gear <- m * sim$g * S * 3.16E-5 * m^-.215
+#   # Calculate the speed in m/s at which lift L equals weight W, based on the estimated cL
+#   Vlof <- fn_sim_vlo(W, S, cL, rho)
 #   
-#   # Calculate the total drag coefficient in non-clean configuration
-#   cD0_total <- cD0 + delta_cD_flaps + delta_cD_gear
+#   # Calculate the takeoff speeds V in m/s
+#   V <- fn_sim_spd(hdw, Vlof)
 #   
-#   # Calculate the Oswald efficiency factor for the selected flap deflection (for wing-mounted engines)
-#   delta_e_flaps <- .0026 * flap_angle
+#   # Calculate the dynamic pressure q in Pa
+#   q <- fn_sim_dyn(rho, V$tas)
 #   
-#   # Calculate the aspect ratio
-#   ar <- span^2 / S
+#   # Calculate the lift force in N
+#   L <- fn_sim_lft(q, S, cL)
 #   
-#   # Calculate the lift-induced coefficient k in non-clean configuration
-#   k_total <- 1 / (1 / k + pi * ar * delta_e_flaps)
+#   # Calculate the drag force in N
+#   D <- fn_sim_drg(q, S, cD)
 #   
-#   # Calculate the coefficient of lift in non-clean configuration
-#   cL <- m * sim$g / ( q * S )
+#   # Calculate the propulsive force F in N
+#   F <- fn_sim_thr(n, bpr, slst, ps, tas, V$tas)
 #   
-#   # Calculate the coefficient of drag in non-clean configuration
-#   cD <- cD0_total + k_total * cL^2
+#   # Calculate the acceleration a in m/s² up to liftoff
+#   a <- fn_sim_acc(W, F$rto, cD, cL, q, S)
 #   
-#   # Assemble the results
-#   c <- list("D" = cD, "L" = cL)
+#   # Calculate the horizontal takeoff distance in m
+#   todr <- fn_sim_dis(a, V$gnd)
 #   
-#   # Return the results
-#   return(c)
+#   return(todr)
 #   
 # }
 
-##############################################################################
-# Function fn_sim_tko                                                        #
-# Wrapper function for the takeoff simulation                                #
-##############################################################################
+# TEST FUNCTIONS
 
-fn_sim_tko <- function(m, S, cL, cD, n, bpr, slst, hdw, ps, rho, tas) {
-  
+# NEEDS A FUNCTION TO FIRST ASSEMBLE THE DATA TO ITERATE THROUGH
+# THEN APPLY THE TKO FUNCTION TO THAT DATA
+
+fn_sim_tko <- function(dt) {
+
   # Calculate the weight force in N
-  W <- fn_sim_wgt(m)
-  
+  W <- fn_sim_wgt(dt[, m])
+
   # Calculate the speed in m/s at which lift L equals weight W, based on the estimated cL
-  Vlof <- fn_sim_vlo(W, S, cL, rho)
-  
+  Vlof <- fn_sim_vlo(W, dt[, S], dt[, cL], dt[, rho])
+
   # Calculate the takeoff speeds V in m/s
-  V <- fn_sim_spd(hdw, Vlof)
-  
+  V <- fn_sim_spd(dt[, hdw], Vlof)
+
   # Calculate the dynamic pressure q in Pa
-  q <- fn_sim_dyn(rho, V$tas)
-  
+  q <- fn_sim_dyn(dt[, rho], V$tas)
+
   # Calculate the lift force in N
-  L <- fn_sim_lft(q, S, cL)
-  
+  L <- fn_sim_lft(q, dt[, S], dt[, cL])
+
   # Calculate the drag force in N
-  D <- fn_sim_drg(q, S, cD)
-  
+  D <- fn_sim_drg(q, dt[, S], dt[, cD])
+
   # Calculate the propulsive force F in N
-  F <- fn_sim_thr(n, bpr, slst, ps, tas, V$tas)
-  
+  F <- fn_sim_thr(dt[, n], dt[, bpr], dt[, slst], dt[, ps], dt[, tas], V$tas)
+
   # Calculate the acceleration a in m/s² up to liftoff
-  a <- fn_sim_acc(W, F$rto, cD, cL, q, S)
-  
+  a <- fn_sim_acc(W, F$rto, dt[, cD], dt[, cL], q, dt[, S])
+
   # Calculate the horizontal takeoff distance in m
   todr <- fn_sim_dis(a, V$gnd)
-  
+
   return(todr)
-  
+
 }
 
 # EOF

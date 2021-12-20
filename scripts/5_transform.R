@@ -69,7 +69,7 @@ db_res <- dbSendQuery(db_con, db_qry)
 dbClearResult(db_res)
 
 # Build the query to create the table
-db_qry <- paste("CREATE TABLE", tolower(db_cli), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, hurs FLOAT NOT NULL, ps FLOAT NOT NULL, tas FLOAT NOT NULL, uas FLOAT NOT NULL, vas FLOAT NOT NULL, rho FLOAT NOT NULL, wnd_dir FLOAT NOT NULL, wnd_spd FLOAT NOT NULL, wnd_hdw FLOAT NOT NULL, rwy CHAR(5) NOT NULL, toda SMALLINT NOT NULL, PRIMARY KEY (id));", sep = " ")
+db_qry <- paste("CREATE TABLE", tolower(db_cli), "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL, icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, hurs FLOAT NOT NULL, ps FLOAT NOT NULL, tas FLOAT NOT NULL, uas FLOAT NOT NULL, vas FLOAT NOT NULL, rho FLOAT NOT NULL, wnd_dir FLOAT NOT NULL, wnd_spd FLOAT NOT NULL, hdw FLOAT NOT NULL, rwy CHAR(5) NOT NULL, toda SMALLINT NOT NULL, PRIMARY KEY (id));", sep = " ")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
@@ -159,17 +159,17 @@ fn_transform <- function(apt) {
   dt_nc[, wnd_dir := (180 + (180 / pi) * atan2(uas, vas)) %% 360]
   
   # Calculate and write each runway's headwind speed (in m/s) to a new column
-  dt_nc[, wnd_hdw := wnd_spd * cos(abs(hdg - wnd_dir) * pi / 180)]
+  dt_nc[, hdw := wnd_spd * cos(abs(hdg - wnd_dir) * pi / 180)]
   
   # Keep only the runway with the maximum headwind speed (presumed to be the active runway) for each observation and experiment
-  dt_nc <- dt_nc[, .SD[which.max(wnd_hdw)], by = .(obs, exp)]
+  dt_nc <- dt_nc[, .SD[which.max(hdw)], by = .(obs, exp)]
   
   ##############################################################################
   # Write the data in tidy format to the database                              #
   ##############################################################################
   
   # Select which columns to write to the database and in which order
-  cols <- c("obs", "icao", "exp", "hurs", "ps", "tas", "uas", "vas", "rho", "wnd_dir", "wnd_spd", "wnd_hdw", "rwy", "toda")
+  cols <- c("obs", "icao", "exp", "hurs", "ps", "tas", "uas", "vas", "rho", "wnd_dir", "wnd_spd", "hdw", "rwy", "toda")
     
   # Write the data
   # Here we use the deprecated RMySQL::MySQL() driver instead of the newer RMariaDB::MariaDB()) driver because it was found to be ~2.8 times faster here
