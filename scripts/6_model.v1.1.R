@@ -31,7 +31,7 @@ fn_todr <- function(dt) {
   ##############################################################################
   
   Vlof <- sqrt(dt[, W] / (.5 * dt[, rho] * dt[, S] * dt[, cL]))
-
+  
   # Create airspeed intervals up to the minimum takeoff airspeed
   Vtas <- seq(from = 0 + dt[, hdw], to = Vlof, length = sim$int)
   
