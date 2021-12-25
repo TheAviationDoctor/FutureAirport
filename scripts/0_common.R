@@ -1,14 +1,14 @@
-################################################################################
+#===============================================================================
 #    NAME: scripts/0_common.R                                                  #
 #   INPUT: None                                                                #
 # ACTIONS: Set common settings used across the scripts                         #
 #  OUTPUT: Set of global constants loaded into R's environment                 #
 # RUNTIME: <1 second on the researcher's config (https://bit.ly/3ChCBAP)       #
-################################################################################
+#===============================================================================
 
-################################################################################
+#===============================================================================
 # Project directories                                                          #
-################################################################################
+#===============================================================================
 
 # Directory paths
 path_aer <- "data/aer" # Aeronautical data (aircraft and engines)
@@ -17,9 +17,9 @@ path_pop <- "data/pop" # Population data (airports and runways)
 path_cli <- "data/cli" # Climate data (from CMIP6)
 path_plt <- "plots"    # Generated plots
 
-################################################################################
+#===============================================================================
 # Project files                                                                #
-################################################################################
+#===============================================================================
 
 # File names
 aer_act <- "aircraft.csv"    # Aircraft characteristics
@@ -29,18 +29,18 @@ pop_rwy <- "runways.csv"     # Runways
 pop_tra <- "traffic.csv"     # Airport traffic
 cli_esg <- "esgf.csv"        # Output of the ESGF search
 
-################################################################################
+#===============================================================================
 # Log files                                                                    #
-################################################################################
+#===============================================================================
 
 log_4 <- "logs/4_import.log"    # For 4_import.R
 log_5 <- "logs/5_transform.log" # For 5_transform.R
 log_7 <- "logs/7_calibrate.log" # For 7_calibrate.R
 log_8 <- "logs/8_simulate.log"  # For 8_simulate.R
 
-################################################################################
+#===============================================================================
 # Database parameters                                                          #
-################################################################################
+#===============================================================================
 
 # Set the file name that contains the database connection parameters
 db_cnf <- ".my.cnf"
@@ -57,23 +57,23 @@ db_imp <- "imp" # Climate data imported from the NetCDF files in long format res
 db_pop <- "pop" # Population and sample airports resulting from 1_population.R
 db_tko <- "tko" # Takeoff performance calculation outputs resulting from 6_takeoff.R
 
-################################################################################
+#===============================================================================
 # Airport sample settings                                                      #
-################################################################################
+#===============================================================================
 
 # Airport traffic threshold for the sample (in passengers per annum)
 pop_thr <- 10^6
 
-################################################################################
+#===============================================================================
 # Climate settings                                                             #
-################################################################################
+#===============================================================================
 
 # CMIP6 experiments (Shared Socioeconomic Pathways, or SSPs)
 nc_exps <- c("ssp126", "ssp245", "ssp370", "ssp585")
 
-################################################################################
+#===============================================================================
 # Takeoff simulation constants and settings                                    #
-################################################################################
+#===============================================================================
 
 sim <- list(
   # Natural constants
@@ -87,23 +87,25 @@ sim <- list(
   "mu"          = .02,         # Dimensionless coefficient of friction for dry concrete/asphalt at the runway-tire interface (ESDU 85029, p. 32)
   "theta"       = 0L,          # Runway slope in °
   # Regulatory constants
-  "reg_dis"     = 115L,        # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
-  "reg_rto"     = 25L,         # Maximum percentage of takeoff thrust reduction permissible FAA Advisory Circular 25-13 (1988)
+  "sim_dis"     = 115L,        # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
+  "sim_rto"     = 25L,         # Maximum percentage of takeoff thrust reduction permissible FAA Advisory Circular 25-13 (1988)
+  "cal_dis"     = 100L,        # Calibrated takeoff data are based on physical, not regulatory distances
+  "cal_rto"     = 0L,          # Calibrated takeoff data are based on TOGA
   # Calibration constants
-  "hurs"        = 0L,          # Sea-level relative humidity in % at ISA
-  "ps"          = 101325,      # Sea-level air pressure in Pa at ISA
-  "tas"         = 273.15,      # Sea-level air temperature in K at ISA
-  "rho"         = 1.225,       # Sea-level air density in kg/m³ at ISA
-  "hdw"         = 0L,          # Headwind in m/s
+  "cal_hurs"    = 0L,          # Sea-level relative humidity in % at ISA
+  "cal_ps"      = 101325,      # Sea-level air pressure in Pa at ISA
+  "cal_tas"     = 273.15,      # Sea-level air temperature in K at ISA
+  "cal_rho"     = 1.225,       # Sea-level air density in kg/m³ at ISA
+  "cal_hdw"     = 0L,          # Headwind in m/s
   # Simulation settings
   "flap_angle"  = 10L,         # Flap deflection angle in takeoff configuration
   "climb_angle" = 7.7,         # Average climb angle to screen height (from Gratton et al., 2020)
   "int"         = 10L          # Simulation resolution / number of integration steps
 )
 
-################################################################################
+#===============================================================================
 # References                                                                   #
-################################################################################
+#===============================================================================
 
 # Airbus (2020). A320 Aircraft Characteristics, Airport And Maintenance Planning.
 # Boeing (2018). 787 Airplane Characteristics for Airport Planning.

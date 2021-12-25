@@ -117,8 +117,11 @@ cores <- 8
   # Set the aircraft weight in N based upon the starting mass
   dt[, W := sim$g * m]
   
-  # Set the takeoff thrust reduction to zero (calibration was done at TOGA)
-  dt[, rto := 0L]
+  # Set the takeoff thrust reduction to its calibration value
+  dt[, rto := sim$cal_rto]
+  
+  # Set the regulatory margin for takeoff distance to its calibration value
+  dt[, dis := sim$cal_dis]
   
   # Initialize columns for the lift and drag coefficients
   dt[, cL := 0]
@@ -131,7 +134,7 @@ cores <- 8
   # FOR TESTING ONLY
   # Original values before interpolation
   dt <- dt[m %% 250 == 0]
-  dt <- head(dt, 50))
+  dt <- head(dt, 50)
   
 #===============================================================================
 # Define calibration functions
@@ -146,7 +149,7 @@ cores <- 8
     
     # TEST
     cal_cL <- .6
-    
+
     # Save the assumed lift coefficient to the data table
     dt[, cL := cal_cL]
     
@@ -170,9 +173,9 @@ cores <- 8
     
     # Calculate the total drag coefficient in non-clean configuration
     dt[, cD := cD0_total + k_total * cL^2]
-    
-    ############################
-    
+
+    # ############################
+    # 
     # dt[, Vlof := sqrt(W / (.5 * rho * S * cL))]
     # 
     # # Create airspeed intervals up to the minimum takeoff airspeed
@@ -251,7 +254,8 @@ cores <- 8
     ############################
     
     # Save the TODR to the data table rounded to the nearest greater integer
-    dt[, todr_sim := fn_todr(dt)]
+    fn_todr(dt)
+    # dt[, todr_new := fn_todr(dt)]
     
     # Save the ratio of cD over cL for verification purposes
     dt[, ratio := cD / cL]

@@ -1,16 +1,15 @@
-################################################################################
-#    NAME: scripts/7_simulate.R                                                #
-#   INPUT: 442,769,456 rows from database table cli created in 5_transform.R   #
-# ACTIONS: Estimate relationship between thrust and airspeed from Blake (2009) #
-#          Calculate the takeoff distance required (TODR)                      #
-#          Write the resulting TODR to the database table cli                  #
-#  OUTPUT: 442,769,456 rows of database table tko containing takeoff data      #
-# RUNTIME: ~X hours on the researcher's config (https://bit.ly/3ChCBAP)        #
-################################################################################
+#===============================================================================
+#    NAME: scripts/8_simulate.R
+#   INPUT: 442,769,456 rows from database table cli created in 5_transform.R
+# ACTIONS: Perform simulated takeoffs and return the takeoff distance required
+#          Write the resulting TODR to the database table cli
+#  OUTPUT: 442,769,456 rows of database table tko containing takeoff data
+# RUNTIME: ~X hours on the researcher's config (https://bit.ly/3ChCBAP)
+#===============================================================================
 
-################################################################################
-# Housekeeping                                                                 #
-################################################################################
+#===============================================================================
+# Housekeeping
+#===============================================================================
 
 # Load required libraries
 library(data.table)
@@ -21,7 +20,7 @@ library(parallel)
 source("scripts/0_common.R")
 
 # Import the simulation functions
-source("scripts/6_model.v1.1.R")
+source("scripts/6_model.v1.4.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -29,13 +28,23 @@ start_time <- Sys.time()
 # Clear the console
 cat("\014")
 
-################################################################################
+#===============================================================================
+# Set the calibration variables
+#===============================================================================
+
+# Set the takeoff thrust reduction to its simulation value
+reg_rto <- sim$sim_rto
+
+# Set the regulatory margin for takeoff distance to its simulation value
+reg_dis <- sim$sim_dis
+
+#===============================================================================
 # Assemble the simulation data                                                 #
-################################################################################
+#===============================================================================
   
-  ##############################################################################
+  #=============================================================================
   # Import the aircraft characteristics (from Sun et al., 2020)                #
-  ##############################################################################
+  #=============================================================================
   
   dt_act <- fread(
     file = paste(path_aer, aer_act, sep = "/"),
@@ -43,9 +52,9 @@ cat("\014")
     colClasses = c(rep("factor", 3), rep("integer", 3), rep("numeric", 8))
   )
   
-  ##############################################################################
+  #=============================================================================
   # Import the takeoff performance calibration data                            #
-  ##############################################################################
+  #=============================================================================
   
   # Connect to the database
   db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
@@ -65,9 +74,9 @@ cat("\014")
   # Release the database resource
   dbClearResult(db_res)
   
-  ##############################################################################
+  #=============================================================================
   # Import the list of sample airports, excluding those already processed      #
-  ##############################################################################
+  #=============================================================================
   
   # Build a query to retrieve the sample airports above the traffic threshold
   db_qry <- paste(
@@ -129,15 +138,15 @@ cat("\014")
   # Disconnect from the database
   dbDisconnect(db_con)
 
-################################################################################
+#===============================================================================
 # Define a function to simulate takeoffs at each airport                       #
-################################################################################
+#===============================================================================
 
 fn_simulate <- function(apt) {
 
-  ##############################################################################
+  #=============================================================================
   # Import the climatic observations for the current airport                   #
-  ##############################################################################
+  #=============================================================================
   
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), Sys.getpid(), "Started loading", apt, sep = " "))
@@ -164,21 +173,15 @@ fn_simulate <- function(apt) {
   # Disconnect the worker from the database
   dbDisconnect(db_con)
   
-  ##############################################################################
+  #=============================================================================
   # Perform final assembly of the simulation data                              #
-  ##############################################################################
+  #=============================================================================
   
   # Merge the climatic observations and aircraft characteristics
   dt <- dt_cli[, as.list(dt_act), by = dt_cli]
   
   # Set the starting mass in kg to the maximum takeoff mass
   dt[, m := mtom]
-  
-  # Set the aircraft weight in N based upon the starting mass
-  dt[, W := sim$g * m]
-  
-  # Set the starting takeoff thrust reduction
-  dt[, rto := sim$reg_rto]
   
   # Initialize columns for the lift and drag coefficients
   dt[, cL := 0]
@@ -187,9 +190,9 @@ fn_simulate <- function(apt) {
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), Sys.getpid(), "Finished loading", apt, sep = " "))
 
-  ##############################################################################
+  #=============================================================================
   # Perform the takeoff simulation on every climatic observation               #
-  ##############################################################################
+  #=============================================================================
 
   # Output the worker's progress to the log file defined in makeCluster()
   print(paste(Sys.time(), Sys.getpid(), "Started simulating", apt, sep = " "))
@@ -242,13 +245,13 @@ fn_simulate <- function(apt) {
   
 } # End of the fn_simulate function
 
-################################################################################
+#===============================================================================
 # Handle the parallel computation across multiple cores                        #
-################################################################################
+#===============================================================================
   
-  ##############################################################################
+  #=============================================================================
   # Prepare the cluster                                                        #
-  ##############################################################################
+  #=============================================================================
   
   # Set the number of workers to use in the cluster
   cores <- 6
@@ -280,9 +283,9 @@ fn_simulate <- function(apt) {
   # Terminate the cluster once finished
   stopCluster(cl)
   
-################################################################################
+#===============================================================================
 # Housekeeping                                                                 #
-################################################################################
+#===============================================================================
 
 # Display the script execution time
 Sys.time() - start_time
