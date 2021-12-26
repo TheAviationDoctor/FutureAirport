@@ -8,7 +8,6 @@
 #          Compare the resulting TODR with that published by the OEMs
 #          Vary cL values until the residual error (RSS) is minimized
 #  OUTPUT: Optimized values for cL and cD (which is derived from cL)
-# RUNTIME: ~X hours on the researcher's config (https://bit.ly/3ChCBAP)
 #===============================================================================
 
 #===============================================================================
@@ -20,14 +19,10 @@ library(data.table)
 library(DBI)
 library(ggplot2)
 library(magrittr)
-library(parallel)
 library(zoo)
 
 # Import the common settings
 source("scripts/0_common.R")
-
-# Import the simulation functions
-# source("scripts/6_model.v1.4.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -36,14 +31,19 @@ start_time <- Sys.time()
 cat("\014")
 
 #===============================================================================
-# Set the calibration variables
+# 1.2 Set the simulation variables
 #===============================================================================
 
-# Set the takeoff thrust reduction to its calibration value
-reg_rto <- sim$cal_rto
+# Maximum percentage of thrust reduction permissible under FAA AC 25-13 (1988)
+# Use 0% thrust reduction, as the OEM calibration data were collected at TOGA.
+reg_rto <- 0L
 
-# Set the regulatory margin for takeoff distance to its calibration value
-reg_dis <- sim$cal_dis
+# Safety margin in percent applied to the horizontal distance along the takeoff
+# path assuming all engines operating, from the start of the takeoff to a point
+# equidistant between the point at which VLOF is reached and the point at which
+# the airplane is 35 ft above the surface, according to 14 CFR § 25.113 (1998).
+# Use 0% margin as the OEM calibration uses physical distances, not regulatory.
+reg_dis <- 100L
 
 #===============================================================================
 # Assemble the calibration data

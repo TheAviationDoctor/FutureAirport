@@ -53,53 +53,81 @@
 # Z        = thrust coefficient (scalar)
 #===============================================================================
 
-fn_todr <- function(dt) {
+fn_todr <- function(DT) {
   
   #=============================================================================
   # Calculate the weight force W in N
   #=============================================================================
   
-  dt[, W := sim$g * m]
+  print(
+    paste(
+      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
+      " Calculating the weight...", sep = " "
+    )
+  )
+  
+  DT[, W := sim$g * m]
   
   #=============================================================================
   # Calculate the speed in m/s at which lift equals weight, from Blake (2009)
   #=============================================================================
   
-  dt[, Vlof := sqrt(W / (.5 * rho * S * cL))]
+  print(
+    paste(
+      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
+      " Calculating the speeds...", sep = " "
+    )
+  )
+  
+  DT[, Vlof := sqrt(W / (.5 * rho * S * cL))]
   
   # Create airspeed intervals up to the minimum takeoff airspeed
-  dt[, Vtas := Map(seq, from = hdw, to = Vlof, length.out = sim$int)]
+  DT[, Vtas := Map(seq, from = hdw, to = Vlof, length.out = sim$int)]
   
   # Create groundspeed intervals up to the minimum takeoff airspeed
-  dt[, Vgnd := Map(seq, from = 0, to = Vlof - hdw, length.out = sim$int)]
+  DT[, Vgnd := Map(seq, from = 0, to = Vlof - hdw, length.out = sim$int)]
   
   #=============================================================================
   # Calculate the dynamic pressure q in Pa, adapted from Blake (2009)
   #=============================================================================
   
-  dt[, q := Map("*", Vtas, (.5 * rho))]
+  print(
+    paste(
+      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
+      " Calculating the dynamic pressure...", sep = " "
+    )
+  )
+  
+  DT[, q := Map("*", Vtas, (.5 * rho))]
   
   #=============================================================================
   # Calculate the propulsive force F in N, adapted from Sun et al. (2020)
   #=============================================================================
   
+  print(
+    paste(
+      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
+      " Calculating the thrust...", sep = " "
+    )
+  )
+  
   # Calculate the speed of sound in m/s for the given temperature in dry air
-  dt[, Vsnd := sqrt(sim$gamma * sim$Rd * tas)]
+  DT[, Vsnd := sqrt(sim$gamma * sim$Rd * tas)]
   
   # Calculate the Mach number for each airspeed interval
-  dt[, Vmach := Map("/", Vtas, Vsnd)]
+  DT[, Vmach := Map("/", Vtas, Vsnd)]
   
   # Calculate the air pressure ratio
-  dt[, dP := ps / sim$ps_isa]
+  DT[, dP := ps / sim$ps_isa]
   
   # Calculate the coefficients of thrust
-  dt[, G0 :=  .0606 * bpr  +  .6337]
-  dt[, A  := -.4327 * dP^2 + 1.3855 * dP   +  .0472]
-  dt[, Z  :=  .9106 * dP^3 - 1.7736 * dP^2 + 1.8697 * dP]
-  dt[, X  :=  .1377 * dP^3 -  .4374 * dP^2 + 1.3003 * dP]
+  DT[, G0 :=  .0606 * bpr  +  .6337]
+  DT[, A  := -.4327 * dP^2 + 1.3855 * dP   +  .0472]
+  DT[, Z  :=  .9106 * dP^3 - 1.7736 * dP^2 + 1.8697 * dP]
+  DT[, X  :=  .1377 * dP^3 -  .4374 * dP^2 + 1.3003 * dP]
   
   # Calculate the thrust ratio
-  dt[, tr := Map(
+  DT[, tr := Map(
     function(A, bpr, G0, Z, X, Vmach) {
       A - 0.377 * (1 + bpr) / sqrt((1 + 0.82 * bpr) * G0) * Z * Vmach +
         (0.23 + 0.19 * sqrt(bpr)) * X * Vmach^2
@@ -108,16 +136,23 @@ fn_todr <- function(dt) {
   )]
   
   # Calculate the maximum takeoff thrust in N for each Mach number
-  dt[, Fmax := Map("*", tr, slst * n)]
+  DT[, Fmax := Map("*", tr, slst * n)]
   
   # Apply the maximum takeoff thrust reduction permissible
-  dt[, Frto := Map("*", Fmax, (100 - reg_rto) / 100)]
+  DT[, Frto := Map("*", Fmax, (100 - rto) / 100)]
   
   #=============================================================================
   # Calculate the acceleration in m/s² up to liftoff, adapted from Blake (2009)
   #=============================================================================
   
-  dt[, a := Map(
+  print(
+    paste(
+      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
+      " Calculating the acceleration...", sep = " "
+    )
+  )
+  
+  DT[, a := Map(
     function(W, Frto, cD, cL, q, S) {
       sim$g / W * (Frto * 2 - (sim$mu * W) -
                      (cD - (sim$mu * cL)) * (q * S) - (W * sin(sim$theta)))
@@ -129,30 +164,39 @@ fn_todr <- function(dt) {
   # Calculate the horizontal takeoff distances in m, adapted from Blake (2009)
   #=============================================================================
   
+  print(
+    paste(
+      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
+      " Calculating the takeoff distance...", sep = " "
+    )
+  )
+  
   # Calculate the average acceleration between two groundspeed increments
-  dt[, a_avg := frollmean(x = a, n = 2, fill = a[[1]][1], align = "right")]
+  DT[, a_avg := frollmean(x = a, n = 2, fill = a[[1]][1], align = "right")]
   
   # Calculate the average groundspeed between two groundspeed increments
-  dt[, Vgnd_avg := frollmean(x = Vgnd, n = 2, fill = 0, align = "right")]
+  DT[, Vgnd_avg := frollmean(x = Vgnd, n = 2, fill = 0, align = "right")]
   
   # Extract the size of the groundspeed interval
-  dt[, Vgnd_inc := sapply(dt[, Vgnd], "[[", 2)]
+  DT[, Vgnd_inc := sapply(DT[, Vgnd], "[[", 2)]
   
   # Calculate the distance in meters covered within each speed increment
-  dt[, inc := Map("/", Map("*", Vgnd_avg, Vgnd_inc), a_avg)]
+  DT[, inc := Map("/", Map("*", Vgnd_avg, Vgnd_inc), a_avg)]
   
   # Increment the cumulative (running total) distance accordingly
-  dt[, cum := Map(cumsum, inc)]
+  DT[, cum := Map(cumsum, inc)]
   
   # Add the airborne distance from Vlof to screen height (Gratton et al, 2020)
   # and add the regulatory safety margin of 15% as per 14 CFR § 25.113 (1998)
   # applied to the takeoff run distance, which is from brake release to Vlof
   # + up to the middle point between Vlof and reaching screen height.
-  dt[, todr_sim := unlist(Map(
-    function(cum) { (max(cum) + .3048 * 35 / cos(7.7) / 2) *
-        (reg_dis / 100) },
+  DT[, todr := unlist(Map(
+    function(cum) { ceiling((max(cum) + .3048 * 35 / cos(7.7) / 2) *
+        (reg_dis / 100)) },
     cum = cum
   ))]
+  
+  return(DT[, todr])
   
 } # End of fn_todr function
 

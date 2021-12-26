@@ -36,7 +36,7 @@ cli_esg <- "esgf.csv"        # Output of the ESGF search
 log_4 <- "logs/4_import.log"    # For 4_import.R
 log_5 <- "logs/5_transform.log" # For 5_transform.R
 log_7 <- "logs/7_calibrate.log" # For 7_calibrate.R
-log_8 <- "logs/8_simulate.log"  # For 8_simulate.R
+# log_8 <- "logs/8_simulate.log"  # For 8_simulate.R
 
 #===============================================================================
 # Database parameters                                                          #
@@ -87,8 +87,8 @@ sim <- list(
   "mu"          = .02,         # Dimensionless coefficient of friction for dry concrete/asphalt at the runway-tire interface (ESDU 85029, p. 32)
   "theta"       = 0L,          # Runway slope in °
   # Regulatory constants
-  "sim_dis"     = 115L,        # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
-  "sim_rto"     = 25L,         # Maximum percentage of takeoff thrust reduction permissible FAA Advisory Circular 25-13 (1988)
+  # "sim_dis"     = 115L,        # Percent of the horizontal distance along the takeoff path, with all engines operating, from the start of the takeoff to a point equidistant between the point at which VLOF is reached and the point at which the airplane is 35 feet above the takeoff surface, according to 14 CFR § 25.113 (1998)
+  # "sim_rto"     = 25L,         # Maximum percentage of takeoff thrust reduction permissible FAA Advisory Circular 25-13 (1988)
   "cal_dis"     = 100L,        # Calibrated takeoff data are based on physical, not regulatory distances
   "cal_rto"     = 0L,          # Calibrated takeoff data are based on TOGA
   # Calibration constants
