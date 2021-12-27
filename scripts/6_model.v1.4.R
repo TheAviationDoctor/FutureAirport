@@ -55,14 +55,35 @@
 
 fn_todr <- function(DT) {
   
+  # Inform the log file
+  print(
+    paste(
+      Sys.time(), "pid",
+      stringr::str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
+      DT[1, icao], "i",
+      stringr::str_pad(mean(DT[, i]),  width = 3, side = "left", pad = "0"),
+      "t/o", format(nrow(DT), big.mark = ","),
+      "rto", scales::percent(mean(DT[, rto]) / 100),
+      "Starting simulation...",
+      sep = " "
+    )
+  )
+  
   #=============================================================================
   # Calculate the weight force W in N
   #=============================================================================
   
+  # Inform the log file
   print(
     paste(
-      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
-      " Calculating the weight...", sep = " "
+      Sys.time(), "pid",
+      stringr::str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
+      DT[1, icao], "i",
+      stringr::str_pad(mean(DT[, i]),  width = 3, side = "left", pad = "0"),
+      "t/o", format(nrow(DT), big.mark = ","),
+      "rto", scales::percent(mean(DT[, rto]) / 100),
+      "Calculating weight",
+      sep = " "
     )
   )
   
@@ -72,13 +93,19 @@ fn_todr <- function(DT) {
   # Calculate the speed in m/s at which lift equals weight, from Blake (2009)
   #=============================================================================
   
+  # Inform the log file
   print(
     paste(
-      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
-      " Calculating the speeds...", sep = " "
+      Sys.time(), "pid",
+      stringr::str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
+      DT[1, icao], "i",
+      stringr::str_pad(mean(DT[, i]),  width = 3, side = "left", pad = "0"),
+      "t/o", format(nrow(DT), big.mark = ","),
+      "rto", scales::percent(mean(DT[, rto]) / 100),
+      "Calculating speeds",
+      sep = " "
     )
   )
-  
   DT[, Vlof := sqrt(W / (.5 * rho * S * cL))]
   
   # Create airspeed intervals up to the minimum takeoff airspeed
@@ -91,10 +118,17 @@ fn_todr <- function(DT) {
   # Calculate the dynamic pressure q in Pa, adapted from Blake (2009)
   #=============================================================================
   
+  # Inform the log file
   print(
     paste(
-      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
-      " Calculating the dynamic pressure...", sep = " "
+      Sys.time(), "pid",
+      stringr::str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
+      DT[1, icao], "i",
+      stringr::str_pad(mean(DT[, i]),  width = 3, side = "left", pad = "0"),
+      "t/o", format(nrow(DT), big.mark = ","),
+      "rto", scales::percent(mean(DT[, rto]) / 100),
+      "Calculating dynamic pressure",
+      sep = " "
     )
   )
   
@@ -104,10 +138,17 @@ fn_todr <- function(DT) {
   # Calculate the propulsive force F in N, adapted from Sun et al. (2020)
   #=============================================================================
   
+  # Inform the log file
   print(
     paste(
-      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
-      " Calculating the thrust...", sep = " "
+      Sys.time(), "pid",
+      stringr::str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
+      DT[1, icao], "i",
+      stringr::str_pad(mean(DT[, i]),  width = 3, side = "left", pad = "0"),
+      "t/o", format(nrow(DT), big.mark = ","),
+      "rto", scales::percent(mean(DT[, rto]) / 100),
+      "Calculating thrust",
+      sep = " "
     )
   )
   
@@ -145,10 +186,17 @@ fn_todr <- function(DT) {
   # Calculate the acceleration in m/s² up to liftoff, adapted from Blake (2009)
   #=============================================================================
   
+  # Inform the log file
   print(
     paste(
-      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
-      " Calculating the acceleration...", sep = " "
+      Sys.time(), "pid",
+      stringr::str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
+      DT[1, icao], "i",
+      stringr::str_pad(mean(DT[, i]),  width = 3, side = "left", pad = "0"),
+      "t/o", format(nrow(DT), big.mark = ","),
+      "rto", scales::percent(mean(DT[, rto]) / 100),
+      "Calculating acceleration",
+      sep = " "
     )
   )
   
@@ -164,10 +212,17 @@ fn_todr <- function(DT) {
   # Calculate the horizontal takeoff distances in m, adapted from Blake (2009)
   #=============================================================================
   
+  # Inform the log file
   print(
     paste(
-      Sys.time(), "pid", Sys.getpid(), DT[1, icao], "-",
-      " Calculating the takeoff distance...", sep = " "
+      Sys.time(), "pid",
+      stringr::str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
+      DT[1, icao], "i",
+      stringr::str_pad(mean(DT[, i]),  width = 3, side = "left", pad = "0"),
+      "t/o", format(nrow(DT), big.mark = ","),
+      "rto", scales::percent(mean(DT[, rto]) / 100),
+      "Calculating takeoff distance",
+      sep = " "
     )
   )
   

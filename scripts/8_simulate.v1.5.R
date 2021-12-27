@@ -314,26 +314,6 @@ fn_simulate <- function(icao) {
       # Increment the iteration counter
       dt_tko[todr > toda, i := i + 1L]
       
-      # If thrust is already at TOGA, then decrease the mass by 1 kg instead
-      dt_tko[todr > toda & rto == 0, m   := m   - 1L]
-      
-      # Otherwise increase thrust by 1 percentage point (up to TOGA)
-      dt_tko[todr > toda & rto >  0, rto := rto - 1L]
-      
-      # Remove the existing cL and cD values
-      # dt_tko[, c("cL", "cD") := NULL]
-      dt_tko[todr > toda, c("cD", "cL") := NA]
-      
-      # Add the calibration data (cD and cL) again for the new mass
-      # dt_tko <- dt_cal[dt_tko, on = c("type", "m")]
-      # dt_tko[is.na(cD), cD := dt_cal[.SD, cD], on = c("type", "m")]
-      # dt_tko[is.na(cL), cL := dt_cal[.SD, cL], on = c("type", "m")]
-      dt_tko[dt_cal, cD := ifelse(is.na(cD), i.cD, cD), on = c("type", "m")]
-      dt_tko[dt_cal, cL := ifelse(is.na(cL), i.cL, cL), on = c("type", "m")]
-      
-      # Calculate the takeoff distance required
-      # dt_tko[todr > toda, todr := fn_todr(dt_tko[todr > toda])]
-      
       # Inform the log file
       print(
         paste(
@@ -345,6 +325,19 @@ fn_simulate <- function(icao) {
         )
       )
       
+      # If thrust is already at TOGA, then decrease the mass by 1 kg instead
+      dt_tko[todr > toda & rto == 0, m   := m   - 1L]
+      
+      # Otherwise increase thrust by 1 percentage point (up to TOGA)
+      dt_tko[todr > toda & rto >  0, rto := rto - 1L]
+      
+      # Remove the existing cL and cD values
+      dt_tko[todr > toda, c("cD", "cL") := NA]
+      
+      # Add the calibration data (cD and cL) again for the new mass
+      dt_tko[dt_cal, cD := ifelse(is.na(cD), i.cD, cD), on = c("type", "m")]
+      dt_tko[dt_cal, cL := ifelse(is.na(cL), i.cL, cL), on = c("type", "m")]
+
       #=========================================================================
       # 2.3.2 Calculate the weight force W in N
       #=========================================================================
@@ -605,8 +598,7 @@ fn_simulate <- function(icao) {
 #===============================================================================
   
 # Set the number of workers to use in the cluster
-# cores <- 20
-cores <- 1
+cores <- 12
 
 # Set the log file for the cluster
 outfile <- "logs/8_simulate.log"
