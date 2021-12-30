@@ -188,7 +188,7 @@ fn_transform <- function(apt) {
 cores <- 12
 
 # Set the log file for the cluster defined in 0_common.R
-outfile <- log_5
+outfile <- "logs/5_transform.log"
 
 # Clear the log file
 close(file(outfile, open = "w"))

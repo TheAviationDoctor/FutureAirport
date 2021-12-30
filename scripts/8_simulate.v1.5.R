@@ -18,9 +18,6 @@ library(parallel)
 # Import the common settings
 source("scripts/0_common.R")
 
-# Import the simulation functions
-source("scripts/6_model.v1.4.R")
-
 # Start a script timer
 start_time <- Sys.time()
 
@@ -36,21 +33,13 @@ cat("\014")
 #===============================================================================
 
 # Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
-
-# Build the query to drop the table, if it exists
-db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db_tko), ";", sep = "")
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Release the database resource
-dbClearResult(db_res)
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
 
 # Build the query to create the table
+# Preserve the table if it exists so as to break up script execution into chunks
 db_qry <- paste(
   "CREATE TABLE IF NOT EXISTS",
-  tolower(db_tko),
+  tolower(db$tko),
   "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     obs DATETIME NOT NULL,
     icao CHAR(4) NOT NULL,
@@ -69,7 +58,7 @@ db_qry <- paste(
     m MEDIUMINT NOT NULL,
     rto SMALLINT NOT NULL,
     todr SMALLINT NOT NULL,
-    i SMALLINT NOT NULL,
+    i SMALLINT UNSIGNED NOT NULL,
     PRIMARY KEY (id));",
   sep = " ")
 
@@ -101,7 +90,7 @@ reg_dis <- 115L
 #===============================================================================
 
 dt_act <- fread(
-  file = paste(path_aer, aer_act, sep = "/"),
+  file = "data/aer/aircraft.csv",
   header = TRUE,
   colClasses = c(rep("factor", 3), rep("integer", 3), rep("numeric", 8)),
   drop = c("name", "eng", "span", "cD0", "k", "lambda_f", "cfc", "SfS"),
@@ -113,7 +102,7 @@ dt_act <- fread(
 #===============================================================================
 
 # Build a query to retrieve the calibration data
-db_qry <- paste("SELECT type, m, cl, cd FROM", db_cal, ";", sep = " ")
+db_qry <- paste("SELECT type, m, cl, cd FROM", db$cal, ";", sep = " ")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)
@@ -140,7 +129,7 @@ dbClearResult(db_res)
 
 # Build a query to retrieve the sample airports above the traffic threshold
 db_qry <- paste(
-  "SELECT DISTINCT icao, lat, lon FROM", db_pop,
+  "SELECT DISTINCT icao, lat, lon FROM", db$pop,
   "WHERE traffic >", pop_thr, ";",
   sep = " "
 )
@@ -157,8 +146,7 @@ dbClearResult(db_res)
 # Build a query to check if simulation outputs already exists in the database
 db_qry <- paste(
   "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '",
-  db_grp,
-  "' AND table_name = '", db_tko, "';",
+  db$grp, "' AND table_name = '", db$tko, "';",
   sep = ""
 )
 
@@ -175,7 +163,7 @@ dbClearResult(db_res)
 if (tbl_exists == TRUE) {
   
   # Build a query to retrieve the airports that were already processed
-  db_qry <- paste("SELECT DISTINCT icao FROM", db_tko, ";", sep = " ")
+  db_qry <- paste("SELECT DISTINCT icao FROM", db$tko, ";", sep = " ")
   
   # Send the query to the database
   db_res <- dbSendQuery(db_con, db_qry)
@@ -215,34 +203,25 @@ fn_simulate <- function(icao) {
       Sys.time(),
       "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
       "icao", icao,
-      "Waiting", sleep, "seconds...", sep = " "
+      "Loading simulation data in",
+      str_pad(sleep, width = 3, side = "left", pad = " "), "seconds...",
+      sep = " "
     )
   )
   
   # Stagger the start of each core to avoid a database I/O bottleneck
   Sys.sleep(sleep)
   
-  # Inform the log file
-  print(
-    paste(
-      Sys.time(),
-      "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
-      "icao", icao,
-      "Loading simulation data...",
-      sep = " "
-    )
-  )
-  
   #=============================================================================
   # 2.1 Import the climatic observations for the current airport
   #=============================================================================
 
   # Connect the worker to the database
-  db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+  db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
   
   # Build a query to retrieve the takeoff conditions
   db_qry <- paste(
-    "SELECT obs, exp, icao, hurs, ps, tas, rho, hdw, rwy, toda FROM ", db_cli,
+    "SELECT obs, exp, icao, hurs, ps, tas, rho, hdw, rwy, toda FROM ", db$cli,
     " WHERE icao = '", icao, "';",
     sep = ""
   )
@@ -272,6 +251,9 @@ fn_simulate <- function(icao) {
   # Combine climatic observations with aircraft data (Cartesian product)
   dt_tko <- dt_cli[, as.list(dt_act), by = dt_cli]
   
+  # Remove the climatic observations from the environment to free up memory
+  rm(dt_cli)
+  
   # Convert airport code to a factor
   dt_tko[, icao := as.factor(icao)]
   
@@ -279,11 +261,11 @@ fn_simulate <- function(icao) {
   dt_tko[, m := mtom]
   
   # Initialize the starting takeoff thrust reduction to its simulation value
-  # Add 1 as the repeat loop starts by decrementing rto by 1
+  # Add 1 as the repeat loop starts by decrementing rto by 1.
   dt_tko[, rto := reg_rto + 1L]
   
   # Initialize the starting TODR to an arbitrary value greater than the max TODA
-  # This is so that the repeat loop captures all observations in its first pass
+  # This is so that the repeat loop captures all observations in its first pass.
   dt_tko[, todr := max(toda) + 1L]
   
   # Initialize a counter to track the number of iterations of each takeoff
@@ -299,6 +281,9 @@ fn_simulate <- function(icao) {
   # 2.3 Perform vectorized takeoff simulations iteratively until TODR < TODA
   #=============================================================================
   
+  # Initialize a counter
+  i <- 0L
+  
   repeat {
     
     #===========================================================================
@@ -312,21 +297,13 @@ fn_simulate <- function(icao) {
     if (obs > 0) {
       
       # Increment the iteration counter
-      dt_tko[todr > toda, i := i + 1L]
+      i <- i + 1L
       
-      # Inform the log file
-      print(
-        paste(
-          Sys.time(),
-          "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
-          "icao", icao,
-          "Starting iteration #", mean(dt_tko[todr > toda, i]),
-          sep = " "
-        )
-      )
+      # Save the iteration
+      dt_tko[todr > toda, i := i]
       
       # If thrust is already at TOGA, then decrease the mass by 1 kg instead
-      dt_tko[todr > toda & rto == 0, m   := m   - 1L]
+      dt_tko[todr > toda & rto == 0, m := m - 1L]
       
       # Otherwise increase thrust by 1 percentage point (up to TOGA)
       dt_tko[todr > toda & rto >  0, rto := rto - 1L]
@@ -348,11 +325,9 @@ fn_simulate <- function(icao) {
           Sys.time(),
           "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
           "icao", icao,
-          "i =", str_pad(
-            mean(dt_tko[todr > toda, i]),
-            width = 3, side = "left", pad = "0"),
-          "t/o =", format(obs, big.mark = ","),
-          "rto =", scales::percent(mean(dt_tko[todr > toda, rto]) / 100),
+          "i =", str_pad(i, width = 5, side = "left", pad = " "),
+          "t/o =", str_pad(
+            format(obs, big.mark = ","), width = 9, side = "left", pad = " "),
           "Calculating weight",
           sep = " "
         )
@@ -372,11 +347,9 @@ fn_simulate <- function(icao) {
           Sys.time(),
           "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
           "icao", icao,
-          "i =", str_pad(
-            mean(dt_tko[todr > toda, i]),
-            width = 3, side = "left", pad = "0"),
-          "t/o =", format(obs, big.mark = ","),
-          "rto =", scales::percent(mean(dt_tko[todr > toda, rto]) / 100),
+          "i =", str_pad(i, width = 5, side = "left", pad = " "),
+          "t/o =", str_pad(
+            format(obs, big.mark = ","), width = 9, side = "left", pad = " "),
           "Calculating speeds",
           sep = " "
         )
@@ -404,11 +377,9 @@ fn_simulate <- function(icao) {
           Sys.time(),
           "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
           "icao", icao,
-          "i =", str_pad(
-            mean(dt_tko[todr > toda, i]),
-            width = 3, side = "left", pad = "0"),
-          "t/o =", format(obs, big.mark = ","),
-          "rto =", scales::percent(mean(dt_tko[todr > toda, rto]) / 100),
+          "i =", str_pad(i, width = 5, side = "left", pad = " "),
+          "t/o =", str_pad(
+            format(obs, big.mark = ","), width = 9, side = "left", pad = " "),
           "Calculating dynamic pressure",
           sep = " "
         )
@@ -428,11 +399,9 @@ fn_simulate <- function(icao) {
           Sys.time(),
           "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
           "icao", icao,
-          "i =", str_pad(
-            mean(dt_tko[todr > toda, i]),
-            width = 3, side = "left", pad = "0"),
-          "t/o =", format(obs, big.mark = ","),
-          "rto =", scales::percent(mean(dt_tko[todr > toda, rto]) / 100),
+          "i =", str_pad(i, width = 5, side = "left", pad = " "),
+          "t/o =", str_pad(
+            format(obs, big.mark = ","), width = 9, side = "left", pad = " "),
           "Calculating thrust",
           sep = " "
         )
@@ -479,11 +448,9 @@ fn_simulate <- function(icao) {
           Sys.time(),
           "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
           "icao", icao,
-          "i =", str_pad(
-            mean(dt_tko[todr > toda, i]),
-            width = 3, side = "left", pad = "0"),
-          "t/o =", format(obs, big.mark = ","),
-          "rto =", scales::percent(mean(dt_tko[todr > toda, rto]) / 100),
+          "i =", str_pad(i, width = 5, side = "left", pad = " "),
+          "t/o =", str_pad(
+            format(obs, big.mark = ","), width = 9, side = "left", pad = " "),
           "Calculating acceleration",
           sep = " "
         )
@@ -509,11 +476,9 @@ fn_simulate <- function(icao) {
           Sys.time(),
           "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
           "icao", icao,
-          "i =", str_pad(
-            mean(dt_tko[todr > toda, i]),
-            width = 3, side = "left", pad = "0"),
-          "t/o =", format(obs, big.mark = ","),
-          "rto =", scales::percent(mean(dt_tko[todr > toda, rto]) / 100),
+          "i =", str_pad(i, width = 5, side = "left", pad = " "),
+          "t/o =", str_pad(
+            format(obs, big.mark = ","), width = 9, side = "left", pad = " "),
           "Calculating takeoff distance",
           sep = " "
         )
@@ -564,17 +529,14 @@ fn_simulate <- function(icao) {
   
   # Select which columns to write to the database and in which order
   cols <- c("obs", "icao", "lat", "lon", "exp", "type", "mtom", "hurs", "ps",
-            "tas", "rho", "hdw", "rwy", "toda", "m", "rto =", "todr", "i =")
-  
-  # FOR TESTING ONLY
-  print(str(dt_tko[, ..cols]))
+            "tas", "rho", "hdw", "rwy", "toda", "m", "rto", "todr", "i")
   
   # Connect the worker to the database
-  db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+  db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
   
   # Write the data. Here we use the deprecated RMySQL::MySQL() driver instead of
   # the newer RMariaDB::MariaDB()) driver because it was found to be much faster
-  dbWriteTable(conn = db_con, name = tolower(db_tko), value = dt_tko[, ..cols],
+  dbWriteTable(conn = db_con, name = tolower(db$tko), value = dt_tko[, ..cols],
                append = TRUE, row.names = FALSE)
   
   # Disconnect the worker from the database
@@ -598,7 +560,7 @@ fn_simulate <- function(icao) {
 #===============================================================================
   
 # Set the number of workers to use in the cluster
-cores <- 12
+cores <- 4L
 
 # Set the log file for the cluster
 outfile <- "logs/8_simulate.log"
@@ -607,7 +569,7 @@ outfile <- "logs/8_simulate.log"
 close(file(outfile, open = "w"))
 
 # Build the cluster of workers
-cl <- makeCluster(cores, outfile = outfile)
+cl <- makeCluster(spec = cores, outfile = outfile)
 
 # Have each worker load the libraries that they need
 clusterEvalQ(cl, {
@@ -617,28 +579,28 @@ clusterEvalQ(cl, {
 })
 
 # Pass the required variables from the main scope to the workers' scope
-clusterExport(cl, c("cores", "db_cnf", "db_cli", "db_grp", "db_tko", "dt_act",
-                    "dt_apt", "dt_cal", "fn_todr", "reg_dis", "reg_rto", "sim"))
+clusterExport(cl, c("cores", "db", "dt_act",
+                    "dt_apt", "dt_cal", "reg_dis", "reg_rto", "sim"))
 
 # Distribute the unique airports across the workers
 parLapply(cl, as.list(dt_apt[, icao]), fn_simulate)
 
 # Terminate the cluster once finished
 stopCluster(cl)
-  
+
 #===============================================================================
 # 4. Index the database table
 #===============================================================================
 
 # Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db_cnf, group = db_grp)
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
 
 # Set the index name
 db_idx <- "idx"
 
 # Build the query to create the index
 db_qry <- paste("CREATE INDEX ", tolower(db_idx),
-                " ON ", tolower(db_tko), " (exp, icao);", sep = "")
+                " ON ", tolower(db$tko), " (exp, icao);", sep = "")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)

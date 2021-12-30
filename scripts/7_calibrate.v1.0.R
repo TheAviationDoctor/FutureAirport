@@ -42,7 +42,7 @@ cat("\014")
   ##############################################################################
   
   # List the CSV files
-  oem <- list.files(path = path_oem, pattern = "\\.csv$", full.names = TRUE)
+  oem <- list.files(path = "data/oem", pattern = "\\.csv$", full.names = TRUE)
   
   # Combine all the files into a list
   l1 <- lapply(
@@ -91,7 +91,7 @@ cat("\014")
   
   # Import the CSV data (from Sun et al., 2020) into a data table
   dt_act <- fread(
-    file = paste(path_aer, aer_act, sep = "/"),
+    file = "data/aer/aircraft.csv",
     header = TRUE,
     colClasses = c(rep("factor", 3), rep("integer", 3), rep("numeric", 8))
   )
@@ -241,7 +241,7 @@ cat("\014")
   ggsave(
     filename = "todr_cal.png",
     device = "png",
-    path = path_plt,
+    path = "plots",
     scale = 1,
     width = 6,
     height = NA,

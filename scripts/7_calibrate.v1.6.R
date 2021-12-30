@@ -54,7 +54,7 @@ reg_dis <- 100L
   #=============================================================================
   
   dt_act <- fread(
-    file = paste(path_aer, aer_act, sep = "/"),
+    file = "data/aer/aircraft.csv",
     header = TRUE,
     colClasses = c(rep("factor", 3), rep("integer", 3), rep("numeric", 8))
   )
@@ -64,7 +64,7 @@ reg_dis <- 100L
   #=============================================================================
   
   # List the CSV files to import
-  f <- list.files(path = path_oem, pattern = "\\.csv$", full.names = TRUE)
+  f <- list.files(path = "data/oem", pattern = "\\.csv$", full.names = TRUE)
   
   # Combine all the files into a list and add a column for the aircraft type
   l1 <- Map(
@@ -105,14 +105,14 @@ reg_dis <- 100L
   dt_cal <- dt_cal[, m := as.integer(m)]
   
   #=============================================================================
-  # Import the climatic observations used at calibration
+  # Set the climatic observations used for calibration
   #=============================================================================
   
-  dt_cal[, hurs := sim$cal_hurs] # Sea-level relative humidity in % at ISA
-  dt_cal[, ps   := sim$cal_ps]   # Sea-level air pressure in Pa at ISA
-  dt_cal[, tas  := sim$cal_tas]  # Sea-level air temperature in K at ISA
-  dt_cal[, rho  := sim$cal_rho]  # Sea-level air density in kg/m³ at ISA 
-  dt_cal[, hdw  := sim$cal_hdw]  # Headwind in m/s
+  dt_cal[, hurs := 0L]      # Sea-level relative humidity in % at ISA
+  dt_cal[, ps   := 101325L] # Sea-level air pressure in Pa at ISA
+  dt_cal[, tas  := 273.15]  # Sea-level air temperature in K at ISA
+  dt_cal[, rho  := 1.225]   # Sea-level air density in kg/m³ at ISA 
+  dt_cal[, hdw  := 0L]      # Near-surface headwind in m/s
   
   #=============================================================================
   # Perform final assembly of the calibration data
@@ -403,7 +403,7 @@ dt_val[, as.list(summary(ratio)), by = type]
   ggsave(
     filename = "cal_ratio.png",
     device = "png",
-    path = path_plt,
+    path = "plots",
     scale = 1,
     width = 6,
     height = NA,
@@ -427,7 +427,7 @@ dt_val[, as.list(summary(diff)), by = type]
   ggsave(
     filename = "cal_diff.png",
     device = "png",
-    path = path_plt,
+    path = "plots",
     scale = 1,
     width = 6,
     height = NA,
@@ -447,7 +447,7 @@ dt_val[, as.list(summary(diff)), by = type]
   ggsave(
     filename = "cal_todr.png",
     device = "png",
-    path = path_plt,
+    path = "plots",
     scale = 1,
     width = 6,
     height = NA,
