@@ -230,7 +230,7 @@ fn_import <- function(nc_file) {
 # ==============================================================================
 
 # Set the number of workers to use in the cluster
-cores <- 8
+cores <- 8L
 
 # Clear the log file
 close(file(description = f$out, open = "w"))
@@ -252,7 +252,7 @@ clusterEvalQ(cl, {
 clusterExport(cl = cl, varlist = c("db", "df_smp"))
 
 # Distribute the parallel parsing of NetCDF files across the workers
-parLapply(cl = cl, X = nc_files, FUN = fn_import)
+parLapply(cl = cl, X = nc_files, fun = fn_import)
 
 # Terminate the cluster once finished
 stopCluster(cl)

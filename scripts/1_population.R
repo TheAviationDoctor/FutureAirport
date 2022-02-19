@@ -5,7 +5,8 @@
 #          Write the resulting dataset of airports and runways to the database
 #          Plot population characteristics
 #          Index the database table to speed up subsequent queries
-#  OUTPUT: 8,817 rows of airport-runway pairs written to the database
+#  OUTPUT: Plots saved to disk
+#          8,817 rows of airport-runway pairs written to the database
 # ==============================================================================
 
 # ==============================================================================
@@ -14,6 +15,7 @@
 
 # Load required libraries
 library(DBI)
+library(scales)
 library(tidyverse)
 
 # Import the common settings
@@ -125,7 +127,7 @@ coeff <- max(df_bin$traffic_per) / max(df_bin$airports)
     mapping  = aes(
       x      = bin,
       y      = airports,
-      label  = comma(airports, accuracy = 1)
+      label  = scales::comma(airports, accuracy = 1)
     ),
     vjust    = 1.5,
     color    = ifelse(df_bin$airports < 100, "black", "white"),
@@ -140,7 +142,7 @@ coeff <- max(df_bin$traffic_per) / max(df_bin$airports)
     mapping  = aes(
       x      = bin,
       y      = traffic_per / coeff,
-      label  = percent(traffic_per, accuracy = 0.01)
+      label  = scales::percent(traffic_per, accuracy = 0.01)
     ),
     nudge_x  = -.35,
     nudge_y  = 50,
@@ -159,7 +161,7 @@ coeff <- max(df_bin$traffic_per) / max(df_bin$airports)
   ) +
   scale_y_continuous(
     name     = "Count of airports (bars)",
-    labels   = comma,
+    labels   = scales::comma,
     breaks   = c(0, 300, 600, 900, 1200),
     sec.axis = sec_axis(~ . * coeff,
       name   = "Cumulative percentage of 2019 passenger traffic (line)",

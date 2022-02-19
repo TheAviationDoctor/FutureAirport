@@ -342,7 +342,7 @@ df_smp_binned %>%
     limits   = c(-90, 90)
   ) +
   scale_y_continuous(
-    name = "Airport count"
+    name = "Count of airports"
   ) +
   theme_light() +
   theme(panel.grid.minor = element_blank())) %>%
