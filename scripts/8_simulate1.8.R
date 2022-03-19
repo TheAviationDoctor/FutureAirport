@@ -20,7 +20,7 @@ library(stringr)
 
 # Import the common settings
 source("scripts/0_common.R")
-source("scripts/6_model1.5.R")
+source("scripts/6_model1.8.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -39,10 +39,15 @@ cat("\014")
 # Connect to the database
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
 
+# FOR TESTING ONLY
+db_qry <- paste("DROP TABLE", tolower(db$tko), ";", sep = " ")
+db_res <- dbSendQuery(db_con, db_qry)
+dbClearResult(db_res)
+
 # Build the query to create the table
 # Preserve the table if it exists so as to break up script execution into chunks
 db_qry <- paste(
-  "CREATE TABLE IF NOT EXISTS",
+"CREATE TABLE IF NOT EXISTS",
   tolower(db$tko),
   "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     obs DATETIME NOT NULL,
@@ -339,8 +344,19 @@ fn_simulate <- function(icao) {
   # ============================================================================
 
 # FOR TESTING ONLY
-sel_type <- "B789"
+sel_type <- "A359"
+sel_obs  <- "2015-03-28 06:00:00"
+sel_exp  <- "ssp370"
 dt_tko <- dt_tko[type == sel_type]
+dt_tko <- dt_tko[obs  == sel_obs]
+dt_tko <- dt_tko[exp  == sel_exp]
+dt_tko[, hurs := 0L]
+dt_tko[, ps   := 101325L]
+dt_tko[, tas  := 273.15]
+dt_tko[, rho  := 1.225]
+dt_tko[, hdw  := 0L]
+dt_tko[, rto  := 0L]
+dt_tko[, toda := 5000L]
 print(paste(sel_type, "has", nrow(dt_tko), "rows", sep = " "))
 
   repeat {
@@ -410,15 +426,24 @@ print(paste(sel_type, "has", nrow(dt_tko), "rows", sep = " "))
       # Calculate the weight force W in N
       set(x = dt_tko, i = i, j = "W", value = sim$g * dt_tko[i, m])
 
+      # Calculate the stall speed in m/s
+      # Adapted from Blake (2009).
+      set(
+        x = dt_tko,
+        i = i,
+        j = "Vs",
+        value = sqrt(
+          dt_tko[i, W] / (.5 * dt_tko[i, rho] * dt_tko[i, S] * dt_tko[i, cL])
+        )
+      )
+
       # Calculate the liftoff speed in m/s
       # Adapted from Blake (2009).
       set(
         x = dt_tko,
         i = i,
         j = "Vlof",
-        value = sqrt(
-          dt_tko[i, W] / (.5 * dt_tko[i, rho] * dt_tko[i, S] * dt_tko[i, cL])
-        ) * sim$vs_to_vlof
+        value = dt_tko[i, Vs] * sim$vs_to_vlof
       )
 
       # ========================================================================
@@ -429,9 +454,11 @@ print(paste(sel_type, "has", nrow(dt_tko), "rows", sep = " "))
         x = dt_tko,
         i = i,
         j = "todr",
-        # value = fn_todr(DT = dt_tko[i, ], mode = "sim")
-        value = fn_todr(DT = dt_tko[i, ])
+        value = ceiling(fn_todr(DT = dt_tko[i, ]))
       )
+
+# FOR TESTING ONLY
+print(str(dt_tko))
 
     } else { # Once there are no more observations that meet the conditions
 
@@ -469,7 +496,7 @@ print(paste(sel_type, "has", nrow(dt_tko), "rows", sep = " "))
   )
 
 # FOR TESTING ONLY
-# fwrite(dt_tko[, ..cols])
+fwrite(x = dt_tko[, ..cols], file = paste(icao, ".csv", sep = ""))
 
   # Connect the worker to the database
   db_con <- dbConnect(
@@ -519,32 +546,32 @@ print(paste(sel_type, "has", nrow(dt_tko), "rows", sep = " "))
 # )
 
 # FOR TESTING ONLY
-fn_simulate("KABQ")
-# fn_simulate("KILM")
+# fn_simulate("KABQ")
+fn_simulate("KILM")
 
 # ==============================================================================
 # 4 Index the database table
 # ==============================================================================
 
-# Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-
-# Build the query to create the index
-db_qry <- paste(
-  "CREATE INDEX idx ON",
-  tolower(db$tko),
-  "(exp, type, icao);",
-  sep = " "
-)
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Release the database resource
-dbClearResult(db_res)
-
-# Disconnect from the database
-dbDisconnect(db_con)
+# # Connect to the database
+# db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
+# 
+# # Build the query to create the index
+# db_qry <- paste(
+#   "CREATE INDEX idx ON",
+#   tolower(db$tko),
+#   "(exp, type, icao);",
+#   sep = " "
+# )
+# 
+# # Send the query to the database
+# db_res <- dbSendQuery(db_con, db_qry)
+# 
+# # Release the database resource
+# dbClearResult(db_res)
+# 
+# # Disconnect from the database
+# dbDisconnect(db_con)
 
 # ==============================================================================
 # 5 Housekeeping

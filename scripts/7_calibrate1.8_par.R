@@ -24,7 +24,7 @@ library(zoo)
 
 # Import the common settings
 source("scripts/0_common.R")
-source("scripts/6_model1.4b.R")
+source("scripts/6_model1.8.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -52,14 +52,14 @@ dt_act <- fread(
 # ==============================================================================
 
 # List the CSV files to import
-f <- list.files(path = d$cal, pattern = "\\.csv$", full.names = TRUE)
+l0 <- list.files(path = d$cal, pattern = "\\.csv$", full.names = TRUE)
 
 # Combine all the files into a list and add a column for the aircraft type
 l1 <- Map(
   cbind,
-  type = sub("\\.csv$", "", basename(f)),
+  type = sub("\\.csv$", "", basename(l0)),
   lapply(
-    f,
+    l0,
     fread,
     sep = ",",
     header = FALSE,
@@ -92,11 +92,18 @@ dt_cal <- dt_cal[order(type, m)]
 # Interpolate missing TODR values by aircraft type
 dt_cal <- dt_cal[, lapply(.SD, zoo::na.approx), by = type]
 
+# Calculate the horizontal airborne distance after liftoff up to screen height
+# Adapted from Gratton et al, 2020
+dis_air <- sim$ft_to_m * sim$scrn_hght / cos(sim$climb_angle) * sim$tod_mul
+
+# Decrease the TODR by the airborne distance, which is assumed constant
+set(x = dt_cal, j = "todr_cal", value = dt_cal[, todr_cal] - dis_air)
+
 # Round up the TODR values to the nearest greatest integer
-set(x = dt_cal, j = "todr_cal", value = ceiling(dt_cal[, todr_cal]))
+# set(x = dt_cal, j = "todr_cal", value = ceiling(dt_cal[, todr_cal]))
 
 # Change the class of the mass column to integer
-set(x = dt_cal, j = "m", value = as.integer(dt_cal[, m]))
+# set(x = dt_cal, j = "m", value = as.integer(dt_cal[, m]))
 
 # ==============================================================================
 # 1.3 Set the climatic observations used for calibration
@@ -110,6 +117,7 @@ set(x = dt_cal, j = "hdw",  value = 0L)      # Near-surface headwind in m/s
 
 # ==============================================================================
 # 1.4 Assemble the calibration inputs
+# Adapted from from Sun et al. (2020).
 # ==============================================================================
 
 # Combine calibration and aircraft data
@@ -150,7 +158,6 @@ set(
 set(x = dt_tko, j = "rto", value = 0L)
 
 # Calculate the cD portion attributable to flaps in non-clean configuration
-# Adapted from Sun et al., 2020
 set(
   x = dt_tko,
   j = "delta_cD_flaps",
@@ -159,7 +166,6 @@ set(
 )
 
 # Calculate the cD portion attributable to the landing gear
-# Adapted from Sun et al., 2020
 set(
   x = dt_tko,
   j = "delta_cD_gear",
@@ -167,7 +173,6 @@ set(
 )
 
 # Calculate the total drag coefficient in non-clean configuration
-# Adapted from Sun et al., 2020
 set(
   x = dt_tko,
   j = "cD0_total",
@@ -175,32 +180,41 @@ set(
 )
 
 # Calculate the Oswald efficiency factor for the selected flap deflection
-# Adapted from Sun et al., 2020
 set(x = dt_tko, j = "delta_e_flaps", value = .0026 * sim$flap_angle)
 
 # Calculate the aspect ratio
-# Adapted from Sun et al., 2020
 set(x = dt_tko, j = "ar", value = dt_tko[, span]^2 / dt_tko[, S])
 
 # Calculate the lift-induced coefficient k in non-clean configuration
-# Adapted from Sun et al., 2020
 set(
   x = dt_tko,
   j = "k_total",
   value = 1 / (1 / dt_tko[, k] + pi * dt_tko[, ar] * dt_tko[, delta_e_flaps])
 )
 
+set(
+  x = dt_tko,
+  j = "i",
+  value = head(
+    rep(seq(1, ceiling(nrow(dt_tko) / 23L)), each = 23L),
+    nrow(dt_tko)
+  )
+)
+View(dt_tko)
+stop()
 # ==============================================================================
 # 2 Define a function to calibrate cL and cD for every m and TODR value pair
+# Adapted from from Sun et al. (2020) and Blake (2009).
 # ==============================================================================
 
 fn_calibrate <- function(cL, i) {
+
+  # dt_tko <- setDT(dt_tko[i, ])
 
   # Save the assumed lift coefficient
   set(x = dt_tko, i = i, j = "cL", value = cL)
 
   # Calculate and save the total drag coefficient cD in non-clean configuration
-  # Adapted from Sun et al., 2020
   set(
     x = dt_tko,
     i = i,
@@ -208,15 +222,20 @@ fn_calibrate <- function(cL, i) {
     value = dt_tko[i, cD0_total] + dt_tko[i, k_total] * cL^2
   )
 
+  # Calculate the stall speed in m/s
+  set(
+    x = dt_tko,
+    i = i,
+    j = "Vs",
+    value = sqrt(dt_tko[i, W] / (.5 * dt_tko[i, rho] * dt_tko[i, S] * cL))
+  )
+
   # Calculate the liftoff speed in m/s
-  # Adapted from Blake (2009).
   set(
     x = dt_tko,
     i = i,
     j = "Vlof",
-    value = sqrt(
-      dt_tko[i, W] / (.5 * dt_tko[i, rho] * dt_tko[i, S] * cL)
-    ) * sim$vs_to_vlof
+    value = dt_tko[i, Vs] * sim$vs_to_vlof
   )
 
   # Calculate the takeoff distance required TODR in m
@@ -224,16 +243,16 @@ fn_calibrate <- function(cL, i) {
     x = dt_tko,
     i = i,
     j = "todr_sim",
-    value = fn_todr(DT = dt_tko[i, ], mode = "cal")
+    value = fn_todr(DT = dt_tko[i, ])
   )
-  
+
   # Calculate the lift/drag ratio
   set(
     x = dt_tko,
     j = "ratio",
-    value = dt_tko[, cD] / dt_tko[, cL]
+    value = dt_tko[, cL] / dt_tko[, cD]
   )
-  
+
   # Calculate the percentage of difference between calibrated and simulated TODR
   set(
     x = dt_tko,
@@ -252,19 +271,35 @@ fn_calibrate <- function(cL, i) {
 # ==============================================================================
 
 # For each calibrated takeoff mass/distance pair
-for (i in seq_len(nrow(dt_tko))) {
+# for (i in seq_len(nrow(dt_tko))) {
+# 
+#   # Output progress to the console
+#   print(paste(i, "/", nrow(dt_tko), sep = " "))
+# 
+#   # Run the optimizer on fn_calibrate to minimize the residual error
+#   optimize(
+#     f = function(cL) fn_calibrate(cL, i),
+#     interval = sim$clmax_range,
+#     tol = sim$optim_tol
+#   )
+# 
+# } # End of the for loop
 
-  # Output progress to the console
-  print(paste(i, "/", nrow(dt_tko), sep = " "))
-
-  # Run the optimizer on fn_calibrate to minimize the residual error
+fn_optimize <- function(i) {
   optimize(
     f = function(cL) fn_calibrate(cL, i),
     interval = sim$clmax_range,
     tol = sim$optim_tol
   )
+}
 
-} # End of the for loop
+# Distribute the work across the cluster
+fn_par_lapply(
+  crs = sim$crs,
+  pkg = c("data.table", "DBI"),
+  lst = as.list(seq(1, ceiling(nrow(dt_tko) / 23L))),
+  fun = fn_optimize
+)
 
 # ==============================================================================
 # 4 Save the results to the database
@@ -295,7 +330,7 @@ db_qry <- paste(
     m MEDIUMINT NOT NULL,
     todr_cal SMALLINT NOT NULL,
     todr_sim SMALLINT NOT NULL,
-    vlof SMALLINT NOT NULL,
+    vlof FLOAT NOT NULL,
     cL FLOAT NOT NULL,
     cD FLOAT NOT NULL,
     ratio FLOAT NOT NULL,
@@ -341,71 +376,91 @@ dbDisconnect(db_con)
 # 4.3 Index the database table
 # ==============================================================================
 
-# # Set the index name
-# db_idx <- "idx"
-# 
-# # Connect to the database
-# db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-# 
-# # Build the query to create the index
-# db_qry <- paste(
-#   "CREATE INDEX ", tolower(db_idx),
-#   " ON ", tolower(db$cal), " (type, m);",
-#   sep = ""
-# )
-# 
-# # Send the query to the database
-# db_res <- dbSendQuery(db_con, db_qry)
-# 
-# # Release the database resource
-# dbClearResult(db_res)
-# 
-# # Disconnect from the database
-# dbDisconnect(db_con)
+# Connect to the database
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
+
+# Build the query to create the index
+db_qry <- paste(
+  "CREATE INDEX ", tolower(db$idx),
+  " ON ", tolower(db$cal), " (type, m);",
+  sep = ""
+)
+
+# Send the query to the database
+db_res <- dbSendQuery(db_con, db_qry)
+
+# Release the database resource
+dbClearResult(db_res)
+
+# Disconnect from the database
+dbDisconnect(db_con)
 
 # ==============================================================================
 # 5 Validate the calibration results
 # ==============================================================================
 
-# Validate only the mass-TODR value pairs from the calibrated data
-dt_val <- dt_tko[m %% 250 == 0]
-
-# # Calculate the lift/drag ratio
-# set(x = dt_val, j = "ratio", value = dt_val[, cD] / dt_val[, cL])
-# 
-# # Calculate the percentage of difference between calibrated and simulated TODR
-# set(
-#   x = dt_val,
-#   j = "diff",
-#   value = abs(dt_val[, todr_sim] - dt_val[, todr_cal]) /
-#     dt_val[, todr_cal] * 100
-# )
+# Keep only the mass-TODR value pairs from the calibrated data for validation
+dt_tko <- dt_tko[m %% 250 == 0]
 
 # ==============================================================================
 # 5.1 Output summary statistics to the console
 # ==============================================================================
 
-# Summarize the takeoff speed by aircraft type
-dt_val[, as.list(summary(Vlof)), by = type]
+# Summarize the takeoff speeds by aircraft type
+dt_tko[, as.list(summary(Vlof)), by = type]
 
-# Summarize the lift coefficient by aircraft type
-dt_val[, as.list(summary(cL)), by = type]
+# Summarize the lift coefficients by aircraft type
+dt_tko[, as.list(summary(cL)), by = type]
 
-# Summarize the drag coefficient by aircraft type
-dt_val[, as.list(summary(cD)), by = type]
+# Summarize the drag coefficients by aircraft type
+dt_tko[, as.list(summary(cD)), by = type]
 
-# Summarize the lift/drag ratio by aircraft type
-dt_val[, as.list(summary(ratio)), by = type]
+# Summarize the lift/drag ratios by aircraft type
+dt_tko[, as.list(summary(ratio)), by = type]
 
-# Summarize the difference between calibrated and simulated TODR in percentage
-dt_val[, as.list(summary(diff)), by = type]
+# Summarize the differences between calibrated & simulated TODR by aircraft type
+dt_tko[, as.list(summary(diff)), by = type]
+
+print(str(dt_tko))
 
 # ==============================================================================
 # 5.2 Generate and save plots
 # ==============================================================================
 
+# Box-plot the lift coefficient by aircraft type
+(ggplot(data = dt_tko[, .(type, cL)], aes(x = type, y = cL)) +
+  geom_boxplot() +
+  labs(x = "Aircraft type", y = "cL") +
+  theme_light()) %>%
+  ggsave(
+    filename = "cal_cl.png",
+    device = "png",
+    path = "plots",
+    scale = 1,
+    width = 6,
+    height = NA,
+    units = "in",
+    dpi = "print"
+  )
+
+# Box-plot the drag coefficient by aircraft type
+(ggplot(data = dt_tko[, .(type, cD)], aes(x = type, y = cD)) +
+  geom_boxplot() +
+  labs(x = "Aircraft type", y = "cD") +
+  theme_light()) %>%
+  ggsave(
+    filename = "cal_cd.png",
+    device = "png",
+    path = "plots",
+    scale = 1,
+    width = 6,
+    height = NA,
+    units = "in",
+    dpi = "print"
+  )
+
 # Box-plot the lift/drag ratio by aircraft type
-(ggplot(data = dt_val[, .(type, ratio)], aes(x = type, y = ratio)) +
+(ggplot(data = dt_tko[, .(type, ratio)], aes(x = type, y = ratio)) +
   geom_boxplot() +
   labs(x = "Aircraft type", y = "cD / cL") +
   theme_light()) %>%
@@ -421,7 +476,7 @@ dt_val[, as.list(summary(diff)), by = type]
   )
 
 # Box-plot the calibration accuracy by aircraft type
-(ggplot(data = dt_val[, .(type, diff)], aes(x = type, y = diff)) +
+(ggplot(data = dt_tko[, .(type, diff)], aes(x = type, y = diff)) +
   geom_boxplot() +
   labs(
     x = "Aircraft type",
@@ -440,7 +495,7 @@ dt_val[, as.list(summary(diff)), by = type]
   )
 
 # Plot the calibrated vs. simulated mass over TODR for each aircraft type
-(ggplot(data = dt_val) +
+(ggplot(data = dt_tko) +
   geom_point(mapping = aes(x = todr_cal, y = m), color = "black", size = 2) +
   geom_line(mapping = aes(x = todr_sim, y = m), color = "gray", size = 1) +
   scale_x_continuous("TODR in m", labels = scales::comma) +
@@ -459,7 +514,7 @@ dt_val[, as.list(summary(diff)), by = type]
   )
 
 # Plot the takeoff speed for each aircraft type
-(ggplot(data = dt_val[, .(type, Vlof)], aes(x = type, y = Vlof)) +
+(ggplot(data = dt_tko[, .(type, Vlof)], aes(x = type, y = Vlof)) +
     geom_boxplot() +
     labs(
       x = "Aircraft type",
@@ -476,14 +531,6 @@ dt_val[, as.list(summary(diff)), by = type]
     units = "in",
     dpi = "print"
   )
-
-# FOR TESTING ONLY
-print(sim$clmax_range)
-print(sim$margin_cal)
-print(sim$vs_to_vlof)
-dt_val[, min(Vlof),  by = type]
-dt_val[, mean(Vlof), by = type]
-dt_val[, max(Vlof),  by = type]
 
 # ==============================================================================
 # 6 Housekeeping

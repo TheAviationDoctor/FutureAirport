@@ -24,7 +24,7 @@ library(zoo)
 
 # Import the common settings
 source("scripts/0_common.R")
-source("scripts/6_model1.4b.R")
+source("scripts/6_model1.6.R")
 
 # Start a script timer
 start_time <- Sys.time()
@@ -224,7 +224,8 @@ fn_calibrate <- function(cL, i) {
     x = dt_tko,
     i = i,
     j = "todr_sim",
-    value = fn_todr(DT = dt_tko[i, ], mode = "cal")
+    # value = fn_todr(DT = dt_tko[i, ], mode = "cal")
+    value = fn_todr(DT = dt_tko[i, ])
   )
   
   # Calculate the lift/drag ratio
@@ -295,7 +296,7 @@ db_qry <- paste(
     m MEDIUMINT NOT NULL,
     todr_cal SMALLINT NOT NULL,
     todr_sim SMALLINT NOT NULL,
-    vlof SMALLINT NOT NULL,
+    vlof FLOAT NOT NULL,
     cL FLOAT NOT NULL,
     cD FLOAT NOT NULL,
     ratio FLOAT NOT NULL,
@@ -341,71 +342,89 @@ dbDisconnect(db_con)
 # 4.3 Index the database table
 # ==============================================================================
 
-# # Set the index name
-# db_idx <- "idx"
-# 
-# # Connect to the database
-# db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-# 
-# # Build the query to create the index
-# db_qry <- paste(
-#   "CREATE INDEX ", tolower(db_idx),
-#   " ON ", tolower(db$cal), " (type, m);",
-#   sep = ""
-# )
-# 
-# # Send the query to the database
-# db_res <- dbSendQuery(db_con, db_qry)
-# 
-# # Release the database resource
-# dbClearResult(db_res)
-# 
-# # Disconnect from the database
-# dbDisconnect(db_con)
+# Connect to the database
+db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
+
+# Build the query to create the index
+db_qry <- paste(
+  "CREATE INDEX ", tolower(db$idx),
+  " ON ", tolower(db$cal), " (type, m);",
+  sep = ""
+)
+
+# Send the query to the database
+db_res <- dbSendQuery(db_con, db_qry)
+
+# Release the database resource
+dbClearResult(db_res)
+
+# Disconnect from the database
+dbDisconnect(db_con)
 
 # ==============================================================================
 # 5 Validate the calibration results
 # ==============================================================================
 
-# Validate only the mass-TODR value pairs from the calibrated data
-dt_val <- dt_tko[m %% 250 == 0]
-
-# # Calculate the lift/drag ratio
-# set(x = dt_val, j = "ratio", value = dt_val[, cD] / dt_val[, cL])
-# 
-# # Calculate the percentage of difference between calibrated and simulated TODR
-# set(
-#   x = dt_val,
-#   j = "diff",
-#   value = abs(dt_val[, todr_sim] - dt_val[, todr_cal]) /
-#     dt_val[, todr_cal] * 100
-# )
+# Keep only the mass-TODR value pairs from the calibrated data for validation
+dt_tko <- dt_tko[m %% 250 == 0]
 
 # ==============================================================================
 # 5.1 Output summary statistics to the console
 # ==============================================================================
 
 # Summarize the takeoff speed by aircraft type
-dt_val[, as.list(summary(Vlof)), by = type]
+dt_tko[, as.list(summary(Vlof)), by = type]
 
 # Summarize the lift coefficient by aircraft type
-dt_val[, as.list(summary(cL)), by = type]
+dt_tko[, as.list(summary(cL)), by = type]
 
 # Summarize the drag coefficient by aircraft type
-dt_val[, as.list(summary(cD)), by = type]
+dt_tko[, as.list(summary(cD)), by = type]
 
 # Summarize the lift/drag ratio by aircraft type
-dt_val[, as.list(summary(ratio)), by = type]
+dt_tko[, as.list(summary(ratio)), by = type]
 
 # Summarize the difference between calibrated and simulated TODR in percentage
-dt_val[, as.list(summary(diff)), by = type]
+dt_tko[, as.list(summary(diff)), by = type]
 
 # ==============================================================================
 # 5.2 Generate and save plots
 # ==============================================================================
 
+# Box-plot the lift coefficient by aircraft type
+(ggplot(data = dt_tko[, .(type, cL)], aes(x = type, y = cL)) +
+  geom_boxplot() +
+  labs(x = "Aircraft type", y = "cL") +
+  theme_light()) %>%
+  ggsave(
+    filename = "cal_cl.png",
+    device = "png",
+    path = "plots",
+    scale = 1,
+    width = 6,
+    height = NA,
+    units = "in",
+    dpi = "print"
+  )
+
+# Box-plot the drag coefficient by aircraft type
+(ggplot(data = dt_tko[, .(type, cD)], aes(x = type, y = cD)) +
+  geom_boxplot() +
+  labs(x = "Aircraft type", y = "cD") +
+  theme_light()) %>%
+  ggsave(
+    filename = "cal_cd.png",
+    device = "png",
+    path = "plots",
+    scale = 1,
+    width = 6,
+    height = NA,
+    units = "in",
+    dpi = "print"
+  )
+
 # Box-plot the lift/drag ratio by aircraft type
-(ggplot(data = dt_val[, .(type, ratio)], aes(x = type, y = ratio)) +
+(ggplot(data = dt_tko[, .(type, ratio)], aes(x = type, y = ratio)) +
   geom_boxplot() +
   labs(x = "Aircraft type", y = "cD / cL") +
   theme_light()) %>%
@@ -421,7 +440,7 @@ dt_val[, as.list(summary(diff)), by = type]
   )
 
 # Box-plot the calibration accuracy by aircraft type
-(ggplot(data = dt_val[, .(type, diff)], aes(x = type, y = diff)) +
+(ggplot(data = dt_tko[, .(type, diff)], aes(x = type, y = diff)) +
   geom_boxplot() +
   labs(
     x = "Aircraft type",
@@ -440,7 +459,7 @@ dt_val[, as.list(summary(diff)), by = type]
   )
 
 # Plot the calibrated vs. simulated mass over TODR for each aircraft type
-(ggplot(data = dt_val) +
+(ggplot(data = dt_tko) +
   geom_point(mapping = aes(x = todr_cal, y = m), color = "black", size = 2) +
   geom_line(mapping = aes(x = todr_sim, y = m), color = "gray", size = 1) +
   scale_x_continuous("TODR in m", labels = scales::comma) +
@@ -459,7 +478,7 @@ dt_val[, as.list(summary(diff)), by = type]
   )
 
 # Plot the takeoff speed for each aircraft type
-(ggplot(data = dt_val[, .(type, Vlof)], aes(x = type, y = Vlof)) +
+(ggplot(data = dt_tko[, .(type, Vlof)], aes(x = type, y = Vlof)) +
     geom_boxplot() +
     labs(
       x = "Aircraft type",
@@ -476,14 +495,6 @@ dt_val[, as.list(summary(diff)), by = type]
     units = "in",
     dpi = "print"
   )
-
-# FOR TESTING ONLY
-print(sim$clmax_range)
-print(sim$margin_cal)
-print(sim$vs_to_vlof)
-dt_val[, min(Vlof),  by = type]
-dt_val[, mean(Vlof), by = type]
-dt_val[, max(Vlof),  by = type]
 
 # ==============================================================================
 # 6 Housekeeping

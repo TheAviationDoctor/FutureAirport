@@ -22,6 +22,7 @@ d <- list(
 
 f <- list(
   "act" = "data/aircraft.csv",    # Aircraft data from Sun et al. (2020)
+  "cal" = "data/calibration.csv", # Calibration inputs
   "net" = "data/netcdf.csv",      # List of NetCDF files from the ESGF
   "geo" = "data/geolocation.csv", # Airport coordinates from OurAirports.com
   "out" = "outfile.log",          # Log file for the scripts that require one
@@ -41,7 +42,8 @@ db <- list(
   "cli" = "cli",     # Climate data post-transformation
   "imp" = "imp",     # Climate data imported from the NetCDF files
   "pop" = "pop",     # Population and sample airports
-  "tko" = "tko"      # Takeoff performance calculation outputs
+  "tko" = "tko",     # Takeoff performance calculation outputs
+  "idx" = "idx"      # Index name
 )
 
 # ==============================================================================
@@ -49,6 +51,8 @@ db <- list(
 # ==============================================================================
 
 sim <- list(
+  # Computation settings
+  "crs"         = 23L,         # Number of cores to use for parallel processing
   # Natural constants
   "ft_to_m"     = .3048,       # Number of m in one ft
   "g"           = 9.806665,    # Gravitational acceleration constant in m/s²
@@ -56,18 +60,16 @@ sim <- list(
   "ps_isa"      = 101325L,     # Air pressure in Pa at sea level under ISA
   "Rd"          = 287.058,     # Specific gas constant for dry air in J/(kg·K)
   # Regulatory constants as per 14 CFR § 25.113 (1998) and CS-25.113 (2021)
-  "margin_sim"  = 1.15,        # Safety factor applied to the takeoff distance
-  "margin_cal"  = 1L,          # Same but for calibration
-  "scrn_hght"   = 35L,         # Minimum screen height
+  "tod_mul"     = 1.15,        # Regulatory takeoff distance multiplier
+  "scrn_hght"   = 35L,         # Minimum screen height above terrain
   # Runway constants
   "mu"          = .02,         # Friction coefficient for dry concrete/asphalt
   "theta"       = 0L,          # Runway slope in °
   # Calibration settings
-  "clmax_range" = c(0.9, 2.2), # Roskam Part I suggests 1.6-2.2
+  "clmax_range" = c(1.2, 2.6), # Range of cL inputs to the optimizer
   "optim_tol"   = .01,         # Optimizer tolerance
-  # "diff_thr"    = 1,          # Threshold for max acceptable difference (in %)
   # Simulation settings
-  "vs_to_vlof"  = 1.2,         # Factor applicable to Vstall to reach Vlof
+  "vs_to_vlof"  = 1.2,         # Factor for scenarios B and D
   "flap_angle"  = 10L,         # Flap deflection angle in takeoff configuration
   "climb_angle" = 7.7,         # Average climb angle to screen height
   "int"         = 10L,         # Simulation resolution (integration steps)
