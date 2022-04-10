@@ -7,82 +7,21 @@
 # ==============================================================================
 
 # ==============================================================================
-# Define a function to calculate the aircraft weight in N based on:
-# g = gravitational acceleration constant in m/s²
-# m = aircraft mass in kg
+# Define a function to calculate the liftoff speed based on:
+# cL         = dimensionless lift coefficient
+# g          = gravitational acceleration constant in m/s²
+# m          = aircraft mass in kg
+# rho        = air density in kg/m³
+# S          = wing surface area in m²
+# vs_to_vlof = safety factor from stall speed to liftoff speed
+# W          = aircraft weight in N
+# Adapted from Blake (2009).
 # ==============================================================================
 
-fn_W <- function(DT) {
-  W <- sim$g * dt_tko[, m]
-  
-}
+fn_Vlof <- function(DT) {
 
-# ==============================================================================
-# Define a function to calculate the speed of sound in m/s based on:
-# gamma = adiabatic index for dry air
-# Rd    = specific gas constant for dry air in J/(kg·K)
-# tas   = air temperature in K
-# ==============================================================================
-
-fn_Vsnd <- function(DT) {
-
-  Vsnd <- sqrt(sim$gamma * sim$Rd * DT[, tas])
-
-}
-
-# ==============================================================================
-# Define a function to calculate the air pressure ratio dP based on:
-# ps_isa = air pressure in Pa at sea level under ISA
-# tas    = air temperature in K
-# ==============================================================================
-
-fn_dP <- function(DT) {
-
-  dP <- dt_tko[, ps] / sim$ps_isa
-
-}
-
-# ==============================================================================
-# Define a function to calculate the coefficient of thrust G0 based on:
-# bpr = engine bypass ratio
-# ==============================================================================
-
-fn_G0 <- function(DT) {
-
-  G0 <- .0606 * DT[, bpr] + .6337
-
-}
-
-# ==============================================================================
-# Define a function to calculate the coefficient of thrust A based on:
-# dP = air pressure ratio
-# ==============================================================================
-
-fn_A <- function(DT) {
-
-  A <- -.4327 * DT[, dP]^2 + 1.3855 * DT[, dP] + .0472
-
-}
-
-# ==============================================================================
-# Define a function to calculate the coefficient of thrust Z based on:
-# dP = air pressure ratio
-# ==============================================================================
-
-fn_Z <- function(DT) {
-
-  Z <- .9106 * DT[, dP]^3 - 1.7736 * DT[, dP]^2 + 1.8697 * DT[, dP]
-
-}
-
-# ==============================================================================
-# Define a function to calculate the coefficient of thrust X based on:
-# dP = air pressure ratio
-# ==============================================================================
-
-fn_X <- function(DT) {
-
-  X <- .1377 * DT[, dP]^3 - .4374 * DT[, dP]^2 + 1.3003 * DT[, dP]
+  Vlof <- sqrt(DT[, m] * sim$g / (.5 * DT[, rho] * DT[, S] * DT[, cL])) *
+    sim$vs_to_vlof
 
 }
 
@@ -105,7 +44,7 @@ fn_X <- function(DT) {
 # Z        = thrust coefficient
 # ==============================================================================
 
-fn_dis_gnd <- function(DT) {
+fn_todr_gnd <- function(DT) {
 
   # ============================================================================
   # 1 Calculate the airspeed and groundspeed intervals Vtas and Vgnd in m/s 
@@ -140,7 +79,7 @@ fn_dis_gnd <- function(DT) {
   # Air density rho in kg/m³
   rho <- rep(DT[, rho], each = sim$int)
 
-  # Dynamic pressure q in Pa
+  # Dynamic pressure q in N/m²
   q <- .5 * rho * Vtas^2
 
   # ============================================================================
@@ -149,7 +88,6 @@ fn_dis_gnd <- function(DT) {
   # ============================================================================
 
   # Vectorize the speed of sound
-  # Vsnd <- rep(DT[, Vsnd], each = sim$int)
   Vsnd <- sqrt(sim$gamma * sim$Rd * DT[, tas])
 
   # Calculate the dimensionless Mach number for each airspeed interval
@@ -162,10 +100,6 @@ fn_dis_gnd <- function(DT) {
   bpr <- rep(DT[, bpr], each = sim$int)
 
   # Calculate the thrust coefficients
-  # G0 <- rep(DT[, G0], each = sim$int)
-  # A  <- rep(DT[, A],  each = sim$int)
-  # X  <- rep(DT[, X],  each = sim$int)
-  # Z  <- rep(DT[, Z],  each = sim$int)
   G0 <-  .0606 * bpr  + .6337
   A  <- -.4327 * dP^2 + 1.3855 * dP   + .0472
   X  <-  .1377 * dP^3 - .4374  * dP^2 + 1.3003 * dP
@@ -177,7 +111,7 @@ fn_dis_gnd <- function(DT) {
 
   # Vectorize the sea-level static thrust in N
   slst <- rep(DT[, slst], each = sim$int)
-  
+
   # Vectorize the engine count
   n <- rep(DT[, n], each = sim$int)
 
@@ -190,32 +124,6 @@ fn_dis_gnd <- function(DT) {
   # Apply the maximum takeoff thrust reduction permissible
   Frto <- Fmax * (100L - rto) / 100L
 
-# FOR TESTING ONLY
-print("Loop Vsnd is:")
-print(summary(Vsnd))
-print("Loop Vmach is:")
-print(summary(Vmach))
-print("Loop bpr is:")
-print(summary(bpr))
-print("Loop G0 is:")
-print(summary(G0))
-print("Loop A is:")
-print(summary(A))
-print("Loop X is:")
-print(summary(X))
-print("Loop Z is:")
-print(summary(Z))
-print("Loop tr is:")
-print(summary(tr))
-print("Loop slst is:")
-print(summary(slst))
-print("Loop n is:")
-print(summary(n))
-print("Loop Fmax is:")
-print(summary(Fmax))
-print("Loop Frto is:")
-print(summary(Frto))
-
   # ============================================================================
   # 4 Calculate the acceleration in m/s² up to liftoff
   # Adapted from Blake (2009).
@@ -225,7 +133,6 @@ print(summary(Frto))
   m <- rep(DT[, m], each = sim$int)
 
   # Calculate the aircraft weight in N
-  # W <- rep(DT[, W], each = sim$int)
   W <- m * sim$g
 
   # Vectorize the wing surface area in m²
@@ -240,10 +147,6 @@ print(summary(Frto))
   # Calculate the acceleration in m/s²
   a <- sim$g / W *
     (Frto - (sim$mu * W) - (cD - sim$mu * cL) * (q * S) - (W * sin(sim$theta)))
-
-# FOR TESTING ONLY
-print("Loop a is:")
-print(summary(a))
 
   # ============================================================================
   # 5 Increment the horizontal takeoff distances in m
@@ -272,21 +175,56 @@ print(summary(a))
     adaptive = TRUE
   )
 
+  # FOR TESTING ONLY
+  # out <- cbind(
+  #   "type"        = rep(DT[, type], each = sim$int),
+  #   "Vtas (m/s)"  = Vtas,
+  #   "Vgnd (m/s)"  = Vgnd,
+  #   "Vsnd (m/s)"  = Vsnd,
+  #   "Vmach (m/s)" = Vmach,
+  #   "rho (kg/m3)" = rho,
+  #   "dP"          = dP,
+  #   "q (N/m2)"    = q,
+  #   "bpr"         = bpr,
+  #   "n"           = n,
+  #   "A"           = A,
+  #   "G0"          = G0,
+  #   "X"           = X,
+  #   "Z"           = Z,
+  #   "tr"          = tr,
+  #   "slst (N)"    = slst,
+  #   "Fmax (N)"    = Fmax,
+  #   "rto (%)"     = rto,
+  #   "Frto (N)"    = Frto,
+  #   "m (kg)"      = m,
+  #   "W (N)"       = W,
+  #   "S (m2)"      = S,
+  #   "cL"          = cL,
+  #   "cD"          = cD,
+  #   "mu"          = sim$mu,
+  #   "mu*W"        = sim$mu * W,
+  #   "(cD-mu*cL)"  = cD - sim$mu * cL,
+  #   "(cD-mu*cL)qS"= (cD - sim$mu * cL) * q * S,
+  #   "a (m/s2)"    = a,
+  #   "a_bar"       = a_bar,
+  #   "Vgnd_bar"    = Vgnd_bar,
+  #   "Vgnd_int"    = Vgnd_int,
+  #   "inc"         = inc,
+  #   "cum"           = cum
+  # )
+  # View(out)
+
   # ============================================================================
   # 6 Assemble the takeoff distance required in m
   # Adapted from Blake (2009) and Gratton et al (2020)
   # ============================================================================
 
   # Set the horizontal ground distance up to liftoff
-  dis_gnd <- cum[seq(sim$int, length(cum), sim$int)]
-
-# FOR TESTING ONLY
-print("Loop dis_gnd is:")
-print(summary(dis_gnd))
+  todr_gnd <- cum[seq(sim$int, length(cum), sim$int)]
 
   # Return the ground portion of the takeoff distance required in m
-  return(dis_gnd)
+  return(todr_gnd)
 
-} # End of dis_gnd function
+} # End of fn_todr_gnd function
 
 # EOF

@@ -51,28 +51,27 @@ db <- list(
 # ==============================================================================
 
 sim <- list(
-  # Computation settings
-  "crs"         = 23L,         # Number of cores to use for parallel processing
   # Natural constants
   "ft_to_m"     = .3048,       # Number of m in one ft
   "g"           = 9.806665,    # Gravitational acceleration constant in m/s²
   "gamma"       = 1.401,       # Adiabatic index for dry air
   "ps_isa"      = 101325L,     # Air pressure in Pa at sea level under ISA
   "Rd"          = 287.058,     # Specific gas constant for dry air in J/(kg·K)
-  # Regulatory constants as per 14 CFR § 25.113 (1998) and CS-25.113 (2021)
-  "tod_mul"     = 1.15,        # Regulatory takeoff distance multiplier
-  "scrn_hght"   = 35L,         # Minimum screen height above terrain
-  # Runway constants
-  "mu"          = .02,         # Friction coefficient for dry concrete/asphalt
-  "theta"       = 0L,          # Runway slope in °
-  # Calibration settings
-  "clmax_range" = c(1.2, 2.6), # Range of cL inputs to the optimizer
-  "optim_tol"   = .01,         # Optimizer tolerance
-  # Simulation settings
-  "vs_to_vlof"  = 1.2,         # Factor for scenarios B and D
-  "flap_angle"  = 10L,         # Flap deflection angle in takeoff configuration
+  # Model settings
   "climb_angle" = 7.7,         # Average climb angle to screen height
-  "int"         = 10L,         # Simulation resolution (integration steps)
+  "int"         = 10L,         # Model resolution (integration steps)
+  "mu"          = .02,         # Friction coefficient for dry concrete/asphalt
+  "scrn_hght"   = 35L,         # Minimum screen height above terrain
+  "theta"       = 0L,          # Runway slope in °
+  "tod_mul"     = 1.15,        # Regulatory takeoff distance multiplier
+  "vs_to_vlof"  = 1.1,         # Safety factor from stall speed to liftoff speed
+  # Calibration settings
+  "act_cal"     = c("A20n", "A359", "B39m", "B789"), # Aircraft to calibrate
+  "clmax_range" = c(0L, 3L),   # Range of cL inputs passed to the optimizer
+  "optim_tol"   = 10^-3,       # Optimizer tolerance
+  # Simulation settings
+  "act_sim"     = c("A20n", "A359", "B39m", "B789"), # Aircraft to simulate
+  "crs"         = 23L,         # Number of cores to use for parallel processing
   "pax_mass"    = 87L,         # Average adult pax weight (Filippone, p. 52)
   "pop_thr"     = 10^6,        # Minimum passenger traffic for airport selection
   "thrst_incr"  = 1L,          # Amount of thrust increase at each iteration

@@ -78,8 +78,8 @@ l2 <- lapply(l1, function(x) {
 })
 
 # Combine the lists into a single data table
-dt_cal <- rbindlist(c(l1, l2))
-# dt_cal <- rbindlist(l1) # FOR TESTING ONLY
+# dt_cal <- rbindlist(c(l1, l2))
+dt_cal <- rbindlist(l1) # FOR TESTING ONLY
 
 # Remove duplicates values of type and mass created in l2
 dt_cal <- unique(dt_cal, by = c("type", "m"))
@@ -90,7 +90,7 @@ dt_cal <- dt_cal[order(type, m)]
 # Interpolate missing TODR values by aircraft type
 dt_cal <- dt_cal[, lapply(.SD, zoo::na.approx), by = type]
 
-# Calculate the regulatory component of the calibrated TODR in m
+# Calculate the horizontal regulatory component of the calibrated TODR in m
 set(
   x = dt_cal,
   j = "todr_cal_reg",
@@ -101,14 +101,14 @@ set(
 # Adapted from Gratton et al, 2020
 dis_air <- sim$ft_to_m * sim$scrn_hght / cos(sim$climb_angle)
 
-# Set the airborne component of the calibrated TODR in m
+# Set the horizontal airborne component of the calibrated TODR in m
 set(
   x = dt_cal,
   j = "todr_cal_air",
   value = dis_air
 )
 
-# Calculate the ground component of the calibrated TODR in m
+# Calculate the horizontal ground component of the calibrated TODR in m
 set(
   x = dt_cal,
   j = "todr_cal_gnd",
@@ -133,35 +133,35 @@ set(x = dt_cal, j = "hdw",  value = 0L)      # Near-surface headwind in m/s
 # Combine calibration and aircraft data
 dt_tko <- merge(x = dt_act, y = dt_cal, by = "type")
 
-# Calculate the speed of sound in m/s for the given temperature in dry air
-set(x = dt_tko, j = "Vsnd", value = sqrt(sim$gamma * sim$Rd * dt_tko[, tas]))
-
 # Calculate the weight force W in N
 set(x = dt_tko, j = "W", value = sim$g * dt_tko[, m])
 
-# Calculate the air pressure ratio dP
-# For calibration we assume sea-level ISA conditions (i.e. dP = 1)
-set(x = dt_tko, j = "dP", value = dt_tko[, ps] / sim$ps_isa)
-
-# Calculate the coefficients of thrust for the given air pressure ratio
-set(x = dt_tko, j = "G0", value = .0606 * dt_tko[, bpr] + .6337)
-set(
-  x = dt_tko,
-  j = "A",
-  value = -.4327 * dt_tko[, dP]^2 + 1.3855 * dt_tko[, dP] + .0472
-)
-set(
-  x = dt_tko,
-  j = "Z",
-  value = .9106 * dt_tko[, dP]^3 - 1.7736 * dt_tko[, dP]^2 + 1.8697 *
-    dt_tko[, dP]
-)
-set(
-  x = dt_tko,
-  j = "X",
-  value = .1377 * dt_tko[, dP]^3 - .4374 * dt_tko[, dP]^2 + 1.3003 *
-    dt_tko[, dP]
-)
+# # Calculate the speed of sound in m/s for the given temperature in dry air
+# set(x = dt_tko, j = "Vsnd", value = sqrt(sim$gamma * sim$Rd * dt_tko[, tas]))
+# 
+# # Calculate the air pressure ratio dP
+# # For calibration we assume sea-level ISA conditions (i.e. dP = 1)
+# set(x = dt_tko, j = "dP", value = dt_tko[, ps] / sim$ps_isa)
+# 
+# # Calculate the coefficients of thrust for the given air pressure ratio
+# set(x = dt_tko, j = "G0", value = .0606 * dt_tko[, bpr] + .6337)
+# set(
+#   x = dt_tko,
+#   j = "A",
+#   value = -.4327 * dt_tko[, dP]^2 + 1.3855 * dt_tko[, dP] + .0472
+# )
+# set(
+#   x = dt_tko,
+#   j = "Z",
+#   value = .9106 * dt_tko[, dP]^3 - 1.7736 * dt_tko[, dP]^2 + 1.8697 *
+#     dt_tko[, dP]
+# )
+# set(
+#   x = dt_tko,
+#   j = "X",
+#   value = .1377 * dt_tko[, dP]^3 - .4374 * dt_tko[, dP]^2 + 1.3003 *
+#     dt_tko[, dP]
+# )
 
 # Maximum percentage of thrust reduction permissible under FAA AC 25-13 (1988)
 # For calibration we assume 0% thrust reduction (TOGA thrust).
@@ -201,6 +201,12 @@ set(
   j = "k_total",
   value = 1 / (1 / dt_tko[, k] + pi * dt_tko[, ar] * dt_tko[, delta_e_flaps])
 )
+
+# FOR TESTING ONLY
+sel_type <- "B39m"
+sel_m    <-  88000L
+dt_tko <- dt_tko[type == sel_type]
+dt_tko <- dt_tko[m    == sel_m]
 
 # ==============================================================================
 # 2 Define a function to calibrate cL and cD for every m and TODR value pair
@@ -328,292 +334,292 @@ for (i in seq_len(nrow(dt_tko))) {
 # 4.1 Set up the database table to store the calibration data
 # ==============================================================================
 
-# Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-
-# Build the query to drop the table, if it exists
-db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db$cal), ";", sep = "")
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Release the database resource
-dbClearResult(db_res)
-
-# Build the query to create the table
-db_qry <- paste(
-  "CREATE TABLE",
-  tolower(db$cal),
-  "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    type CHAR(4) NOT NULL,
-    m MEDIUMINT NOT NULL,
-    todr_cal SMALLINT NOT NULL,
-    todr_cal_gnd SMALLINT NOT NULL,
-    todr_cal_air SMALLINT NOT NULL,
-    todr_cal_reg SMALLINT NOT NULL,
-    todr_sim SMALLINT NOT NULL,
-    todr_sim_gnd SMALLINT NOT NULL,
-    todr_sim_air SMALLINT NOT NULL,
-    todr_sim_reg SMALLINT NOT NULL,
-    vlof FLOAT NOT NULL,
-    cL FLOAT NOT NULL,
-    cD FLOAT NOT NULL,
-    PRIMARY KEY (id));",
-  sep = " "
-)
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Release the database resource
-dbClearResult(db_res)
-
-# Disconnect from the database
-dbDisconnect(db_con)
-
-# ==============================================================================
-# 4.2 Write the calibration data to the database table
-# ==============================================================================
-
-# Select which columns to write to the database and in which order
-cols <- c(
-  "type", "m", "todr_cal", "todr_cal_gnd", "todr_cal_air", "todr_cal_reg",
-  "todr_sim", "todr_sim_gnd", "todr_sim_air", "todr_sim_reg", "Vlof", "cL", "cD"
-)
-
-# Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-
-# Write the data
-dbWriteTable(
-  conn = db_con,
-  name = tolower(db$cal),
-  value = dt_tko[, ..cols],
-  append = TRUE,
-  row.names = FALSE
-)
-
-# Disconnect from the database
-dbDisconnect(db_con)
-
-# ==============================================================================
-# 4.3 Index the database table
-# ==============================================================================
-
-# Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-
-# Build the query to create the index
-db_qry <- paste(
-  "CREATE INDEX ", tolower(db$idx),
-  " ON ", tolower(db$cal), " (type, m);",
-  sep = ""
-)
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Release the database resource
-dbClearResult(db_res)
-
-# Disconnect from the database
-dbDisconnect(db_con)
-
-# ==============================================================================
-# 5 Validate the calibration results
-# ==============================================================================
-
-# Keep only the mass-TODR value pairs from the calibrated data for validation
-dt_tko <- dt_tko[m %% 250 == 0]
-
-# ==============================================================================
-# 5.1 Output summary statistics to the console
-# ==============================================================================
-
-# Summarize the takeoff speeds by aircraft type
-dt_tko[, as.list(summary(Vlof)), by = type]
-
-# Summarize the lift coefficients by aircraft type
-dt_tko[, as.list(summary(cL)), by = type]
-
-# Summarize the drag coefficients by aircraft type
-dt_tko[, as.list(summary(cD)), by = type]
-
-# Summarize the lift/drag ratios by aircraft type
-dt_tko[, as.list(summary(ratio)), by = type]
-
-# Summarize the differences between calibrated & simulated TODR by aircraft type
-dt_tko[, as.list(summary(diff_m)), by = type]
-
-# ==============================================================================
-# 5.2 Generate and save plots
-# ==============================================================================
-
-# Box-plot the lift coefficient by aircraft type
-(ggplot(data = dt_tko[, .(type, cL)], aes(x = type, y = cL)) +
-  geom_boxplot() +
-  stat_summary(fun = mean) +
-  labs(x = "Aircraft type", y = "Lift coefficient (cL)") +
-  theme_light()) %>%
-  ggsave(
-    filename = "cal_box_cl.png",
-    device = "png",
-    path = "plots",
-    scale = 1,
-    width = 6,
-    height = NA,
-    units = "in",
-    dpi = "print"
-  )
-
-# Box-plot the drag coefficient by aircraft type
-(ggplot(data = dt_tko[, .(type, cD)], aes(x = type, y = cD)) +
-  geom_boxplot() +
-  stat_summary(fun = mean) +
-  labs(x = "Aircraft type", y = "Drag coefficient (cD)") +
-  theme_light()) %>%
-  ggsave(
-    filename = "cal_box_cd.png",
-    device = "png",
-    path = "plots",
-    scale = 1,
-    width = 6,
-    height = NA,
-    units = "in",
-    dpi = "print"
-  )
-
-# Box-plot the lift/drag ratio by aircraft type
-(ggplot(data = dt_tko[, .(type, ratio)], aes(x = type, y = ratio)) +
-  geom_boxplot() +
-  stat_summary(fun = mean) +
-  labs(x = "Aircraft type", y = "Lift/drag ratio (cL/cD)") +
-  theme_light()) %>%
-  ggsave(
-    filename = "cal_box_cl_cd_ratio.png",
-    device = "png",
-    path = "plots",
-    scale = 1,
-    width = 6,
-    height = NA,
-    units = "in",
-    dpi = "print"
-  )
-
-# Box-plot the calibration accuracy in m by aircraft type
-(ggplot(data = dt_tko[, .(type, diff_m)], aes(x = type, y = diff_m)) +
-  geom_boxplot() +
-  stat_summary(fun = mean) +
-  labs(
-    x = "Aircraft type",
-    y = "Difference (in m) between calibrated and simulated TODR"
-  ) +
-  theme_light()) %>%
-  ggsave(
-    filename = "cal_box_diff_m.png",
-    device = "png",
-    path = "plots",
-    scale = 1,
-    width = 6,
-    height = NA,
-    units = "in",
-    dpi = "print"
-  )
-
-# Box-plot the calibration accuracy in % by aircraft type
-(ggplot(data = dt_tko[, .(type, diff_per)], aes(x = type, y = diff_per)) +
-  geom_boxplot() +
-  stat_summary(fun = mean) +
-  labs(
-    x = "Aircraft type",
-    y = "Difference (in %) between calibrated and simulated TODR"
-  ) +
-  theme_light()) %>%
-  ggsave(
-    filename = "cal_box_diff_per.png",
-    device = "png",
-    path = "plots",
-    scale = 1,
-    width = 6,
-    height = NA,
-    units = "in",
-    dpi = "print"
-  )
-
-# Plot the takeoff speed for each aircraft type
-(ggplot(data = dt_tko[, .(type, Vlof)], aes(x = type, y = Vlof)) +
-    geom_boxplot() +
-    stat_summary(fun = mean) +
-    labs(
-      x = "Aircraft type",
-      y = "Liftoff speed in m/s"
-    ) +
-    theme_light()) %>%
-  ggsave(
-    filename = "cal_box_vlof.png",
-    device = "png",
-    path = "plots",
-    scale = 1,
-    width = 6,
-    height = NA,
-    units = "in",
-    dpi = "print"
-  )
-
-# Plot the calibrated vs. simulated mass over TODR for each aircraft type
-(ggplot(data = dt_tko) +
-  geom_point(mapping = aes(x = m, y = todr_cal), color = "black", size = 2) +
-  geom_line(mapping = aes(x = m, y = todr_sim), color = "gray", size = 1) +
-  scale_x_continuous("Takeoff mass in kg", labels = scales::comma) +
-  scale_y_continuous("Regulatory TODR in m", labels = scales::comma) +
-  facet_wrap(~type, ncol = 2, scales = "free") +
-  theme_light()) %>%
-  ggsave(
-    filename = "cal_line_todr_mass.png",
-    device = "png",
-    path = "plots",
-    scale = 1,
-    width = 6,
-    height = NA,
-    units = "in",
-    dpi = "print"
-  )
-
-# Plot the calibrated vs. simulated mass over cL for each aircraft type
-(ggplot(data = dt_tko) +
-  geom_line(mapping = aes(x = m, y = cL), color = "black", size = 1) +
-  scale_x_continuous("Takeoff mass in kg", labels = scales::comma) +
-  scale_y_continuous("Lift coefficient (cL)", labels = scales::comma) +
-  facet_wrap(~type, ncol = 2, scales = "free") +
-  theme_light()) %>%
-  ggsave(
-    filename = "cal_line_cl_mass.png",
-    device = "png",
-    path = "plots",
-    scale = 1,
-    width = 6,
-    height = NA,
-    units = "in",
-    dpi = "print"
-  )
-
-# Plot the calibrated vs. simulated mass over Vlof for each aircraft type
-(ggplot(data = dt_tko) +
-  geom_line(mapping = aes(x = m, y = Vlof), color = "black", size = 1) +
-  scale_x_continuous("Takeoff mass in kg", labels = scales::comma) +
-  scale_y_continuous("Liftoff speed in m/s", labels = scales::comma) +
-  facet_wrap(~type, ncol = 2, scales = "free") +
-  theme_light()) %>%
-  ggsave(
-    filename = "cal_line_vlof_mass.png",
-    device = "png",
-    path = "plots",
-    scale = 1,
-    width = 6,
-    height = NA,
-    units = "in",
-    dpi = "print"
-  )
+# # Connect to the database
+# db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
+# 
+# # Build the query to drop the table, if it exists
+# db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db$cal), ";", sep = "")
+# 
+# # Send the query to the database
+# db_res <- dbSendQuery(db_con, db_qry)
+# 
+# # Release the database resource
+# dbClearResult(db_res)
+# 
+# # Build the query to create the table
+# db_qry <- paste(
+#   "CREATE TABLE",
+#   tolower(db$cal),
+#   "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+#     type CHAR(4) NOT NULL,
+#     m MEDIUMINT NOT NULL,
+#     todr_cal SMALLINT NOT NULL,
+#     todr_cal_gnd SMALLINT NOT NULL,
+#     todr_cal_air SMALLINT NOT NULL,
+#     todr_cal_reg SMALLINT NOT NULL,
+#     todr_sim SMALLINT NOT NULL,
+#     todr_sim_gnd SMALLINT NOT NULL,
+#     todr_sim_air SMALLINT NOT NULL,
+#     todr_sim_reg SMALLINT NOT NULL,
+#     vlof FLOAT NOT NULL,
+#     cL FLOAT NOT NULL,
+#     cD FLOAT NOT NULL,
+#     PRIMARY KEY (id));",
+#   sep = " "
+# )
+# 
+# # Send the query to the database
+# db_res <- dbSendQuery(db_con, db_qry)
+# 
+# # Release the database resource
+# dbClearResult(db_res)
+# 
+# # Disconnect from the database
+# dbDisconnect(db_con)
+# 
+# # ==============================================================================
+# # 4.2 Write the calibration data to the database table
+# # ==============================================================================
+# 
+# # Select which columns to write to the database and in which order
+# cols <- c(
+#   "type", "m", "todr_cal", "todr_cal_gnd", "todr_cal_air", "todr_cal_reg",
+#   "todr_sim", "todr_sim_gnd", "todr_sim_air", "todr_sim_reg", "Vlof", "cL", "cD"
+# )
+# 
+# # Connect to the database
+# db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
+# 
+# # Write the data
+# dbWriteTable(
+#   conn = db_con,
+#   name = tolower(db$cal),
+#   value = dt_tko[, ..cols],
+#   append = TRUE,
+#   row.names = FALSE
+# )
+# 
+# # Disconnect from the database
+# dbDisconnect(db_con)
+# 
+# # ==============================================================================
+# # 4.3 Index the database table
+# # ==============================================================================
+# 
+# # Connect to the database
+# db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
+# 
+# # Build the query to create the index
+# db_qry <- paste(
+#   "CREATE INDEX ", tolower(db$idx),
+#   " ON ", tolower(db$cal), " (type, m);",
+#   sep = ""
+# )
+# 
+# # Send the query to the database
+# db_res <- dbSendQuery(db_con, db_qry)
+# 
+# # Release the database resource
+# dbClearResult(db_res)
+# 
+# # Disconnect from the database
+# dbDisconnect(db_con)
+# 
+# # ==============================================================================
+# # 5 Validate the calibration results
+# # ==============================================================================
+# 
+# # Keep only the mass-TODR value pairs from the calibrated data for validation
+# dt_tko <- dt_tko[m %% 250 == 0]
+# 
+# # ==============================================================================
+# # 5.1 Output summary statistics to the console
+# # ==============================================================================
+# 
+# # Summarize the takeoff speeds by aircraft type
+# dt_tko[, as.list(summary(Vlof)), by = type]
+# 
+# # Summarize the lift coefficients by aircraft type
+# dt_tko[, as.list(summary(cL)), by = type]
+# 
+# # Summarize the drag coefficients by aircraft type
+# dt_tko[, as.list(summary(cD)), by = type]
+# 
+# # Summarize the lift/drag ratios by aircraft type
+# dt_tko[, as.list(summary(ratio)), by = type]
+# 
+# # Summarize the differences between calibrated & simulated TODR by aircraft type
+# dt_tko[, as.list(summary(diff_m)), by = type]
+# 
+# # ==============================================================================
+# # 5.2 Generate and save plots
+# # ==============================================================================
+# 
+# # Box-plot the lift coefficient by aircraft type
+# (ggplot(data = dt_tko[, .(type, cL)], aes(x = type, y = cL)) +
+#   geom_boxplot() +
+#   stat_summary(fun = mean) +
+#   labs(x = "Aircraft type", y = "Lift coefficient (cL)") +
+#   theme_light()) %>%
+#   ggsave(
+#     filename = "cal_box_cl.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+# 
+# # Box-plot the drag coefficient by aircraft type
+# (ggplot(data = dt_tko[, .(type, cD)], aes(x = type, y = cD)) +
+#   geom_boxplot() +
+#   stat_summary(fun = mean) +
+#   labs(x = "Aircraft type", y = "Drag coefficient (cD)") +
+#   theme_light()) %>%
+#   ggsave(
+#     filename = "cal_box_cd.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+# 
+# # Box-plot the lift/drag ratio by aircraft type
+# (ggplot(data = dt_tko[, .(type, ratio)], aes(x = type, y = ratio)) +
+#   geom_boxplot() +
+#   stat_summary(fun = mean) +
+#   labs(x = "Aircraft type", y = "Lift/drag ratio (cL/cD)") +
+#   theme_light()) %>%
+#   ggsave(
+#     filename = "cal_box_cl_cd_ratio.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+# 
+# # Box-plot the calibration accuracy in m by aircraft type
+# (ggplot(data = dt_tko[, .(type, diff_m)], aes(x = type, y = diff_m)) +
+#   geom_boxplot() +
+#   stat_summary(fun = mean) +
+#   labs(
+#     x = "Aircraft type",
+#     y = "Difference (in m) between calibrated and simulated TODR"
+#   ) +
+#   theme_light()) %>%
+#   ggsave(
+#     filename = "cal_box_diff_m.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+# 
+# # Box-plot the calibration accuracy in % by aircraft type
+# (ggplot(data = dt_tko[, .(type, diff_per)], aes(x = type, y = diff_per)) +
+#   geom_boxplot() +
+#   stat_summary(fun = mean) +
+#   labs(
+#     x = "Aircraft type",
+#     y = "Difference (in %) between calibrated and simulated TODR"
+#   ) +
+#   theme_light()) %>%
+#   ggsave(
+#     filename = "cal_box_diff_per.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+# 
+# # Plot the takeoff speed for each aircraft type
+# (ggplot(data = dt_tko[, .(type, Vlof)], aes(x = type, y = Vlof)) +
+#     geom_boxplot() +
+#     stat_summary(fun = mean) +
+#     labs(
+#       x = "Aircraft type",
+#       y = "Liftoff speed in m/s"
+#     ) +
+#     theme_light()) %>%
+#   ggsave(
+#     filename = "cal_box_vlof.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+# 
+# # Plot the calibrated vs. simulated mass over TODR for each aircraft type
+# (ggplot(data = dt_tko) +
+#   geom_point(mapping = aes(x = m, y = todr_cal), color = "black", size = 2) +
+#   geom_line(mapping = aes(x = m, y = todr_sim), color = "gray", size = 1) +
+#   scale_x_continuous("Takeoff mass in kg", labels = scales::comma) +
+#   scale_y_continuous("Regulatory TODR in m", labels = scales::comma) +
+#   facet_wrap(~type, ncol = 2, scales = "free") +
+#   theme_light()) %>%
+#   ggsave(
+#     filename = "cal_line_todr_mass.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+# 
+# # Plot the calibrated vs. simulated mass over cL for each aircraft type
+# (ggplot(data = dt_tko) +
+#   geom_line(mapping = aes(x = m, y = cL), color = "black", size = 1) +
+#   scale_x_continuous("Takeoff mass in kg", labels = scales::comma) +
+#   scale_y_continuous("Lift coefficient (cL)", labels = scales::comma) +
+#   facet_wrap(~type, ncol = 2, scales = "free") +
+#   theme_light()) %>%
+#   ggsave(
+#     filename = "cal_line_cl_mass.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+# 
+# # Plot the calibrated vs. simulated mass over Vlof for each aircraft type
+# (ggplot(data = dt_tko) +
+#   geom_line(mapping = aes(x = m, y = Vlof), color = "black", size = 1) +
+#   scale_x_continuous("Takeoff mass in kg", labels = scales::comma) +
+#   scale_y_continuous("Liftoff speed in m/s", labels = scales::comma) +
+#   facet_wrap(~type, ncol = 2, scales = "free") +
+#   theme_light()) %>%
+#   ggsave(
+#     filename = "cal_line_vlof_mass.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
 
 # ==============================================================================
 # 6 Housekeeping
