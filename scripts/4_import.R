@@ -200,6 +200,7 @@ fn_import <- function(nc_file) {
 
     # Append the results to the list initialized earlier
     nc_list[[i]] <- nc_apt
+
   } # End of the airport loop
 
   # ============================================================================

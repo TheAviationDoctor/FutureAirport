@@ -9,7 +9,7 @@
 # 0 Directory locations
 # ==============================================================================
 
-d <- list(
+dir <- list(
   "cal" = "data/cal", # Calibrated takeoff performance data
   "cli" = "data/cli", # Climate data in NetCDF format
   "log" = "logs",     # Log files
@@ -20,12 +20,11 @@ d <- list(
 # 1 File locations
 # ==============================================================================
 
-f <- list(
+fls <- list(
   "act" = "data/aircraft.csv",    # Aircraft data from Sun et al. (2020)
   "cal" = "data/calibration.csv", # Calibration inputs
   "net" = "data/netcdf.csv",      # List of NetCDF files from the ESGF
   "geo" = "data/geolocation.csv", # Airport coordinates from OurAirports.com
-  "out" = "outfile.log",          # Log file for the scripts that require one
   "rwy" = "data/runways.csv",     # Runways and TODA from Lufthansa Systems
   "tra" = "data/traffic.csv"      # 2019 traffic by airport from IATA
 )
@@ -34,7 +33,7 @@ f <- list(
 # 2 Database parameters
 # ==============================================================================
 
-db <- list(
+dat <- list(
   "cnf" = ".my.cnf", # File that contains the database connection parameters
   "grp" = "phd",     # Group name within the cnf file
   "act" = "act",     # Aircraft characteristics for the takeoff simulation
@@ -47,50 +46,66 @@ db <- list(
 )
 
 # ==============================================================================
-# 3 Takeoff simulation parameters
+# 3 Aircraft types
 # ==============================================================================
 
-sim <- list(
-  # Natural constants
-  "ft_to_m"     = .3048,       # Number of m in one ft
-  "g"           = 9.806665,    # Gravitational acceleration constant in m/s²
-  "gamma"       = 1.401,       # Adiabatic index for dry air
-  "ps_isa"      = 101325L,     # Air pressure in Pa at sea level under ISA
-  "Rd"          = 287.058,     # Specific gas constant for dry air in J/(kg·K)
-  # Model settings
-  "climb_angle" = 7.7,         # Average climb angle to screen height
-  "int"         = 10L,         # Model resolution (integration steps)
-  "mu"          = .02,         # Friction coefficient for dry concrete/asphalt
-  "scrn_hght"   = 35L,         # Minimum screen height above terrain
-  "theta"       = 0L,          # Runway slope in °
-  "tod_mul"     = 1.15,        # Regulatory takeoff distance multiplier
-  "vs_to_vlof"  = 1.1,         # Safety factor from stall speed to liftoff speed
-  # Calibration settings
-  "act_cal"     = c("A20n", "A359", "B39m", "B789"), # Aircraft to calibrate
-  "clmax_range" = c(0L, 3L),   # Range of cL inputs passed to the optimizer
-  "optim_tol"   = 10^-3,       # Optimizer tolerance
-  # Simulation settings
-  "act_sim"     = c("A20n", "A359", "B39m", "B789"), # Aircraft to simulate
-  "crs"         = 23L,         # Number of cores to use for parallel processing
-  "pax_mass"    = 87L,         # Average adult pax weight (Filippone, p. 52)
-  "pop_thr"     = 10^6,        # Minimum passenger traffic for airport selection
-  "thrst_incr"  = 1L,          # Amount of thrust increase at each iteration
-  "thrst_start" = 25L          # Amount of thrust reduction to start with
+act <- list(
+  "Airbus A320neo"   = "A20n",
+  "Airbus A350-900"  = "A359",
+  "Boeing 737 MAX 9" = "B39m", # CFM LEAP-1B27 engine
+  "Boeing 787-9"     = "B789"
 )
 
 # ==============================================================================
-# 4 Common functions
+# 4 Takeoff simulation parameters
+# ==============================================================================
+
+sim <- list(
+  # Calibration settings
+  "clb_ang"     = 7.7,          # Average climb angle to screen height
+  "flp_ang"     = 10L,          # Takeoff flap deflection angle in degrees
+  "max_lof"     = 1.2,          # Ratio from CLmax to CLlof (Roskam, 2018, p 95)
+  "opt_rng"     = c(1.6, 2.2),  # Range of cL inputs passed to the optimizer
+  "opt_tol"     = 10^-3,        # Optimizer tolerance
+  "rwy_frc"     = .02,          # Friction coefficient for dry concrete/asphalt
+  "rwy_slp"     = 0L,           # Runway slope in °
+  "scr_hgt"     = 35L,          # Minimum screen height above terrain
+  "thr_rto"     = 0L,           # Thrust reduction used for calibration
+  "tod_mul"     = 1.15,         # Regulatory takeoff distance multiplier
+  # Model settings
+  "cpu_crs"     = 23L,          # Number of cores to use for parallel processing
+  "int_stp"     = 10L,          # Integration steps (model resolution)
+  "lf_belf"     = .67,          # Break-even load factor
+  "pax_avg"     = 87L,          # Mean adult pax weight (Filippone, 2012, p. 52)
+  "pop_thr"     = 10^6,         # Minimum passenger traffic for airport sample
+  "thr_inc"     = 1L,           # Amount of thrust increase at each iteration
+  "thr_ini"     = 25L,          # Amount of thrust reduction to start with
+  # Natural constants
+  "adb_idx"     = 1.4,          # Adiabatic index for dry air at ISA temperature
+  "ft_to_m"     = .3048,        # Number of m in one ft
+  "g"           = 9.806665,     # Gravitational acceleration constant in m/s²
+  "isa_hdw"     = 0L,           # ISA near-surface headwind in m/s
+  "isa_hur"     = 0L,           # ISA sea-level relative humidity in %
+  "isa_ps"      = 101325L,      # ISA sea-level air pressure in Pa
+  "isa_rho"     = 1.225,        # ISA sea-level air density in kg/m³
+  "isa_tas"     = 288.15,       # ISA sea-level air temperature in K
+  "ps_isa"      = 101325L,      # Air pressure in Pa at sea level under ISA
+  "rsp_dry"     = 287.058       # Specific gas constant for dry air in J/(kg·K)
+)
+
+# ==============================================================================
+# 5 Common functions
 # ==============================================================================
 
 # ==============================================================================
-# 4.1 Function to distribute a computational task across cores
+# 5.1 Function to distribute a computational task across cores
 # crs = number of cores to use in the cluster
 # lib = libraries required by each core
 # lst = list to be distributed across cores
 # fun = function to be applied to each list item
 # ==============================================================================
 
-fn_par_lapply <- function(crs, pkg, lst, fun){
+fn_par_lapply <- function(crs, pkg, lst, fun) {
 
   # Set the log file to the name of the function being passed
   log <- paste("logs", "/", substitute(fun), ".log", sep = "")

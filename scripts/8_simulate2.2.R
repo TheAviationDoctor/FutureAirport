@@ -56,7 +56,6 @@ db_qry <- paste(
     lon FLOAT NOT NULL,
     exp CHAR(6) NOT NULL,
     type CHAR(4) NOT NULL,
-    maxtom MEDIUMINT NOT NULL,
     hurs FLOAT NOT NULL,
     ps FLOAT NOT NULL,
     tas FLOAT NOT NULL,
@@ -64,11 +63,11 @@ db_qry <- paste(
     hdw FLOAT NOT NULL,
     rwy CHAR(5) NOT NULL,
     toda SMALLINT NOT NULL,
-    m MEDIUMINT NOT NULL,
-    rto SMALLINT NOT NULL,
     todr SMALLINT NOT NULL,
     vlof SMALLINT NOT NULL,
     itr SMALLINT UNSIGNED NOT NULL,
+    rto SMALLINT NOT NULL,
+    rm MEDIUMINT NOT NULL,
     PRIMARY KEY (id));",
   sep = " "
 )
@@ -109,7 +108,8 @@ dt_act <- dt_act[type %in% sim$act_sim]
 db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
 
 # Build a query to retrieve the calibration data for the aircraft to simulate
-db_qry <- paste("SELECT type, m, cl, cd, todr_sim, todr_cal FROM ",
+# db_qry <- paste("SELECT type, m, cl, cd, todr_sim, todr_cal FROM ",
+db_qry <- paste("SELECT type, m, cl, cd, todr_cal FROM ",
   tolower(db$cal),
   " WHERE type IN (", paste("'", sim$act_sim, "'", collapse = ", ", sep = ""),
   ");",
@@ -155,7 +155,9 @@ db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
 # Build a query to retrieve the sample airports above the traffic threshold
 db_qry <- paste(
   "SELECT DISTINCT icao, lat, lon FROM", tolower(db$pop),
-  "WHERE traffic >", sim$pop_thr, ";",
+  # "WHERE traffic >", sim$pop_thr, ";",
+  # FOR TESTING ONLY  
+  "WHERE icao IN ('KIAH', 'KELP', 'KOKC', 'MMCS', 'KMEM', 'MMTJ', 'KAUS', 'MMCU', 'KLIT', 'KRNO', 'KXNA', 'KMDW', 'KHOU', 'KORD', 'KDFW', 'MMHO', 'KLBB', 'SBPA', 'KBHM', 'KMFR', 'KMSY', 'KSMF', 'KHSV', 'SBCG', 'KTUL', 'KPDX', 'KATL', 'MMMY', 'KCHA', 'SARI', 'KECP', 'SBFI', 'KVPS', 'KBUR', 'KSAV', 'KLAX', 'KCAE', 'KLGB', 'KSGF', 'KSNA', 'KMAF', 'MMMZ', 'KCLT', 'SBGL', 'KBNA', 'SBRJ', 'WAQQ', 'SPZO', 'ZMUB', 'WMKL', 'VOPB', 'ZSLQ', 'LEMD', 'URSS', 'SKMD');",
   sep = " "
 )
 
@@ -302,15 +304,28 @@ fn_simulate <- function(icao) {
   # ============================================================================
   
   # Initialize the thrust reduction to the maximum permissible
-  set(x = dt_tko, j = "rto", value = sim$thrst_start + sim$thrst_incr)
+  # set(x = dt_tko, j = "rto", value = sim$thrst_start + sim$thrst_incr)
+
+  # FOR TESTING
+  # Initialize the thrust reduction. If the TODA is shorter than the calibrated
+  # TODR at MTOM (which was calibrated using TOGA thrust), then it is unlikely
+  # that a thrust-reduced takeoff could lead to TODR < TODA. In this case, set
+  # the thrust reduction to zero. Otherwise, set it to the maximum permissible.
+  set(
+    x = dt_tko,
+    j = "rto",
+    value = ifelse(
+      dt_tko[, toda] <= dt_tko[, todr_cal],
+      0L + sim$thrst_incr,
+      sim$thrst_start + sim$thrst_incr
+    )
+  )
 
   # FOR TESTING ONLY
   # dt_tko[, hurs := 0L]         # ISA
   # dt_tko[, ps   := 101325L]    # ISA
   # dt_tko[, tas  := 273.15]     # ISA
-  # dt_tko[, tas  := 330.575]    # Worst-case scenario of temperature
   # dt_tko[, rho  := 1.225]      # ISA
-  # dt_tko[, rho  := 0.630578]   # Worst-case scenario of air density
   # dt_tko[, hdw  := 0L]         # ISA
   # dt_tko[, rto  := 0L]         # No takeoff thrust reduction
   # dt_tko[, rto  := 25L]        # Max takeoff thrust reduction
@@ -354,23 +369,6 @@ fn_simulate <- function(icao) {
       # Save the iteration
       set(x = dt_tko, i = i, j = "itr", value = dt_tko[i, itr] + 1L)
 
-      # Inform the log file
-      print(
-        paste(
-          Sys.time(),
-          "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
-          "icao", icao,
-          "itr", str_pad(dt_tko[i, mean(itr)], width = 3, side = "left", pad = " "),
-          "rto", str_pad(dt_tko[i, mean(rto)], width = 2, side = "left", pad = " "),
-          "m", str_pad(dt_tko[i, mean(m)], width = 6, side = "left", pad = " "),
-          "t/o remaining =", str_pad(
-            format(length(i), big.mark = ","),
-            width = 9, side = "left", pad = " "
-          ),
-          sep = " "
-        )
-      )
-
       # If thrust is already at TOGA, then decrease the mass by 87 kg instead
       # which is the mean summer/winter adult pax mass (Filippone, 2012, p. 52)
       set(
@@ -393,6 +391,23 @@ fn_simulate <- function(icao) {
           dt_tko[i, rto] > 0L,
           dt_tko[i, rto] - sim$thrst_incr,
           dt_tko[i, rto]
+        )
+      )
+
+      # Inform the log file
+      print(
+        paste(
+          Sys.time(),
+          "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
+          "icao", icao,
+          "itr", str_pad(dt_tko[i, mean(itr)], width = 3, side = "left", pad = " "),
+          # "rto", str_pad(dt_tko[i, mean(rto)], width = 2, side = "left", pad = " "),
+          # "m", str_pad(dt_tko[i, mean(m)], width = 6, side = "left", pad = " "),
+          "t/o =", str_pad(
+            format(length(i), big.mark = ","),
+            width = 9, side = "left", pad = " "
+          ),
+          sep = " "
         )
       )
 
@@ -464,10 +479,13 @@ fn_simulate <- function(icao) {
     )
   )
 
+  # Set how much mass was removed
+  set(x = dt_tko, j = "rm", value = dt_tko[, maxtom] - dt_tko[, m])
+
   # Select which columns to write to the database and in which order
   cols <- c(
-    "obs", "icao", "lat", "lon", "exp", "type", "maxtom", "hurs", "ps",
-    "tas", "rho", "hdw", "rwy", "toda", "m", "rto", "todr", "Vlof", "itr"
+    "obs", "icao", "lat", "lon", "exp", "type", "hurs", "ps", "tas",
+    "rho", "hdw", "rwy", "toda", "todr", "Vlof", "itr", "rto", "rm"
   )
 
   # Connect the worker to the database
@@ -510,16 +528,16 @@ fn_simulate <- function(icao) {
 # ==============================================================================
 
 # Distribute the work across the cluster
-# fn_par_lapply(
-#   crs = 23L,
-#   pkg = c("data.table", "DBI", "stringr"),
-#   lst = dt_apt[, icao],
-#   fun = fn_simulate
-# )
+fn_par_lapply(
+  crs = 23L,
+  pkg = c("data.table", "DBI", "stringr"),
+  lst = dt_apt[, icao],
+  fun = fn_simulate
+)
 
 # FOR TESTING ONLY
 # fn_simulate("KABQ")
-fn_simulate("KILM")
+# fn_simulate("KILM")
 
 # ==============================================================================
 # 4 Index the database table

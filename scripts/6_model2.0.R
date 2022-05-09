@@ -80,7 +80,7 @@ fn_todr_gnd <- function(DT) {
   rho <- rep(DT[, rho], each = sim$int)
 
   # Dynamic pressure q in N/m²
-  q <- .5 * rho * Vtas^2
+  q <- .5 * rho * Vtas^2L
 
   # ============================================================================
   # 3 Calculate the propulsive force F in N
@@ -88,26 +88,27 @@ fn_todr_gnd <- function(DT) {
   # ============================================================================
 
   # Vectorize the speed of sound
-  Vsnd <- sqrt(sim$gamma * sim$Rd * DT[, tas])
+  # Vsnd <- sqrt(sim$gamma * sim$Rd * DT[, tas]) # NOT VECTORIZED!!
+  Vsnd <- rep(sqrt(sim$gamma * sim$Rd * DT[, tas]), each = sim$int)
 
   # Calculate the dimensionless Mach number for each airspeed interval
   Vmach <- Vtas / Vsnd
 
   # Calculate the air pressure ratio
-  dP <- DT[, ps] / sim$ps_isa
+  dP <- rep(DT[, ps] / sim$ps_isa, each = sim$int)
 
   # Vectorize the engine bypass ratio
   bpr <- rep(DT[, bpr], each = sim$int)
 
   # Calculate the thrust coefficients
   G0 <-  .0606 * bpr  + .6337
-  A  <- -.4327 * dP^2 + 1.3855 * dP   + .0472
-  X  <-  .1377 * dP^3 - .4374  * dP^2 + 1.3003 * dP
-  Z  <-  .9106 * dP^3 - 1.7736 * dP^2 + 1.8697 * dP
-  
+  A  <- -.4327 * dP^2L + 1.3855 * dP    + .0472
+  X  <-  .1377 * dP^3L - .4374  * dP^2L + 1.3003 * dP
+  Z  <-  .9106 * dP^3L - 1.7736 * dP^2L + 1.8697 * dP
+
   # Calculate the thrust ratio for each Mach number interval
-  tr <- A - .377 * (1 + bpr) / sqrt((1 + .82 * bpr) * G0) * Z * Vmach +
-    (.23 + .19 * sqrt(bpr)) * X * Vmach^2
+  tr <- A - .377 * (1L + bpr) / sqrt((1 + .82 * bpr) * G0) * Z * Vmach +
+    (.23 + .19 * sqrt(bpr)) * X * Vmach^2L
 
   # Vectorize the sea-level static thrust in N
   slst <- rep(DT[, slst], each = sim$int)
@@ -145,8 +146,9 @@ fn_todr_gnd <- function(DT) {
   cD <- rep(DT[, cD], each = sim$int)
 
   # Calculate the acceleration in m/s²
-  a <- sim$g / W *
-    (Frto - (sim$mu * W) - (cD - sim$mu * cL) * (q * S) - (W * sin(sim$theta)))
+  a <- (sim$g / W) *
+    (Frto - (sim$mu * W) - (cD - sim$mu * cL) * q * S - (W * sin(sim$theta))) # BLAKE
+    # (Frto - (sim$mu * W) - .08 * q * S - (W * sin(sim$theta))) # FOR TESTING ONLY
 
   # ============================================================================
   # 5 Increment the horizontal takeoff distances in m
@@ -154,16 +156,26 @@ fn_todr_gnd <- function(DT) {
   # ============================================================================
 
   # Set the rolling window width
-  bar_width <- rep(x = c(seq.int(2), rep(2, sim$int - 2)), times = nrow(DT))
-  
+  bar_width <- rep(
+    x = c(seq.int(2L), rep(x = 2L, each = sim$int - 2L)),
+    times = nrow(DT)
+  )
+
   # Calculate mean acceleration between two groundspeed increments
   a_bar <- frollmean(x = a, n = bar_width, adaptive = TRUE)
-  
+
   # Calculate mean groundspeed between two groundspeed increments
   Vgnd_bar <- frollmean(x = Vgnd, n = bar_width, adaptive = TRUE)
 
+  # Vectorize the liftoff speed
+  Vlof <- rep(DT[, Vlof], each = sim$int)
+
+  # Vectorize the headwind speed
+  hdw <- rep(DT[, hdw], each = sim$int)
+
   # Calculate the size of each groundspeed interval
-  Vgnd_int <- (DT[, Vlof] - DT[, hdw]) / (sim$int - 1)
+  # Vgnd_int <- (DT[, Vlof] - DT[, hdw]) / (sim$int - 1) # NOT VECTORIZED!!
+  Vgnd_int <- (Vlof - hdw) / (sim$int - 1L)
 
   # Calculate the incremental distance in m covered in each groundspeed interval
   inc <- Vgnd_bar * Vgnd_int / a_bar
@@ -171,9 +183,17 @@ fn_todr_gnd <- function(DT) {
   # Calculate the cumulative distance in m up to liftoff
   cum <- frollsum(
     x = inc,
-    n = rep(x = seq(1:sim$int), times = nrow(DT)),
+    n = rep(x = seq(1L:sim$int), times = nrow(DT)),
     adaptive = TRUE
   )
+
+  # ============================================================================
+  # 6 Assemble the takeoff distance required in m
+  # Adapted from Blake (2009) and Gratton et al (2020)
+  # ============================================================================
+
+  # Set the horizontal ground distance up to liftoff
+  todr_gnd <- cum[seq(sim$int, length(cum), sim$int)]
 
   # FOR TESTING ONLY
   # out <- cbind(
@@ -210,17 +230,9 @@ fn_todr_gnd <- function(DT) {
   #   "Vgnd_bar"    = Vgnd_bar,
   #   "Vgnd_int"    = Vgnd_int,
   #   "inc"         = inc,
-  #   "cum"           = cum
+  #   "cum"         = cum
   # )
-  # View(out)
-
-  # ============================================================================
-  # 6 Assemble the takeoff distance required in m
-  # Adapted from Blake (2009) and Gratton et al (2020)
-  # ============================================================================
-
-  # Set the horizontal ground distance up to liftoff
-  todr_gnd <- cum[seq(sim$int, length(cum), sim$int)]
+  # print(out)
 
   # Return the ground portion of the takeoff distance required in m
   return(todr_gnd)
