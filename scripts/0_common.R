@@ -42,6 +42,7 @@ dat <- list(
   "imp" = "imp",     # Climate data imported from the NetCDF files
   "pop" = "pop",     # Population and sample airports
   "tko" = "tko",     # Takeoff performance calculation outputs
+  "tst" = "tst",     # FOR TESTING ONLY
   "idx" = "idx"      # Index name
 )
 
@@ -132,6 +133,55 @@ fn_par_lapply <- function(crs, pkg, lst, fun) {
 
   # Shut down the workers
   parallel::stopCluster(cl = cl)
+
+}
+
+# ==============================================================================
+# 5.2 Function to manage database connections and send a basic SQL query
+# select = the variables to retrieve
+# from   = the name of the database table
+# where  = the contents of the WHERE clause (set to NULL if unneeded)
+# group  = the contents of the GROUP BY clause (set to NULL if unneeded)
+# order  = the contents of the ORDER BY clause (set to NULL if unneeded)
+# ==============================================================================
+
+fn_dat_sql <- function(select, from, where, group, order) {
+
+  # Connect to the database
+  dat_con <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
+
+  # Build the query
+  dat_qry <- paste(
+    "SELECT ", select,
+    " FROM ", tolower(from),
+    if(!is.null(where)) { paste(" WHERE ",    where, sep = "") },
+    if(!is.null(group)) { paste(" GROUP BY ", group, sep = "") },
+    if(!is.null(order)) { paste(" ORDER BY ", order, sep = "") },
+    ";",
+    sep = ""
+  )
+
+  # Output the query to the console
+  print(dat_qry)
+
+  # Send the query to the database
+  dat_res <- dbSendQuery(dat_con, dat_qry)
+
+  # Return the results to a data table
+  dt_out <- suppressWarnings(
+    setDT(
+      dbFetch(dat_res, n = Inf)
+    )
+  )
+
+  # Release the database resource
+  dbClearResult(dat_res)
+
+  # Disconnect from the database
+  dbDisconnect(dat_con)
+
+  # Return the data table
+  return(dt_out)
 
 }
 

@@ -518,8 +518,6 @@ fn_par_lapply(
   fun = fn_simulate
 )
 
-# fn_simulate("KIAH")
-
 # ==============================================================================
 # 4 Index the database table
 # ==============================================================================
@@ -531,7 +529,7 @@ db_con <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
 db_qry <- paste(
   "CREATE INDEX idx ON",
   tolower(dat$tko),
-  "(exp, type, icao);",
+  "(obs, exp, type, icao);",
   sep = " "
 )
 

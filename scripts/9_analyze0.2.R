@@ -25,50 +25,170 @@ start_time <- Sys.time()
 cat("\014")
 
 # ==============================================================================
-# 1 Prepare the input data
+# 1 Import the takeoff performance simulation data
 # ==============================================================================
 
 # ==============================================================================
-# 1.1 Import the takeoff performance calibration data
+# 1.1 Unique takeoffs
+# Takes 4.7 minutes
 # ==============================================================================
 
-# Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-
-# Build a query to retrieve the calibration data for the aircraft to simulate
-db_qry <- paste("SELECT type, m, cL, cD FROM ",
-                tolower(db$cal),
-                " WHERE type IN (", paste("'", sim$act_sim, "'", collapse = ", ", sep = ""),
-                ");",
-                sep = ""
+# Fetch the data
+dt_uni <- fn_dat_sql(
+  select = "COUNT(*) AS count",
+  from   = dat$tko,
+  where  = NULL,
+  group  = NULL,
+  order  = NULL
 )
 
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
+# Output results to the console
+print(paste("Count of unique takeoffs:", format(dt_uni, big.mark = ",")))
 
-# Return the results to a data table
-dt_cal <- suppressWarnings(
-  setDT(
-    dbFetch(db_res, n = Inf),
-    key = c("type", "m")
+# ==============================================================================
+# 1.2 Takeoff iterations
+# ==============================================================================
+
+# Fetch the data
+dt_itr <- fn_dat_sql(
+  select = "SUM(itr) AS sum, AVG(itr) as avg",
+  from   = dat$tst,
+  where  = NULL,
+  group  = NULL,
+  order  = NULL
+)
+
+# Output results to the console
+print(paste("Sum:", format(dt_itr[, sum], big.mark = ",")))
+print(paste("Average:", format(dt_itr[, avg], big.mark = ",")))
+
+# ==============================================================================
+# 1.3 Takeoff outcomes
+# ==============================================================================
+
+# Fetch the data
+dt_uns <- fn_dat_sql(
+  select = "YEAR(obs) AS year, exp AS exp, COUNT(*) AS count",
+  from   = dat$tst,
+  where  = "todr > toda",
+  group  = "year, exp",
+  order  = NULL
+)
+
+# Output results to the console
+print(paste("Unsuccessful:", format(length(dt_uns), big.mark = ",")))
+print(paste("Successful:", format(dt_uni - length(dt_uns), big.mark = ",")))
+
+# Set y-axis limits
+lim <- c(1130E3, 1195E3)
+
+# Create and save the plot
+(ggplot(data = dt_uns) +
+    geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
+    scale_x_continuous("Year") +
+    scale_y_continuous("Count", labels = scales::comma, limits = lim) +
+    facet_wrap(~toupper(exp), ncol = 2) +
+    theme_light()) %>%
+  ggsave(
+    filename = "9_line_uns_to_cnt.png",
+    device = "png",
+    path = "plots",
+    scale = 1,
+    width = 6,
+    height = NA,
+    units = "in",
+    dpi = "print"
   )
+
+# Add a column for percentage
+set(x = dt_uns, j = "per", value = dt_uns[, count] / dt_uni * 100)
+
+# Create and save the plot
+(ggplot(data = dt_uns) +
+    geom_line(mapping = aes(x = year, y = per), color = "black", size = 1) +
+    scale_x_continuous("Year") +
+    scale_y_continuous("Count", labels = scales::percent) +
+    facet_wrap(~toupper(exp), ncol = 2) +
+    theme_light()) %>%
+  ggsave(
+    filename = "9_line_uns_to_per.png",
+    device = "png",
+    path = "plots",
+    scale = 1,
+    width = 6,
+    height = NA,
+    units = "in",
+    dpi = "print"
+  )
+
+# ==============================================================================
+# 1.4 Takeoff thrust reduction
+# ==============================================================================
+
+# Fetch the data
+dt_thr <- fn_dat_sql(
+  select = "YEAR(obs) AS year, exp AS exp, AVG(thr_red) AS avg",
+  from   = dat$tst,
+  where  = NULL,
+  group  = "year, exp",
+  order  = NULL
 )
 
-# Release the database resource
-dbClearResult(db_res)
+# Output results to the console
+print(paste("Thrust reduction:", format(dt_thr[, avg], big.mark = ",")))
 
-# Disconnect from the database
-dbDisconnect(db_con)
+# Create and save the plot
+(ggplot(data = dt_uns) +
+    geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
+    scale_x_continuous("Year") +
+    scale_y_continuous("Percent", labels = scales::percent) +
+    facet_wrap(~toupper(exp), ncol = 2) +
+    theme_light()) %>%
+  ggsave(
+    filename = "9_line_thr_red.png",
+    device = "png",
+    path = "plots",
+    scale = 1,
+    width = 6,
+    height = NA,
+    units = "in",
+    dpi = "print"
+  )
+# ==============================================================================
+# 1.5 Takeoff payload removal
+# ==============================================================================
 
-# Convert the type column to factor
-dt_cal[, type := as.factor(type)]
+# Fetch the data
+dt_pax <- fn_dat_sql(
+  select = "YEAR(obs) AS year, exp AS exp, SUM(tom_red) AS sum, AVG(tom_red) AS avg",
+  from   = dat$tst,
+  where  = NULL,
+  group  = "year, exp",
+  order  = NULL
+)
 
-# Order by type and descending mass
-dt_cal <- dt_cal[order(type, -rank(m))]
+# Output results to the console
+print(paste("Sum of payload removal:", format(dt_pax[, sum], big.mark = ",")))
+print(paste("Average payload removal:", format(dt_pax[, avg], big.mark = ",")))
 
-# Set the minimum mass for which there is a calibrated TODR
-dt_cal[, mintom := min(m), by = type]
-View(dt_cal)
+# Create and save the plot
+(ggplot(data = dt_uns) +
+    geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
+    scale_x_continuous("Year") +
+    scale_y_continuous("Count", labels = scales::percent) +
+    facet_wrap(~toupper(exp), ncol = 2) +
+    theme_light()) %>%
+  ggsave(
+    filename = "9_line_tom_red.png",
+    device = "png",
+    path = "plots",
+    scale = 1,
+    width = 6,
+    height = NA,
+    units = "in",
+    dpi = "print"
+  )
+
 # ==============================================================================
 # 6 Housekeeping
 # ==============================================================================

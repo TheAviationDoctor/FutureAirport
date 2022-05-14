@@ -33,22 +33,26 @@ cat("\014")
 # ==============================================================================
 
 # Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
+dat_con <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
 
 # Build the query to retrieve the population data
-db_qry <- paste("SELECT * FROM ", db$pop, ";", sep = "")
+dat_qry <- paste("SELECT * FROM ", dat$pop, ";", sep = "")
 
 # Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
+dat_res <- dbSendQuery(dat_con, dat_qry)
 
 # Return the results
-df_pop <- suppressWarnings(dbFetch(db_res, n = Inf))
+df_pop <- suppressWarnings(dbFetch(dat_res, n = Inf))
 
 # Release the database resource
-dbClearResult(db_res)
+dbClearResult(dat_res)
 
 # Disconnect from the database
-dbDisconnect(db_con)
+dbDisconnect(dat_con)
+
+# Describe the population
+str(df_pop)
+summary(df_pop)
 
 # ==============================================================================
 # 2 Subset the sample from the population based on a minimum traffic threshold
@@ -59,6 +63,7 @@ df_smp <- subset(df_pop, traffic >= sim$pop_thr)
 
 # Describe the sample
 str(df_smp)
+summary(df_smp)
 
 # ==============================================================================
 # 3 Test that the sample is representative of the population's traffic
@@ -82,6 +87,8 @@ nrow(df_smp) / nrow(df_pop) * 100
 # Relative count of passengers in the sample
 sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))]) /
   sum(df_pop$traffic[!rev(duplicated(rev(df_pop$icao)))]) * 100
+
+stop()
 
 # ==============================================================================
 # 4 Test that the sample is representative of the population's latitudes
