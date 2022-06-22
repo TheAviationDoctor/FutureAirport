@@ -3,9 +3,6 @@
 .RData
 .RDataTmp
 .Ruserdata
-*.csv
+runways.csv
 *.gz
 *.nc
-*.sh
-data/
-logs/

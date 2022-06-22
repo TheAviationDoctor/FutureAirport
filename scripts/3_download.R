@@ -1,10 +1,9 @@
 # ==============================================================================
 #    NAME: scripts/3_download.R
-#   INPUT: Search criteria for the climate models, defined within the script
+#   INPUT: Search criteria for the climate models, defined in section 1 below
 # ACTIONS: Query the Earth System Grid Federation (ESGF) for fitting NetCDF data
-#          The NetCDF files are then downloaded manually using wget as per
-#          https://esgf.github.io/esgf-user-support/user_guide.html
-#  OUTPUT: CSV file containing the list of NetCDF files that meet the criteria
+#  OUTPUT: CSV file saved as dat$net listing the matching NetCDF results
+# RUNTIME: ~4 seconds (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -96,13 +95,13 @@ nc_files %>%
   )
 
 # Save the query results to a file for later reference
-write.csv(x = nc_files, file = "data/netcdf.csv")
+write.csv(x = nc_files, file = fls$net)
 
 # ==============================================================================
 # 3 Housekeeping
 # ==============================================================================
 
-# Display the script execution time
+# Stop the script timer
 Sys.time() - start_time
 
 # EOF

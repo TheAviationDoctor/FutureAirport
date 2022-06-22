@@ -1,11 +1,11 @@
 # ==============================================================================
 #    NAME: scripts/9_analyze.R
-#   INPUT: X rows of simulated takeoff from the database
-# ACTIONS: Assemble the aircraft, calibration, and climatic data
-#          Perform simulated takeoffs for each aircraft type and climate obs.
-#          Write the resulting takeoff distance required to the database
-#          Index the database table
-#  OUTPUT: 442,769,456 rows of takeoff data written to the database
+#   INPUT: Climate and takeoff performance data processed by earlier scripts
+# ACTIONS: Create summary tables in MySQL and plots based on them
+#  OUTPUT: Plot files saved to disk
+# RUNTIME: N/A
+#  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
+#    YEAR: 2022
 # ==============================================================================
 
 # ==============================================================================
@@ -13,7 +13,10 @@
 # ==============================================================================
 
 # Load required libraries
-# library(parallel)
+library(data.table)
+library(DBI)
+library(ggplot2)
+library(magrittr)
 
 # Import the common settings
 source("scripts/0_common.R")
@@ -24,187 +27,355 @@ start_time <- Sys.time()
 # Clear the console
 cat("\014")
 
-# ==============================================================================
-# 1 Set a Function to plot the air density over time across all sample airports
-# ==============================================================================
-
-# Declare the function with the latitude bracket as input parameter
-fn_analyze <- function(zone) {
-  
-  # Connect the worker to the database
-  db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-
-  # Inform the log file
-  print(
-    paste(
-      Sys.time(),
-      "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
-      "Averaging the air density across", tolower(zone$name), "zones",
-      sep = " "
-    )
-  )
-  
-  # Build a query to average the air density for each experiment/SSP separately,
-  # across all sample airports within each of the latitude brackets.
-  ifelse(
-    zone$name == "All",
-    db_qry <- paste(
-      "SELECT obs, AVG(rho) AS avg_rho, exp FROM", db$cli,
-      "GROUP BY obs, exp;",
-      sep = " "
-    ),
-    db_qry <- paste(
-      "WITH cte1 AS (SELECT DISTINCT icao FROM ", db$pop,
-      " WHERE traffic > ", sim$pop_thr,
-      " AND ABS(lat) BETWEEN ", zone$lower,
-      " AND ", zone$upper,") ",
-      paste(
-        "SELECT obs, AVG(rho) AS avg_rho, exp FROM ", db$cli,
-        " INNER JOIN cte1 ON ", db$cli,
-        ".icao = cte1.icao GROUP BY obs, exp",
-        sep = ""
-      ),
-      ";",
-      sep = ""
-    )
-  )
-
-  # Send the query to the database
-  db_res <- dbSendQuery(db_con, db_qry)
-
-  # Save the output to a data table
-  dt_rho <- suppressWarnings(
-    setDT(
-      dbFetch(
-        db_res,
-        n = Inf
-      ),
-      check.names = TRUE
-    )
-  )
-  
-  # Release the database resource
-  dbClearResult(db_res)
-  
-  # Convert the observations' time stamps back to POSIXct format for plotting
-  dt_rho[, obs := as.POSIXct(obs, format = "%Y-%m-%d %H:%M:%S")]
-
-  # Convert the experiment (SSP) from character to factor
-  dt_rho[, exp := as.factor(exp)]
-
-  # Print to the log file the average air density in the first and last years of
-  # the dataset, for every experiment (SSP)
-  print(dt_rho[
-    obs < "2016-01-01 00:00:00",
-    .("2015" = mean(avg_rho)), by = .(exp)
-    ]
-  )
-  print(dt_rho[
-    obs > "2100-01-01 00:00:00",
-    .("2100" = mean(avg_rho)),
-    by = .(exp)
-    ]
-  )
-
-  # Inform the log file
-  print(
-    paste(
-      Sys.time(),
-      "pid", str_pad(Sys.getpid(), width = 5, side = "left", pad = " "),
-      "Plotting the air density across the", tolower(zone$name), "zones",
-      sep = " "
-    )
-  )
-  
-  # Plot the air density over time
-  (ggplot(data = dt_rho, mapping = aes(x = obs, y = avg_rho)) +
-    geom_line() +
-    geom_smooth(method = "lm", formula = y ~ x) +
-    labs(
-      x = "Time",
-      y = "Air density",
-      title = paste(
-        "Average air density at airports across",
-        tolower(zone$name),
-        "zones",
-        sep = " "
-      )
-    ) +
-    facet_wrap(~ exp, ncol = 2) +
-    theme_light() +
-    theme(
-      panel.grid.minor.x = element_blank(),
-      panel.grid.minor.y = element_blank(),
-      panel.background = element_rect(fill = "white"),
-      plot.background = element_rect(fill = "white")
-    ) +
-    ylim(1.1, 1.5)) %>%
-    ggsave(
-      paste("rho_", tolower(zone$name), ".png"),
-      device = "png",
-      path = d$plt,
-      scale = 1,
-      width = 6,
-      height = NA,
-      units = "in",
-      dpi = "print"
-    )
-
-  # Disconnect the worker from the database
-  dbDisconnect(db_con)
-  
-} # End of the fn_rho_plot function definition
+# IMPORTANT NOTE
+# Some of the queries below are memory-intensive for the MySQL engine.
+# If you run into the following error:
+# "The total number of locks exceeds the lock table size",
+# log into MySQL Workbench with admin rights to increase the InnoDB buffer size:
+# 'SET GLOBAL innodb_buffer_pool_size = 64 * 1024 * 1024 * 1024;' [this is 64GB]
 
 # ==============================================================================
-# 2 Handle the parallel computation across multiple cores
+# 1. Research question #1: How much change to near-surface air temperature,
+# air density, and headwind will airports experience in the 21st century?
 # ==============================================================================
 
-# Latitudinal boundaries for the Earth's climate zones
-# Subtropical is defined in Cortlett (2013) [https://doi.org/gw6j]
-zones <- list(
-  list(name = "Tropical",   lower = 0,       upper = 23.4365),
-  list(name = "Subropical", lower = 23.4365, upper = 30),
-  list(name = "Temperate",  lower = 23.4365, upper = 66.5635),
-  list(name = "Frigid",     lower = 66.5635, upper = 90),
-  list(name = "All",        lower = 0,       upper = 90)
+# # Create the summary data for climate change globally (runtime: ~22 minutes)
+# fn_sql_qry(
+#   statement = paste(
+#     "CREATE TABLE IF NOT EXISTS",
+#     tolower(vis$cli_glb),
+#     "AS SELECT
+#     YEAR(obs) AS year,
+#     AVG(tas) AS avg_tas, MAX(tas) AS max_tas,
+#     AVG(rho) AS avg_rho, MIN(rho) AS min_rho,
+#     AVG(hdw) AS avg_hdw,
+#     exp AS exp
+#     FROM", tolower(dat$cli),
+#     "GROUP BY year, exp;",
+#     sep = " "
+#   )
+# )
+# 
+# # Fetch the summary data
+# dt_out <- fn_sql_qry(
+#   statement = paste(
+#     "SELECT * FROM",
+#     tolower(vis$cli_glb),
+#     "ORDER BY year ASC, exp ASC;",
+#     sep = " "
+#   )
+# )
+# 
+# # Count number of SSPs
+# exp_cnt <- length(unique(dt_out[, exp]))
+# 
+# # Normalize observations based on first year values to show changes over time
+# set(
+#   x     = dt_cla,
+#   j     = "avg_tas",
+#   value = dt_cla[, avg_tas] - dt_cla[1:exp_cnt, avg_tas]
+# )
+# set(
+#   x     = dt_cla,
+#   j     = "max_tas",
+#   value = dt_cla[, max_tas] - dt_cla[1:exp_cnt, max_tas]
+# )
+# set(
+#   x     = dt_cla,
+#   j     = "avg_rho",
+#   value = dt_cla[, avg_rho] - dt_cla[1:exp_cnt, avg_rho]
+# )
+# set(
+#   x     = dt_cla,
+#   j     = "min_rho",
+#   value = dt_cla[, min_rho] - dt_cla[1:exp_cnt, min_rho]
+# )
+# set(
+#   x     = dt_cla,
+#   j     = "avg_hdw",
+#   value = dt_cla[, avg_hdw] - dt_cla[1:exp_cnt, avg_hdw]
+# )
+# 
+# # Define a function to generate plots
+# fn_plot <- function(var1, var2) {
+#   (
+#     ggplot(
+#       data    = dt_out,
+#       mapping = aes(x = year, y = dt_out[[var1]], color = toupper(exp))
+#     ) +
+#       geom_line(size = .3) +
+#       geom_smooth(linetype = "dashed", size = .4) +
+#       scale_x_continuous("Year") +
+#       scale_y_continuous(var2) +
+#       facet_wrap(~ toupper(exp), ncol = 2) +
+#       guides(color = "none") +
+#       theme_light()
+#   ) |>
+#     ggsave(
+#       filename = paste("9_line_", as.name(var1), ".png", sep = ""),
+#       device   = "png",
+#       path     = "plots",
+#       scale    = 1,
+#       width    = 6,
+#       height   = NA,
+#       units    = "in",
+#       dpi      = "print"
+#     )
+# }
+# 
+# # Generate the plots for every variable
+# mapply(
+#   FUN  = fn_plot,
+#   var1 = c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw"),
+#   var2 = c(
+#     "Mean near-surface temperature increase in °C",
+#     "Max. near-surface temperature increase in °C",
+#     "Mean near-surface air density in kg/m3",
+#     "Min. near-surface air density in kg/m3",
+#     "Mean near-surface headwind speed in m/s"
+#   )
+# )
+
+# # Create a list of sample airports by climate zone
+# dt_out <- fn_sql_qry(
+#   statement = paste(
+#     "SELECT DISTINCT(icao) AS icao, ABS(lat) AS lat,",
+#     "(CASE",
+#       "WHEN ABS(lat) >", lat$tro$lower, "AND ABS(lat) <", lat$tro$upper, "THEN", lat$tro$name,
+#       "WHEN ABS(lat) >", lat$sub$lower, "AND ABS(lat) <", lat$sub$upper, "THEN", lat$sub$name,
+#       "WHEN ABS(lat) >", lat$tem$lower, "AND ABS(lat) <", lat$tem$upper, "THEN", lat$tem$name,
+#       "WHEN ABS(lat) >", lat$fri$lower, "AND ABS(lat) <", lat$fri$upper, "THEN", lat$fri$name,
+#     "END) AS zone",
+#     "FROM",
+#     tolower(dat$pop),
+#     "WHERE traffic >",
+#     sim$pop_thr,
+#     "ORDER BY ABS(lat) DESC;",
+#     sep = " "
+#   )
+# )
+
+# Create a list of sample airports by climate zone
+dt_out <- fn_sql_qry(
+  statement = paste(
+    "SELECT DISTINCT(icao) AS icao,",
+    "(CASE",
+      "WHEN ABS(lat) >", lat$tro$lower, "AND ABS(lat) <", lat$tro$upper, "THEN", lat$tro$name,
+      "WHEN ABS(lat) >", lat$sub$lower, "AND ABS(lat) <", lat$sub$upper, "THEN", lat$sub$name,
+      "WHEN ABS(lat) >", lat$tem$lower, "AND ABS(lat) <", lat$tem$upper, "THEN", lat$tem$name,
+      "WHEN ABS(lat) >", lat$fri$lower, "AND ABS(lat) <", lat$fri$upper, "THEN", lat$fri$name,
+    "END) AS zone",
+    "FROM",
+    tolower(dat$pop),
+    "WHERE traffic >",
+    sim$pop_thr,
+    "ORDER BY ABS(lat) DESC;",
+    sep = " "
+  )
 )
 
-# # Set the number of workers to use in the cluster
-# # Here we set as many workers as there are climate zones to plot
-# cores <- length(nc_lats)
-# 
-# # Clear the log file
-# close(file(description = f$out, open = "w"))
-# 
-# # Build the cluster of workers
-# cl <- makeCluster(spec = cores, outfile = f$out)
-# 
-# # Have each worker load the libraries that they need
-# clusterEvalQ(cl, {
-#   library(data.table)
-#   library(DBI)
-#   library(ggplot2)
-# })
-# 
-# # Distribute the zones across the workers
-# parLapply(cl, nc_lats, fn_rho_plot)
-# 
-# # Terminate the cluster once finished
-# stopCluster(cl)
 
-# Distribute the work across the cluster
-parallel_lapply(
-  crs = length(nc_lats),
-  pkg = c("data.table", "DBI", "tidyverse"),
-  lst = zones,
-  fun = fn_analyze
-)
+View(dt_out)
+
+
 
 # ==============================================================================
-# 3 Housekeeping
+# 2. Research question #2: How much thrust increase and payload removal
+# will be needed?
 # ==============================================================================
 
-# Display the script execution time
+# ==============================================================================
+# 2.1 Unique takeoffs
+# Takes 4.7 minutes
+# ==============================================================================
+
+# ==============================================================================
+# 1.1 Summarize the climate data in the data in the database
+# Runtime: ~21 minutes
+# ==============================================================================
+
+# # Create the visualization table
+# fn_sql_qry(
+#   statement = paste(
+#     "CREATE TABLE IF NOT EXISTS",
+#     tolower(vis$tko_cnt),
+#     "AS SELECT
+#     COUNT(*) AS count,
+#     SUM(itr) AS sum,
+#     AVG(itr) AS avg
+#     FROM", tolower(dat$tko),
+#     ";",
+#     sep = " "
+#   )
+# )
+
+
+
+# # Fetch the data
+# dt_uni <- fn_sql_sel(
+#   select = "COUNT(*) AS count",
+#   from   = dat$tko,
+#   where  = NULL,
+#   group  = NULL,
+#   order  = NULL
+# )
+# 
+# # Output results to the console
+# print(paste("Count of unique takeoffs:", format(dt_uni, big.mark = ",")))
+
+# ==============================================================================
+# 2.2 Takeoff iterations
+# ==============================================================================
+
+# # Fetch the data
+# dt_itr <- fn_sql_sel(
+#   select = "SUM(itr) AS sum, AVG(itr) AS avg",
+#   from   = dat$tst,
+#   where  = NULL,
+#   group  = NULL,
+#   order  = NULL
+# )
+# 
+# # Output results to the console
+# print(paste("Count of iterations:", format(dt_itr[, sum], big.mark = ",")))
+# print(paste("Average iterations:", format(dt_itr[, avg], big.mark = ",")))
+
+# ==============================================================================
+# 2.3 Takeoff outcomes
+# ==============================================================================
+
+# # Fetch the data
+# dt_uns <- fn_sql_sel(
+#   select = "YEAR(obs) AS year, exp AS exp, COUNT(*) AS count",
+#   from   = dat$tst,
+#   where  = "todr > toda",
+#   group  = "year, exp",
+#   order  = NULL
+# )
+# 
+# # Output results to the console
+# # Unsuccessful takeoffs are those where TODR > TODA even after increasing the
+# #  thrust to 100% and decreasing the mass to BELF mass.
+# print(paste("Unsuccessful (n):", format(length(dt_uns), big.mark = ",")))
+# print(paste("Successful (n):", format(dt_uni - length(dt_uns), big.mark = ",")))
+# print(paste("Successful (%):", format((dt_uni - length(dt_uns)) / dt_uni, nsmall = "2")))
+# 
+# # Set y-axis limits
+# lim <- c(1130E3, 1195E3)
+# 
+# # Create and save the plot
+# (ggplot(data = dt_uns) +
+#     geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
+#     scale_x_continuous(name = "Year") +
+#     scale_y_continuous(name = "Count", labels = scales::comma, limits = lim) +
+#     facet_wrap(~toupper(exp), ncol = 2) +
+#     theme_light()) %>%
+#   ggsave(
+#     filename = "9_line_uns_to_cnt.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+#
+# # Add a column for percentage
+# set(x = dt_uns, j = "per", value = dt_uns[, count] / dt_uni * 100)
+# 
+# # Create and save the plot
+# (ggplot(data = dt_uns) +
+#     geom_line(mapping = aes(x = year, y = per), color = "black", size = 1) +
+#     scale_x_continuous(name = "Year") +
+#     scale_y_continuous(name = "Count", labels = scales::percent) +
+#     facet_wrap(~toupper(exp), ncol = 2) +
+#     theme_light()) %>%
+#   ggsave(
+#     filename = "9_line_uns_to_per.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+
+# ==============================================================================
+# 2.4 Takeoff thrust reduction
+# ==============================================================================
+
+# # Fetch the data
+# dt_thr <- fn_sql_sel(
+#   select = "YEAR(obs) AS year, exp AS exp, AVG(thr_red) AS avg",
+#   from   = dat$tst,
+#   where  = NULL,
+#   group  = "year, exp",
+#   order  = NULL
+# )
+# 
+# # Output results to the console
+# print(paste("Thrust reduction:", format(dt_thr[, avg], big.mark = ",")))
+# 
+# # Create and save the plot
+# (ggplot(data = dt_uns) +
+#     geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
+#     scale_x_continuous(name = "Year") +
+#     scale_y_continuous(name = "Percent", labels = scales::percent) +
+#     facet_wrap(~toupper(exp), ncol = 2) +
+#     theme_light()) %>%
+#   ggsave(
+#     filename = "9_line_thr_red.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+
+# ==============================================================================
+# 2.5 Takeoff payload removal
+# ==============================================================================
+
+# # Fetch the data
+# dt_pax <- fn_sql_sel(
+#   select = "YEAR(obs) AS year, exp AS exp, SUM(tom_red) AS sum, AVG(tom_red) AS avg",
+#   from   = dat$tst,
+#   where  = NULL,
+#   group  = "year, exp",
+#   order  = NULL
+# )
+# 
+# # Output results to the console
+# print(paste("Sum of payload removal:", format(dt_pax[, sum], big.mark = ",")))
+# print(paste("Average payload removal:", format(dt_pax[, avg], big.mark = ",")))
+# 
+# # Create and save the plot
+# (ggplot(data = dt_uns) +
+#     geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
+#     scale_x_continuous(name = "Year") +
+#     scale_y_continuous(name = "Count", labels = scales::percent) +
+#     facet_wrap(~toupper(exp), ncol = 2) +
+#     theme_light()) %>%
+#   ggsave(
+#     filename = "9_line_tom_red.png",
+#     device = "png",
+#     path = "plots",
+#     scale = 1,
+#     width = 6,
+#     height = NA,
+#     units = "in",
+#     dpi = "print"
+#   )
+
+# ==============================================================================
+# 6 Housekeeping
+# ==============================================================================
+
+# Stop the script timer
 Sys.time() - start_time
 
 # EOF

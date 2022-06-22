@@ -3,6 +3,7 @@
 #   INPUT: None
 # ACTIONS: Set common settings used across the scripts
 #  OUTPUT: Set of global variables loaded into R's environment
+# RUNTIME: N/A
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -23,12 +24,11 @@ dir <- list(
 # ==============================================================================
 
 fls <- list(
-  "act" = "data/aircraft.csv",    # Aircraft data from Sun et al. (2020)
-  "cal" = "data/calibration.csv", # Calibration inputs
-  "net" = "data/netcdf.csv",      # List of NetCDF files from the ESGF
-  "geo" = "data/geolocation.csv", # Airport coordinates from OurAirports.com
-  "rwy" = "data/runways.csv",     # Runways and TODA from Lufthansa Systems
-  "tra" = "data/traffic.csv"      # 2019 traffic by airport from IATA
+  "act" = "data/act/aircraft.csv",    # Aircraft data from Sun et al. (2020)
+  "net" = "data/cli/netcdf.csv",      # List of NetCDF files from the ESGF
+  "geo" = "data/pop/geolocation.csv", # Airport coordinates from OurAirports.com
+  "rwy" = "data/pop/runways.csv",     # Runways and TODA from Lufthansa Systems
+  "tra" = "data/pop/traffic.csv"      # 2019 traffic by airport from IATA
 )
 
 # ==============================================================================
@@ -60,10 +60,10 @@ vis <- list(
 # ==============================================================================
 
 act <- list(
-  "Airbus A320neo"   = "A20n",
-  "Airbus A350-900"  = "A359",
+  "Airbus A320neo"   = "A20n", # LEAP-1A29 engine
+  "Airbus A350-900"  = "A359", # Trent XWB-84 engine
   "Boeing 737 MAX 9" = "B39m", # CFM LEAP-1B27 engine
-  "Boeing 787-9"     = "B789"
+  "Boeing 787-9"     = "B789"  # Trent 1000-K2 engine
 )
 
 # ==============================================================================
@@ -72,40 +72,40 @@ act <- list(
 
 sim <- list(
   # Calibration settings
-  "clb_ang"     = 7.7,          # Average climb angle to screen height
-  "flp_ang"     = 10L,          # Takeoff flap deflection angle in degrees
-  "max_lof"     = 1.2,          # Ratio from CLmax to CLlof (Roskam, 2018, p 95)
-  "opt_rng"     = c(1.6, 2.2),  # Range of cL inputs passed to the optimizer
-  "opt_tol"     = 10^-3,        # Optimizer tolerance
-  "rwy_frc"     = .02,          # Friction coefficient for dry concrete/asphalt
-  "rwy_slp"     = 0L,           # Runway slope in °
-  "scr_hgt"     = 35L,          # Minimum screen height above terrain
-  "thr_rto"     = 0L,           # Thrust reduction used for calibration
-  "tod_mul"     = 1.15,         # Regulatory takeoff distance multiplier
+  "clb_ang"     = 7.7,         # Average climb angle to screen height
+  "flp_ang"     = 10L,         # Takeoff flap deflection angle in degrees
+  "max_lof"     = 1.2,         # Ratio from CLmax to CLlof (Roskam, 2018, p 95)
+  "opt_rng"     = c(1.6, 2.2), # Range of cL inputs passed to the optimizer
+  "opt_tol"     = 10^-3,       # Optimizer tolerance
+  "rwy_frc"     = .02,         # Friction coefficient for dry concrete/asphalt
+  "rwy_slp"     = 0L,          # Runway slope in °
+  "scr_hgt"     = 35L,         # Minimum screen height above terrain
+  "thr_rto"     = 0L,          # Thrust reduction used for calibration
+  "tod_mul"     = 1.15,        # Regulatory takeoff distance multiplier
   # Model settings
-  "cpu_crs"     = 23L,          # Number of cores to use for parallel processing
-  "int_stp"     = 10L,          # Integration steps (model resolution)
-  "lf_belf"     = .67,          # Break-even load factor
-  "pax_avg"     = 87L,          # Mean adult pax weight (Filippone, 2012, p. 52)
-  "pop_thr"     = 10^6,         # Minimum passenger traffic for airport sample
-  "thr_inc"     = 1L,           # Amount of thrust increase at each iteration
-  "thr_ini"     = 25L,          # Amount of thrust reduction to start with
+  "int_stp"     = 10L,         # Integration steps (model resolution)
+  "lf_belf"     = .67,         # Break-even load factor
+  "pax_avg"     = 87L,         # Mean adult pax weight (Filippone, 2012, p. 52)
+  "pop_thr"     = 10^6,        # Minimum passenger traffic for airport sample
+  "thr_inc"     = 1L,          # Thrust increase at each iteration in % point
+  "thr_ini"     = 25L,         # Thrust reduction for simulation in %
   # Natural constants
-  "adb_idx"     = 1.4,          # Adiabatic index for dry air at ISA temperature
-  "ft_to_m"     = .3048,        # Number of m in one ft
-  "g"           = 9.806665,     # Gravitational acceleration constant in m/s²
-  "isa_hdw"     = 0L,           # ISA near-surface headwind in m/s
-  "isa_hur"     = 0L,           # ISA sea-level relative humidity in %
-  "isa_ps"      = 101325L,      # ISA sea-level air pressure in Pa
-  "isa_rho"     = 1.225,        # ISA sea-level air density in kg/m³
-  "isa_tas"     = 288.15,       # ISA sea-level air temperature in K
-  "k_to_c"      = 273.15,       # Number of °K in 0 °C
-  "ps_isa"      = 101325L,      # Air pressure in Pa at sea level under ISA
-  "rsp_dry"     = 287.058       # Specific gas constant for dry air in J/(kg·K)
+  "adb_idx"     = 1.4,         # Adiabatic index for dry air at ISA temperature
+  "ft_to_m"     = .3048,       # Number of m in one ft
+  "g"           = 9.806665,    # Gravitational acceleration constant in m/s²
+  "isa_hdw"     = 0L,          # ISA near-surface headwind in m/s
+  "isa_hur"     = 0L,          # ISA sea-level relative humidity in %
+  "isa_ps"      = 101325L,     # ISA sea-level air pressure in Pa
+  "isa_rho"     = 1.225,       # ISA sea-level air density in kg/m³
+  "isa_tas"     = 288.15,      # ISA sea-level air temperature in K
+  "k_to_c"      = 273.15,      # Number of °K in 0 °C
+  "ps_isa"      = 101325L,     # Air pressure in Pa at sea level under ISA
+  "sat_ref"     = 6.1078,      # Ref. saturation vapor pressure at 0°C in mbar
+  "rsp_air"     = 287.058,     # Specific gas constant for dry air in J/(kg·K)
+  "rsp_h2o"     = 461.495      # Spec. gas constant for water vapor in J/(kg·K)
 )
 
 # Absolute latitudinal boundaries for the Earth's climate zones
-# Subtropical comes from Cortlett (2013) [https://doi.org/gw6j]
 lat <- list(
   "tro" = list(name = "Tropical",   lower = 0L,      upper = 23.4365),
   "sub" = list(name = "Subropical", lower = 23.4365, upper = 30L), 
@@ -128,7 +128,7 @@ lat <- list(
 fn_par_lapply <- function(crs, pkg, lst, fun) {
 
   # Set the log file to the name of the function being passed
-  log <- paste("logs", "/", substitute(fun), ".log", sep = "")
+  log <- paste(dir$log, "/", substitute(fun), ".log", sep = "")
 
   # Clear the log file in case it is not empty
   close(file(description = log, open = "w"))
@@ -138,7 +138,7 @@ fn_par_lapply <- function(crs, pkg, lst, fun) {
 
   # Have each worker load the required packages
   parallel::clusterCall(
-    cl = cl,
+    cl  = cl,
     fun = function() {
       suppressMessages(lapply(X = pkg, FUN = require, character.only = TRUE))
     }
@@ -163,76 +163,31 @@ fn_par_lapply <- function(crs, pkg, lst, fun) {
 fn_sql_qry <- function(statement) {
 
   # Connect to the database
-  conn <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
+  conn <- DBI::dbConnect(
+    RMySQL::MySQL(),
+    default.file = dat$cnf,
+    group = dat$grp
+  )
 
   # Send the query to the database
-  res <- dbSendQuery(conn = conn, statement = statement)
+  res <- DBI::dbSendQuery(conn = conn, statement = statement)
 
   # Return the results to a data table
   dt_out <- suppressWarnings(
-    setDT(
-      dbFetch(res, n = Inf)
+    data.table::setDT(
+      DBI::dbFetch(res = res, n = Inf)
     )
   )
 
   # Release the database resource
-  dbClearResult(res)
+  DBI::dbClearResult(res)
 
   # Disconnect from the database
-  dbDisconnect(conn)
+  DBI::dbDisconnect(conn)
 
   # Return the data table
   return(dt_out)
 
 }
-
-# ==============================================================================
-# 5.3 Function to return a SQL SELECT query
-# select = the variables to retrieve
-# from   = the name of the database table
-# where  = the contents of the WHERE clause (set to NULL if unneeded)
-# group  = the contents of the GROUP BY clause (set to NULL if unneeded)
-# order  = the contents of the ORDER BY clause (set to NULL if unneeded)
-# ==============================================================================
-
-# fn_sql_sel <- function(select, from, where, group, order) {
-# 
-#   # Connect to the database
-#   dat_con <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
-# 
-#   # Build the query
-#   dat_qry <- paste(
-#     "SELECT ", select,
-#     " FROM ", tolower(from),
-#     if(!is.null(where)) { paste(" WHERE ",    where, sep = "") },
-#     if(!is.null(group)) { paste(" GROUP BY ", group, sep = "") },
-#     if(!is.null(order)) { paste(" ORDER BY ", order, sep = "") },
-#     ";",
-#     sep = ""
-#   )
-# 
-#   # Output the query to the console
-#   print(dat_qry)
-# 
-#   # Send the query to the database
-#   dat_res <- dbSendQuery(dat_con, dat_qry)
-# 
-#   # Return the results to a data table
-#   dt_out <- suppressWarnings(
-#     setDT(
-#       dbFetch(dat_res, n = Inf)
-#     )
-#   )
-# 
-#   # Release the database resource
-#   dbClearResult(dat_res)
-# 
-#   # Disconnect from the database
-#   dbDisconnect(dat_con)
-# 
-#   # Return the data table
-#   return(dt_out)
-# 
-# }
 
 # EOF
