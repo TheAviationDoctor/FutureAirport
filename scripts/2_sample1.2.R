@@ -4,6 +4,8 @@
 # ACTIONS: Subset the airport population data based on a set traffic threshold
 #          Plot sample characteristics
 #  OUTPUT: Plots saved to disk
+#  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
+#    YEAR: 2022
 # ==============================================================================
 
 # ==============================================================================
@@ -32,23 +34,12 @@ cat("\014")
 # 1 Load and describe the population
 # ==============================================================================
 
-# Connect to the database
-dat_con <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
-
-# Build the query to retrieve the population data
-dat_qry <- paste("SELECT * FROM ", dat$pop, ";", sep = "")
-
-# Send the query to the database
-dat_res <- dbSendQuery(dat_con, dat_qry)
-
-# Return the results
-df_pop <- suppressWarnings(dbFetch(dat_res, n = Inf))
-
-# Release the database resource
-dbClearResult(dat_res)
-
-# Disconnect from the database
-dbDisconnect(dat_con)
+# Fetch the population data
+df_pop <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM ", dat$pop, ";", sep = ""
+  )
+)
 
 # Describe the population
 str(df_pop)
@@ -88,8 +79,6 @@ nrow(df_smp) / nrow(df_pop) * 100L
 sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))]) /
   sum(df_pop$traffic[!rev(duplicated(rev(df_pop$icao)))]) * 100L
 
-stop()
-
 # ==============================================================================
 # 4 Test that the sample is representative of the population's latitudes
 # ==============================================================================
@@ -103,13 +92,6 @@ geo_labels <- c(
   "Antarctic", "South temperate zone", "Tropics",
   "North temperate zone", "Arctic"
 )
-
-# # Define traffic bins and their labels
-# breaks <- c(10^0, 10^1, 10^2, 10^3, 10^4, 10^5, 10^6, 10^7, 10^8, 10^9)
-# labels <- c(
-#   "[1–10)", "[10–100)", "[100–1K)", "[1K–10K)", "[10K–100K)",
-#   "[100K–1M)", "[1M–10M)", "[10M–100M)", "[100M–1B)"
-# )
 
 # Define the traffic bins (logarithmic sequence)
 breaks <- c(1L %o% 10^(0:9))
@@ -137,57 +119,57 @@ summary(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])
 
 # Calculate the distance from the equator to the population's median
 distm(
-  c(0, median(df_pop$lat[!rev(duplicated(rev(df_pop$icao)))])),
-  c(0, 0),
+  c(0L, median(df_pop$lat[!rev(duplicated(rev(df_pop$icao)))])),
+  c(0L, 0L),
   fun = distHaversine
-) / 1000
+) / 1000L
 
 # Calculate the distance from the equator to the population's mean
 distm(
-  c(0, mean(df_pop$lat[!rev(duplicated(rev(df_pop$icao)))])),
-  c(0, 0),
+  c(0L, mean(df_pop$lat[!rev(duplicated(rev(df_pop$icao)))])),
+  c(0L, 0L),
   fun = distHaversine
-) / 1000
+) / 1000L
 
 # Calculate the distance from the equator to the sample's median
 distm(
-  c(0, median(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
-  c(0, 0),
+  c(0L, median(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
+  c(0L, 0L),
   fun = distHaversine
-) / 1000
+) / 1000L
 
 # Calculate the distance from the equator to the sample's mean
 distm(
-  c(0, mean(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
-  c(0, 0),
+  c(0L, mean(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
+  c(0L, 0L),
   fun = distHaversine
-) / 1000
+) / 1000L
 
 # Calculate the distance from the median to the population's mean
 distm(
-  c(0, median(df_pop$lat[!rev(duplicated(rev(df_pop$icao)))])),
-  c(0, mean(df_pop$lat[!rev(duplicated(rev(df_pop$icao)))])),
+  c(0L, median(df_pop$lat[!rev(duplicated(rev(df_pop$icao)))])),
+  c(0L, mean(df_pop$lat[!rev(duplicated(rev(df_pop$icao)))])),
   fun = distHaversine
-) / 1000
+) / 1000L
 
 # Calculate the distance from the median to the sample's mean
 distm(
-  c(0, median(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
-  c(0, mean(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
+  c(0L, median(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
+  c(0L, mean(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
   fun = distHaversine
-) / 1000
+) / 1000L
 
 # Find the population's northernmost airport
-df_pop[which.max(df_pop$lat), c(4, 5)]
+df_pop[which.max(df_pop$lat), c(4L, 5L)]
 
 # Find the population's southernmost airport
-df_pop[which.min(df_pop$lat), c(4, 5)]
+df_pop[which.min(df_pop$lat), c(4L, 5L)]
 
 # Find the sample's northernmost airport
-df_smp[which.max(df_smp$lat), c(4, 5)]
+df_smp[which.max(df_smp$lat), c(4L, 5L)]
 
 # Find the sample's southernmost airport
-df_smp[which.min(df_smp$lat), c(4, 5)]
+df_smp[which.min(df_smp$lat), c(4L, 5L)]
 
 # Bin the population airports (not runways) by passenger traffic and geo. zones
 df_pop_binned <- df_pop[!duplicated(df_pop$icao), ] %>%
@@ -361,8 +343,8 @@ df_smp_binned %>%
   ) +
   scale_x_continuous(
     name     = "Latitude",
-    breaks   = seq(-90, 90, 10),
-    limits   = c(-90, 90)
+    breaks   = seq(-90L, 90L, 10L),
+    limits   = c(-90L, 90L)
   ) +
   scale_y_continuous(
     name = "Count of airports"
@@ -404,12 +386,12 @@ df_smp_binned %>%
   ) +
   scale_x_continuous(
     name     = "Latitude",
-    breaks   = seq(-90, 90, 10),
-    limits   = c(-90, 90)
+    breaks   = seq(-90L, 90L, 10L),
+    limits   = c(-90L, 90L)
   ) +
   scale_y_continuous(
     name     = "Sum of traffic",
-    breaks   = seq(0, 10^10, 5 * 10^8),
+    breaks   = seq(0L, 10^10, 5L * 10^8),
     labels   = label_number_si(accuracy = 0.1)
   ) +
   theme_light() +
@@ -486,7 +468,7 @@ df_kgc$kgc <- as.factor(df_kgc$kgc)
 
 # View the summarized table of main climate groups
 df_kgc %>%
-  group_by(group = substr(kgc, 1, 1)) %>%
+  group_by(group = substr(kgc, 1L, 1L)) %>%
   dplyr::summarize(
     pop.airports = sum(pop.airports),
     pop.airports.per = percent(
@@ -525,7 +507,7 @@ df_kgc %>%
     alpha   = 0.5,
     width   = 1L
   ) +
-  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2L)) +
   scale_y_continuous(trans = "log1p", breaks = c(2^(0:8))) +
   labs(x = "Köppen-Geiger climate zones", y = "Airport count") +
   theme_light() +
@@ -555,9 +537,9 @@ df_kgc %>%
     alpha   = 0.5,
     width   = 1L
   ) +
-  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  scale_x_discrete(guide = guide_axis(n.dodge = 2L)) +
   scale_y_continuous(
-    breaks = seq(from = 0, to = 10^10, by = 5 * 10^8),
+    breaks = seq(from = 0L, to = 10^10, by = 5L * 10^8),
     labels = label_number_si(accuracy = 0.1)
   ) +
   labs(x = "Köppen-Geiger climate zones", y = "Sum of traffic") +

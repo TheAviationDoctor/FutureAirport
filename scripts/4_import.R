@@ -3,9 +3,11 @@
 #   INPUT: NetCDF files downloaded manually after 3_download.R
 # ACTIONS: Import the NetCDF files into R
 #          Parse airport-level climatic variables from the NetCDF files
-#          Write the parsed climatic data to the database
+#          Write the parsed climate data to the database
 #          Index the database table
 #  OUTPUT: 2,213,847,280 rows of climate data written to the database
+#  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
+#    YEAR: 2022
 # ==============================================================================
 
 # ==============================================================================

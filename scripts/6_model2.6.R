@@ -4,6 +4,8 @@
 # ACTIONS: Perform a simulated takeoff and calculate the takeoff distance in m
 #  OUTPUT: A vector of the ground component of the takeoff distance required
 # RUNTIME: Variable based on input data table size
+#  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
+#    YEAR: 2022
 # ==============================================================================
 
 # ==============================================================================

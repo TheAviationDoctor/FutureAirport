@@ -1,11 +1,13 @@
 # ==============================================================================
 #    NAME: scripts/8_simulate.R
 #   INPUT: 442,769,456 rows of climatic observations from the database
-# ACTIONS: Assemble the aircraft, calibration, and climatic data
+# ACTIONS: Assemble the aircraft, calibration, and climate data
 #          Perform simulated takeoffs for each aircraft type and climate obs.
 #          Write the resulting takeoff distance required to the database
 #          Index the database table
 #  OUTPUT: 442,769,456 rows of takeoff data written to the database
+#  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
+#    YEAR: 2022
 # ==============================================================================
 
 # ==============================================================================
@@ -268,7 +270,7 @@ fn_simulate <- function(icao) {
   set(x = dt_cli, j = "rwy",  value = as.factor(dt_cli[, rwy]))
 
   # ============================================================================
-  # 2.2 Combine the airport, aircraft, calibration, and climatic data
+  # 2.2 Combine the airport, aircraft, calibration, and climate data
   # ============================================================================
 
   # Combine climatic observations with aircraft data (Cartesian product)

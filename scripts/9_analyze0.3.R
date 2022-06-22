@@ -24,17 +24,156 @@ start_time <- Sys.time()
 # Clear the console
 cat("\014")
 
+# IMPORTANT NOTE
+# Some of the queries below are memory-intensive for the MySQL engine.
+# If you run into the following error:
+# "The total number of locks exceeds the lock table size",
+# log into MySQL Workbench with admin rights to increase the InnoDB buffer size:
+# 'SET GLOBAL innodb_buffer_pool_size = 64 * 1024 * 1024 * 1024;' [this is 64GB]
+
 # ==============================================================================
-# 1 Summary
+# 1. Research question #1: How much change to near-surface air temperature,
+# air density, and headwind will airports experience in the 21st century?
 # ==============================================================================
 
 # ==============================================================================
-# 1.1 Unique takeoffs
+# 1.1 Summarize the climate data in the data in the database
+# Runtime: ~22 minutes
+# ==============================================================================
+
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(vis$cli_glb),
+    "AS SELECT
+    YEAR(obs) AS year,
+    AVG(tas) AS avg_tas, MAX(tas) AS max_tas,
+    AVG(rho) AS avg_rho, MIN(rho) AS min_rho,
+    AVG(hdw) AS avg_hdw,
+    exp AS exp
+    FROM", tolower(dat$cli),
+    "GROUP BY year, exp;",
+    sep = " "
+  )
+)
+
+# ==============================================================================
+# 1.2 Visualize the data from the summary table
+# ==============================================================================
+
+dt_out <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(vis$cli_glb),
+    "GROUP BY year, exp;",
+    sep = " "
+  )
+)
+
+# Count the number of SSPs
+exp_cnt <- length(unique(dt_cla[, exp]))
+
+# Normalize observations based on first year values to show changes over time
+set(
+  x     = dt_cla,
+  j     = "avg_tas",
+  value = dt_cla[, avg_tas] - dt_cla[1:exp_cnt, avg_tas]
+)
+set(
+  x     = dt_cla,
+  j     = "max_tas",
+  value = dt_cla[, max_tas] - dt_cla[1:exp_cnt, max_tas]
+)
+set(
+  x     = dt_cla,
+  j     = "avg_rho",
+  value = dt_cla[, avg_rho] - dt_cla[1:exp_cnt, avg_rho]
+)
+set(
+  x     = dt_cla,
+  j     = "min_rho",
+  value = dt_cla[, min_rho] - dt_cla[1:exp_cnt, min_rho]
+)
+set(
+  x     = dt_cla,
+  j     = "avg_hdw",
+  value = dt_cla[, avg_hdw] - dt_cla[1:exp_cnt, avg_hdw]
+)
+
+# Define a function to generate plots
+fn_plot <- function(var1, var2) {
+  (
+    ggplot(
+      data    = dt_cla,
+      mapping = aes(x = year, y = dt_cla[[var1]], color = toupper(exp))
+    ) +
+      geom_line(size = .3) +
+      geom_smooth(linetype = "dashed", size = .4) +
+      scale_x_continuous("Year") +
+      scale_y_continuous(var2) +
+      facet_wrap(~ toupper(exp), ncol = 2) +
+      guides(color = "none") +
+      theme_light()
+  ) |>
+    ggsave(
+      filename = paste("9_line_", as.name(var1), ".png", sep = ""),
+      device   = "png",
+      path     = "plots",
+      scale    = 1,
+      width    = 6,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
+}
+
+# Generate the plots for every variable
+mapply(
+  FUN  = fn_plot,
+  var1 = c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw"),
+  var2 = c(
+    "Mean near-surface temperature increase in °C",
+    "Max. near-surface temperature increase in °C",
+    "Mean near-surface air density in kg/m3",
+    "Min. near-surface air density in kg/m3",
+    "Mean near-surface headwind speed in m/s"
+  )
+)
+
+# ==============================================================================
+# 2. Research question #2: How much thrust increase and payload removal
+# will be needed?
+# ==============================================================================
+
+# ==============================================================================
+# 2.1 Unique takeoffs
 # Takes 4.7 minutes
 # ==============================================================================
 
+# ==============================================================================
+# 1.1 Summarize the climate data in the data in the database
+# Runtime: ~21 minutes
+# ==============================================================================
+
+# # Create the visualization table
+# fn_sql_qry(
+#   statement = paste(
+#     "CREATE TABLE IF NOT EXISTS",
+#     tolower(vis$tko_cnt),
+#     "AS SELECT
+#     COUNT(*) AS count,
+#     SUM(itr) AS sum,
+#     AVG(itr) AS avg
+#     FROM", tolower(dat$tko),
+#     ";",
+#     sep = " "
+#   )
+# )
+
+
+
 # # Fetch the data
-# dt_uni <- fn_dat_sql(
+# dt_uni <- fn_sql_sel(
 #   select = "COUNT(*) AS count",
 #   from   = dat$tko,
 #   where  = NULL,
@@ -46,11 +185,11 @@ cat("\014")
 # print(paste("Count of unique takeoffs:", format(dt_uni, big.mark = ",")))
 
 # ==============================================================================
-# 1.2 Takeoff iterations
+# 2.2 Takeoff iterations
 # ==============================================================================
 
 # # Fetch the data
-# dt_itr <- fn_dat_sql(
+# dt_itr <- fn_sql_sel(
 #   select = "SUM(itr) AS sum, AVG(itr) AS avg",
 #   from   = dat$tst,
 #   where  = NULL,
@@ -63,11 +202,11 @@ cat("\014")
 # print(paste("Average iterations:", format(dt_itr[, avg], big.mark = ",")))
 
 # ==============================================================================
-# 1.3 Takeoff outcomes
+# 2.3 Takeoff outcomes
 # ==============================================================================
 
 # # Fetch the data
-# dt_uns <- fn_dat_sql(
+# dt_uns <- fn_sql_sel(
 #   select = "YEAR(obs) AS year, exp AS exp, COUNT(*) AS count",
 #   from   = dat$tst,
 #   where  = "todr > toda",
@@ -125,11 +264,11 @@ cat("\014")
 #   )
 
 # ==============================================================================
-# 1.4 Takeoff thrust reduction
+# 2.4 Takeoff thrust reduction
 # ==============================================================================
 
 # # Fetch the data
-# dt_thr <- fn_dat_sql(
+# dt_thr <- fn_sql_sel(
 #   select = "YEAR(obs) AS year, exp AS exp, AVG(thr_red) AS avg",
 #   from   = dat$tst,
 #   where  = NULL,
@@ -159,11 +298,11 @@ cat("\014")
 #   )
 
 # ==============================================================================
-# 1.5 Takeoff payload removal
+# 2.5 Takeoff payload removal
 # ==============================================================================
 
 # # Fetch the data
-# dt_pax <- fn_dat_sql(
+# dt_pax <- fn_sql_sel(
 #   select = "YEAR(obs) AS year, exp AS exp, SUM(tom_red) AS sum, AVG(tom_red) AS avg",
 #   from   = dat$tst,
 #   where  = NULL,
@@ -192,195 +331,6 @@ cat("\014")
 #     units = "in",
 #     dpi = "print"
 #   )
-
-# ==============================================================================
-# 2. Research question #1
-# ==============================================================================
-
-# ==============================================================================
-# 2.1 Warming at airports by year
-# ==============================================================================
-
-# # Fetch the data
-# dt_tas <- fn_dat_sql(
-#   # select = "YEAR(obs) AS year, exp AS exp, AVG(tas) AS tas",
-#   select = "YEAR(obs) AS year, obs AS obs, exp AS exp, tas AS tas",
-#   from   = dat$cli,
-#   where  = NULL,
-#   # group  = "year, exp",
-#   group  = NULL,
-#   order  = NULL,
-#   limit  = 175080
-# )
-# 
-# # Convert K to C
-# # set(x = dt_tas, j = "tas", value = dt_tas[, tas] - sim$k_to_c)
-# 
-# # Convert obs to dates
-# set(x = dt_tas, j = "obs", value = as.Date(dt_tas[, obs]))
-# 
-# print(dt_tas)
-# str(dt_tas)
-# 
-# # Create and save the plot
-# # (ggplot(data = dt_tas) +
-# #     geom_line(mapping = aes(x = year, y = tas), color = "black", size = 1) +
-# #     scale_x_continuous("Year") +
-# #     scale_y_continuous("Temperature", labels = scales::comma) +
-# #     facet_wrap(~toupper(exp), ncol = 2) +
-# #     theme_light()) %>%
-# #   ggsave(
-# #     filename = "9_line_tas_exp.png",
-# #     device = "png",
-# #     path = "plots",
-# #     scale = 1,
-# #     width = 6,
-# #     height = NA,
-# #     units = "in",
-# #     dpi = "print"
-# #   )
-# 
-# # Create and save the plot
-# (ggplot(data = dt_tas, mapping = aes(x = obs, y = tas, group = year)) +
-#     geom_boxplot() +
-#     # geom_line(mapping = aes(x = obs, y = tas), color = "black", size = 1) +
-#     # scale_x_date("Year", labels = scales::label_date("%Y")) +
-#     scale_x_date(name = "Year", date_labels = "%Y", breaks = "year") +
-#     scale_y_continuous(name = "Temperature") +
-#     facet_wrap(~toupper(exp), ncol = 1) +
-#     theme_light()) %>%
-#   ggsave(
-#     filename = "9_line_tas_exp.png",
-#     device = "png",
-#     path = "plots",
-#     scale = 1,
-#     width = 6,
-#     height = NA,
-#     units = "in",
-#     dpi = "print"
-#   )
-
-
-
-
-# # Fetch the data
-# dt_tas <- fn_dat_sql(
-#   # select = "YEAR(obs) AS year, exp AS exp, AVG(tas) AS tas",
-#   select = "YEAR(obs) AS year, MIN(tas) AS min, AVG(tas) AS avg, MAX(tas) AS max, exp AS exp",
-#   from   = dat$cli,
-#   where  = NULL,
-#   # group  = "year, exp",
-#   group  = "year, exp",
-#   order  = NULL
-# )
-# 
-# # Convert °K to °C
-# set(x = dt_tas, j = "min", value = dt_tas[, min] - sim$k_to_c)
-# set(x = dt_tas, j = "avg", value = dt_tas[, avg] - sim$k_to_c)
-# set(x = dt_tas, j = "max", value = dt_tas[, max] - sim$k_to_c)
-# 
-# # Convert obs to dates
-# # set(x = dt_tas, j = "obs", value = as.Date(dt_tas[, obs]))
-# 
-# print(dt_tas)
-# str(dt_tas)
-# 
-# # Create and save the plot
-# (ggplot(data = dt_tas) +
-#     geom_line(mapping = aes(x = year, y = min), color = "black", linetype = "dashed", size = 1) +
-#     geom_line(mapping = aes(x = year, y = avg), color = "black", linetype = "solid",  size = 1) +
-#     geom_line(mapping = aes(x = year, y = max), color = "black", linetype = "dashed", size = 1) +
-#     scale_x_continuous("Year") +
-#     scale_y_continuous("Temperature", labels = scales::comma) +
-#     facet_wrap(~toupper(exp), ncol = 2) +
-#     theme_light()) %>%
-#   ggsave(
-#     filename = "9_line_tas_exp.png",
-#     device = "png",
-#     path = "plots",
-#     scale = 1,
-#     width = 6,
-#     height = NA,
-#     units = "in",
-#     dpi = "print"
-#   )
-
-# JUST DOWNLOAD EVERYTHING FROM MYSQL
-
-# Fetch the data
-# dt_tas <- fn_dat_sql(
-#   # select = "YEAR(obs) AS year, exp AS exp, AVG(tas) AS tas",
-#   select = "obs AS obs, tas AS tas, exp AS exp",
-#   from   = dat$cli,
-#   where  = NULL,
-#   # group  = "year, exp",
-#   group  = NULL,
-#   order  = NULL
-# )
-
-# dt_tas_viz <- dt_tas[, avg := mean(tas), by = exp]
-
-# ==============================================================================
-# 2.1.1 Create the database table
-# Runs in ~22 minutes
-# ==============================================================================
-
-# Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
-
-# Build the query to drop the table, if it exists
-db_qry <- paste("DROP TABLE IF EXISTS ", tolower(dat$cli_tas), ";", sep = "")
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Release the database resource
-dbClearResult(db_res)
-
-# Build the query to create the table
-db_qry <- paste(
-  "CREATE TABLE",
-  tolower(dat$cli_tas),
-  "AS SELECT
-  YEAR(obs) AS year,
-  MIN(tas) AS min, AVG(tas) AS avg, MAX(tas) AS max,
-  exp AS exp
-  FROM", tolower(dat$cli),
-  "GROUP BY year, exp;",
-  sep = " "
-)
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Release the database resource
-dbClearResult(db_res)
-
-# Disconnect from the database
-dbDisconnect(db_con)
-
-# # Fetch the data
-# dt_tas <- fn_dat_sql(
-#   # select = "YEAR(obs) AS year, exp AS exp, AVG(tas) AS tas",
-#   select = "YEAR(obs) AS year, MIN(tas) AS min, AVG(tas) AS avg, MAX(tas) AS max, exp AS exp",
-#   from   = dat$cli,
-#   where  = NULL,
-#   # group  = "year, exp",
-#   group  = "year, exp",
-#   order  = NULL
-# )
-
-print(dt_tas_viz)
-
-# (ggplot(data = dt_tas) +
-#    geom_line(mapping = aes(x = year, y = min(tas)), color = "black", linetype = "dashed", size = 1) +
-#    geom_line(mapping = aes(x = year, y = mean(tas)), color = "black", linetype = "solid",  size = 1) +
-#    geom_line(mapping = aes(x = year, y = max(tas)), color = "black", linetype = "dashed", size = 1) +
-#    scale_x_continuous("Year") +
-#    scale_y_continuous("Temperature", labels = scales::comma) +
-#    facet_wrap(~toupper(exp), ncol = 2) +
-#    theme_light()
-# )
 
 # ==============================================================================
 # 6 Housekeeping

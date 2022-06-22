@@ -8,6 +8,8 @@
 #          Compare the resulting TODR with that published by the OEMs
 #          Vary CL values until the residual error is minimized
 #  OUTPUT: Optimized values for CL and CD
+#  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
+#    YEAR: 2022
 # ==============================================================================
 
 # ==============================================================================

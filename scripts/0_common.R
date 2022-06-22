@@ -3,6 +3,8 @@
 #   INPUT: None
 # ACTIONS: Set common settings used across the scripts
 #  OUTPUT: Set of global variables loaded into R's environment
+#  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
+#    YEAR: 2022
 # ==============================================================================
 
 # ==============================================================================
@@ -33,6 +35,7 @@ fls <- list(
 # 2 Database parameters
 # ==============================================================================
 
+# Data tables
 dat <- list(
   "cnf" = ".my.cnf", # File that contains the database connection parameters
   "grp" = "phd",     # Group name within the cnf file
@@ -41,9 +44,15 @@ dat <- list(
   "cli" = "cli",     # Climate data post-transformation
   "imp" = "imp",     # Climate data imported from the NetCDF files
   "pop" = "pop",     # Population and sample airports
-  "tko" = "tko",     # Takeoff performance calculation outputs
+  "tko" = "tst",     # Takeoff performance calculation outputs
   "tst" = "tst",     # FOR TESTING ONLY
   "idx" = "idx"      # Index name
+)
+
+# Visualization tables
+vis <- list(
+  "cli_glb" = "cli_glb", # Climate change, globally
+  "tko_cnt" = "tko_cnt"  # Number of takeoffs
 )
 
 # ==============================================================================
@@ -90,8 +99,18 @@ sim <- list(
   "isa_ps"      = 101325L,      # ISA sea-level air pressure in Pa
   "isa_rho"     = 1.225,        # ISA sea-level air density in kg/m³
   "isa_tas"     = 288.15,       # ISA sea-level air temperature in K
+  "k_to_c"      = 273.15,       # Number of °K in 0 °C
   "ps_isa"      = 101325L,      # Air pressure in Pa at sea level under ISA
   "rsp_dry"     = 287.058       # Specific gas constant for dry air in J/(kg·K)
+)
+
+# Absolute latitudinal boundaries for the Earth's climate zones
+# Subtropical comes from Cortlett (2013) [https://doi.org/gw6j]
+lat <- list(
+  "tro" = list(name = "Tropical",   lower = 0L,      upper = 23.4365),
+  "sub" = list(name = "Subropical", lower = 23.4365, upper = 30L), 
+  "tem" = list(name = "Temperate",  lower = 23.4365, upper = 66.5635),
+  "fri" = list(name = "Frigid",     lower = 66.5635, upper = 90L)
 )
 
 # ==============================================================================
@@ -137,7 +156,38 @@ fn_par_lapply <- function(crs, pkg, lst, fun) {
 }
 
 # ==============================================================================
-# 5.2 Function to manage database connections and send a basic SQL query
+# 5.2 Function to execute a SQL query and retrieve the results
+# statement = the SQL statement to pass to the database
+# ==============================================================================
+
+fn_sql_qry <- function(statement) {
+
+  # Connect to the database
+  conn <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
+
+  # Send the query to the database
+  res <- dbSendQuery(conn = conn, statement = statement)
+
+  # Return the results to a data table
+  dt_out <- suppressWarnings(
+    setDT(
+      dbFetch(res, n = Inf)
+    )
+  )
+
+  # Release the database resource
+  dbClearResult(res)
+
+  # Disconnect from the database
+  dbDisconnect(conn)
+
+  # Return the data table
+  return(dt_out)
+
+}
+
+# ==============================================================================
+# 5.3 Function to return a SQL SELECT query
 # select = the variables to retrieve
 # from   = the name of the database table
 # where  = the contents of the WHERE clause (set to NULL if unneeded)
@@ -145,44 +195,44 @@ fn_par_lapply <- function(crs, pkg, lst, fun) {
 # order  = the contents of the ORDER BY clause (set to NULL if unneeded)
 # ==============================================================================
 
-fn_dat_sql <- function(select, from, where, group, order) {
-
-  # Connect to the database
-  dat_con <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
-
-  # Build the query
-  dat_qry <- paste(
-    "SELECT ", select,
-    " FROM ", tolower(from),
-    if(!is.null(where)) { paste(" WHERE ",    where, sep = "") },
-    if(!is.null(group)) { paste(" GROUP BY ", group, sep = "") },
-    if(!is.null(order)) { paste(" ORDER BY ", order, sep = "") },
-    ";",
-    sep = ""
-  )
-
-  # Output the query to the console
-  print(dat_qry)
-
-  # Send the query to the database
-  dat_res <- dbSendQuery(dat_con, dat_qry)
-
-  # Return the results to a data table
-  dt_out <- suppressWarnings(
-    setDT(
-      dbFetch(dat_res, n = Inf)
-    )
-  )
-
-  # Release the database resource
-  dbClearResult(dat_res)
-
-  # Disconnect from the database
-  dbDisconnect(dat_con)
-
-  # Return the data table
-  return(dt_out)
-
-}
+# fn_sql_sel <- function(select, from, where, group, order) {
+# 
+#   # Connect to the database
+#   dat_con <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
+# 
+#   # Build the query
+#   dat_qry <- paste(
+#     "SELECT ", select,
+#     " FROM ", tolower(from),
+#     if(!is.null(where)) { paste(" WHERE ",    where, sep = "") },
+#     if(!is.null(group)) { paste(" GROUP BY ", group, sep = "") },
+#     if(!is.null(order)) { paste(" ORDER BY ", order, sep = "") },
+#     ";",
+#     sep = ""
+#   )
+# 
+#   # Output the query to the console
+#   print(dat_qry)
+# 
+#   # Send the query to the database
+#   dat_res <- dbSendQuery(dat_con, dat_qry)
+# 
+#   # Return the results to a data table
+#   dt_out <- suppressWarnings(
+#     setDT(
+#       dbFetch(dat_res, n = Inf)
+#     )
+#   )
+# 
+#   # Release the database resource
+#   dbClearResult(dat_res)
+# 
+#   # Disconnect from the database
+#   dbDisconnect(dat_con)
+# 
+#   # Return the data table
+#   return(dt_out)
+# 
+# }
 
 # EOF

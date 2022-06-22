@@ -32,34 +32,18 @@ cat("\014")
 # 1 Import the sample airports and runways
 # ==============================================================================
 
-# Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-
-# Build the query to retrieve the sample airports
-db_qry <- paste(
-  "SELECT icao, rwy, toda FROM ", db$pop,
-  " WHERE traffic > ", pop_thr, ";",
-  sep = ""
-)
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Return the results
-dt_smp <- suppressWarnings(
-  setDT(
-    dbFetch(db_res, n = Inf),
-    key = "icao",
-    check.names = FALSE
+# Fetch the sample airports and runways
+dt_smp <- fn_sql_qry(
+  statement = paste(
+    "SELECT icao, rwy, toda, zone FROM ", dat$pop,
+    " WHERE traffic > ", sim$pop_thr, ";",
+    sep = ""
   )
 )
 
-# Release the database resource
-dbClearResult(db_res)
-
 # Convert the runway's name (e.g., RW26R) to its magnetic heading in degrees
 # (e.g., 260) for later headwind calculation
-dt_smp[, hdg := as.numeric(substr(rwy, 3, 4)) * 10]
+dt_smp[, hdg := as.numeric(substr(rwy, 3L, 4L)) * 10L]
 
 # For two runways with the same magnetic heading at a given airport (e.g. RWY26R
 # and RWY26L), keep the one with the longest TODA (i.e. the most favorable case)
@@ -72,38 +56,35 @@ nrow(dt_smp)
 # 2 Set up the database table to store the results in wide format
 # ==============================================================================
 
-# Build the query to drop the table, if it exists
-db_qry <- paste("DROP TABLE IF EXISTS ", tolower(db$cli), ";", sep = "")
-
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Release the database resource
-dbClearResult(db_res)
-
-# Build the query to create the table
-db_qry <- paste(
-  "CREATE TABLE", tolower(db$cli),
-  "(id INT UNSIGNED NOT NULL AUTO_INCREMENT, obs DATETIME NOT NULL,
-  icao CHAR(4) NOT NULL, exp CHAR(6) NOT NULL, hurs FLOAT NOT NULL,
-  ps FLOAT NOT NULL, tas FLOAT NOT NULL, uas FLOAT NOT NULL, vas FLOAT NOT NULL,
-  rho FLOAT NOT NULL, wnd_dir FLOAT NOT NULL, wnd_spd FLOAT NOT NULL,
-  hdw FLOAT NOT NULL, rwy CHAR(5) NOT NULL, toda SMALLINT NOT NULL,
-  PRIMARY KEY (id));",
-  sep = " "
+# Drop the table if it exists
+fn_sql_qry(
+  statement = paste("DROP TABLE IF EXISTS ", tolower(dat$cli), ";", sep = "")
 )
 
-# Send the query to the database
-db_res <- dbSendQuery(db_con, db_qry)
-
-# Release the database resource
-dbClearResult(db_res)
-
-# Disconnect from the database
-dbDisconnect(db_con)
+# Create the table
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE",
+    tolower(dat$cli),
+    "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    obs DATETIME NOT NULL,
+    icao CHAR(4) NOT NULL,
+    zone CHAR(10) NOT NULL,
+    exp CHAR(6) NOT NULL,
+    hurs FLOAT NOT NULL,
+    ps FLOAT NOT NULL,
+    tas FLOAT NOT NULL,
+    rho FLOAT NOT NULL,
+    hdw FLOAT NOT NULL,
+    rwy CHAR(5) NOT NULL,
+    toda SMALLINT NOT NULL,
+    PRIMARY KEY (id));",
+    sep = " "
+  )
+)
 
 # ==============================================================================
-# 3 Define the function to transform the climate data for each airport
+# 3 Define a function to transform the climate data for each airport
 # ==============================================================================
 
 fn_transform <- function(apt) {
@@ -122,30 +103,17 @@ fn_transform <- function(apt) {
   # 3.1 Retrieve the climate data at the current airport
   # ============================================================================
 
-  # Connect the worker to the database
-  db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
-
-  # Build the query to retrieve the sample airports
-  db_qry <- paste(
-    "SELECT obs, icao, exp, var, val FROM ", db$imp,
-    " WHERE icao = '", apt, "';",
-    sep = ""
-  )
-
-  # Send the query to the database
-  db_res <- dbSendQuery(db_con, db_qry)
-
-  # Return the results
-  dt_nc <- suppressWarnings(
-    setDT(
-      dbFetch(db_res, n = Inf),
-      key = c("obs", "exp"),
-      check.names = TRUE
+  # Fetch the sample airports
+  fn_sql_qry(
+    statement = paste(
+      "SELECT obs, icao, exp, var, val FROM ", dat$imp,
+      " WHERE icao = '", apt, "';",
+      sep = ""
     )
   )
-
-  # Release the database resource
-  dbClearResult(db_res)
+  
+  # Create keys on the data table
+  setkey(x = dt_nc, obs, exp)
 
   # Pivot the dataset from long to wide/tidy format
   dt_nc <- dcast.data.table(dt_nc, obs + icao + exp ~ var, value.var = "val")
@@ -220,7 +188,7 @@ fn_transform <- function(apt) {
   # Write the data
   dbWriteTable(
     conn = db_con,
-    name = tolower(db$cli),
+    name = tolower(dat$cli),
     value = dt_nc[, ..cols],
     append = TRUE,
     row.names = FALSE
@@ -267,10 +235,10 @@ stopCluster(cl)
 # ==============================================================================
 
 # Connect to the database
-db_con <- dbConnect(RMySQL::MySQL(), default.file = db$cnf, group = db$grp)
+db_con <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
 
 # Build the query to create the index
-db_qry <- paste("CREATE INDEX idx ON ", tolower(db$cli), " (icao);", sep = "")
+db_qry <- paste("CREATE INDEX idx ON ", tolower(dat$cli), " (icao);", sep = "")
 
 # Send the query to the database
 db_res <- dbSendQuery(db_con, db_qry)

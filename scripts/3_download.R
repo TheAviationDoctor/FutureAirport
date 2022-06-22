@@ -5,6 +5,8 @@
 #          The NetCDF files are then downloaded manually using wget as per
 #          https://esgf.github.io/esgf-user-support/user_guide.html
 #  OUTPUT: CSV file containing the list of NetCDF files that meet the criteria
+#  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
+#    YEAR: 2022
 # ==============================================================================
 
 # ==============================================================================

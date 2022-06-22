@@ -109,6 +109,18 @@ df_geo <- subset(df_geo,
 # Count the remaining observations
 nrow(df_geo)
 
+# Add climatic zones based on absolute latitude
+df_geo$zone <- case_when(
+  abs(df_geo$lat) >= lat$tro$lower & abs(df_geo$lat) <= lat$tro$upper ~
+    lat$tro$name,
+  abs(df_geo$lat) >= lat$sub$lower & abs(df_geo$lat) <= lat$sub$upper ~
+    lat$sub$name,
+  abs(df_geo$lat) >= lat$tem$lower & abs(df_geo$lat) <= lat$tem$upper ~
+    lat$tem$name,
+  abs(df_geo$lat) >= lat$fri$lower & abs(df_geo$lat) <= lat$fri$upper ~
+    lat$fri$name
+)
+
 # ==============================================================================
 # 4 Combine the traffic and geolocation datasets into an airport dataset
 # ==============================================================================
@@ -454,6 +466,7 @@ dat_qry <- paste("CREATE TABLE ",
   name CHAR(", max(nchar(df_pop$name)), ") NOT NULL,
   lat FLOAT NOT NULL,
   lon FLOAT NOT NULL,
+  zone CHAR(10) NOT NULL,
   rwy CHAR(5) NOT NULL,
   toda SMALLINT NOT NULL,
   PRIMARY KEY (id));",
