@@ -77,7 +77,7 @@ l1 <- Map(
     X          = l0,
     FUN        = fread,
     sep        = ",",
-    header     = FALSE,
+    header     = TRUE,
     col.names  = c("tom", "todr_cal"),
     colClasses = c("integer", "numeric")
   )
