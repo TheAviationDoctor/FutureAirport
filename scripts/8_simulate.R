@@ -15,7 +15,7 @@
 # 0 Housekeeping
 # ==============================================================================
 
-# Load required libraries
+# Load the required libraries
 library(data.table)
 library(DBI)
 library(parallel)
@@ -33,25 +33,86 @@ start_time <- Sys.time()
 # Clear the console
 cat("\014")
 
-# Set the lowest number of CPU cores that bottlenecks either the disk or the RAM
+# Set the number of CPU cores for parallel processing
 crs <- 23L
 
 # ==============================================================================
-# 1 Prepare the simulation data
+# 1 Import the simulation data
 # ==============================================================================
 
 # ==============================================================================
-# 1.1 Set up the database table to store the simulation results
+# 1.1 Import the aircraft characteristics
 # ==============================================================================
 
-# Build the query to create the table unless it already exists
-# so as to allow for incremental script execution
+# Fetch the aircraft data
+dt_act <- fread(
+  file       = fls$act,
+  header     = TRUE,
+  colClasses = c(rep("factor", 2L), rep("integer", 5L), rep("numeric", 5L)),
+  key        = "type"
+)
 
+# Set the maximum mass to be the starting takeoff mass
+setnames(x = dt_act, "tom_max", "tom")
+
+# Keep only needed columns
+dt_act <- dt_act[, .(type, n, slst, bpr, s, tom)]
+
+# ==============================================================================
+# 1.2 Import the takeoff performance calibration data
+# ==============================================================================
+
+# Fetch the calibration data
+dt_cal <- fn_sql_qry(
+  statement = paste(
+    "SELECT type, tom, todr_cal, cllof, cd FROM ",
+    tolower(dat$cal),
+    " WHERE type IN (",
+    paste("'", act, "'", collapse = ", ", sep = ""),
+    ");",
+    sep = ""
+  )
+)
+
+# Create keys on the data table
+setkey(x = dt_cal, c("type", "tom"))
+
+# Convert the type column to factor
+set(x = dt_cal, j = "type",  value = as.factor(dt_cal[, type]))
+
+# Order by type and descending mass
+dt_cal <- dt_cal[order(type, -rank(tom))]
+
+# Set the minimum mass for which there is a calibrated TODR
+dt_cal[, tom_belf := min(tom), by = type]
+
+# ==============================================================================
+# 1.3 Import the list of sample airports
+# ==============================================================================
+
+# Fetch the airport and runway data
+dt_apt <- fn_sql_qry(
+  statement = paste(
+    "SELECT DISTINCT icao FROM", tolower(dat$pop),
+    "WHERE traffic >", sim$pop_thr, ";",
+    sep = " "
+  )
+)
+
+# Create keys on the data table
+setkey(x = dt_cal, "icao")
+
+# ==============================================================================
+# 1.4 Exclude airports already processed
+# ==============================================================================
+
+# Create the takeoff outputs table unless it exists (for incremental runs)
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
     tolower(dat$tko),
     "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    year YEAR NOT NULL,
     obs DATETIME NOT NULL,
     icao CHAR(4) NOT NULL,
     zone CHAR(10) NOT NULL,
@@ -74,125 +135,18 @@ fn_sql_qry(
   )
 )
 
-# ==============================================================================
-# 1.2 Import the simulation data
-# ==============================================================================
-
-# ==============================================================================
-# 1.2.1 Import the aircraft characteristics (from Sun et al., 2020)
-# ==============================================================================
-
-# Load the file to a data table
-dt_act <- fread(
-  file       = fls$act,
-  header     = TRUE,
-  colClasses = c(rep("factor", 2L), rep("integer", 5L), rep("numeric", 5L)),
-  key        = "type"
-)
-
-# Set the starting takeoff mass as the maximum mass
-setnames(x = dt_act, "tom_max", "tom")
-
-# Keep only needed columns
-dt_act <- dt_act[, .(type, n, slst, bpr, s, tom)]
-
-# ==============================================================================
-# 1.2.2 Import the takeoff performance calibration data
-# ==============================================================================
-
-# Fetch the calibration data
-dt_cal <- fn_sql_qry(
+# Fetch the airports already processed, if any
+dt_exc <- fn_sql_qry(
   statement = paste(
-    "SELECT type, tom, todr_cal, cllof, cd FROM ",
-    tolower(dat$cal),
-    " WHERE type IN (",
-    paste("'", act, "'", collapse = ", ", sep = ""),
-    ");",
-    sep = ""
+    "SELECT DISTINCT icao FROM", tolower(dat$tko), ";", sep = " "
   )
 )
 
 # Create keys on the data table
-setkey(x = dt_cal, c("type", "tom"))
+setkey(x = dt_exc, "icao")
 
-# Convert the type column to factor
-dt_cal[, type := as.factor(type)]
-
-# Order by type and descending mass
-dt_cal <- dt_cal[order(type, -rank(tom))]
-
-# Set the minimum mass for which there is a calibrated TODR
-dt_cal[, tom_belf := min(tom), by = type]
-
-# ==============================================================================
-# 1.2.3 Import the list of sample airports, excluding those already processed
-# ==============================================================================
-
-dt_apt <- fn_sql_qry(
-  statement = paste(
-    "SELECT DISTINCT icao FROM", tolower(dat$pop),
-    "WHERE traffic >", sim$pop_thr, ";",
-    sep = " "
-  )
-)
-
-# Create keys on the data table
-setkey(x = dt_cal, "icao")
-
-# ==============================================================================
-# 1.2.4 Exclude airports already processed to allow incremental simulation runs
-# ==============================================================================
-
-# Connect to the database
-conn <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
-
-# Check if simulation outputs already exists in the database
-dat_qry <- paste(
-  "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '",
-  tolower(dat$grp), "' AND table_name = '", tolower(dat$tko), "';",
-  sep = ""
-)
-
-# Send the query to the database
-dat_res <- dbSendQuery(conn, dat_qry)
-
-# Return the results to a Boolean
-tbl_exists <- suppressWarnings(as.logical(dbFetch(dat_res, n = Inf)))
-
-# Release the database resource
-dbClearResult(dat_res)
-
-# If the takeoff table already exists in the database
-if (tbl_exists == TRUE) {
-
-  # Build a query to retrieve the airports that were already processed
-  dat_qry <- paste("SELECT DISTINCT icao FROM", tolower(dat$tko), ";", sep = " ")
-
-  # Send the query to the database
-  dat_res <- dbSendQuery(dat_con, dat_qry)
-
-  # Return the results to a data table of airports to exclude
-  dt_exc <- suppressWarnings(
-    setDT(
-      dbFetch(dat_res, n = Inf),
-      key = "icao",
-      check.names = FALSE
-    )
-  )
-
-  # Release the database resource
-  dbClearResult(dat_res)
-
-  # Remove the airports already processed
-  dt_apt <- dt_apt[!dt_exc]
-
-} # End if
-
-# Disconnect from the database
-dbDisconnect(dat_con)
-
-# Unload the obsolete variables from memory
-rm(dat_con, dat_qry, dat_res, dt_exc, dir, fls, tbl_exists)
+# Remove the airports already processed
+dt_apt <- dt_apt[!dt_exc]
 
 # ==============================================================================
 # 2 Define a function to simulate takeoffs at each airport
@@ -215,14 +169,27 @@ fn_simulate <- function(icao) {
   # 2.1 Import the climatic observations for the current airport
   # ============================================================================
 
+  # Fetch the takeoff conditions at the airport
+  dt_cli <- fn_sql_qry(
+    statement = paste(
+      "SELECT * FROM", tolower(dat$cli),
+      " WHERE icao = '", icao, "';",
+      sep = " "
+    )
+  )
+
   # Create keys on the data table
   setkey(x = dt_cli, "toda")
 
   # Coerce columns into their correct class
   set(x = dt_cli, j = "obs",  value = as.POSIXct(dt_cli[, obs]))
-  set(x = dt_cli, j = "exp",  value = as.factor(dt_cli[, exp]))
   set(x = dt_cli, j = "icao", value = as.factor(dt_cli[, icao]))
+  set(x = dt_cli, j = "zone", value = as.factor(dt_cli[, zone]))
   set(x = dt_cli, j = "rwy",  value = as.factor(dt_cli[, rwy]))
+  set(x = dt_cli, j = "exp",  value = as.factor(dt_cli[, exp]))
+
+# FOR TESTING ONLY
+print(str(dt_cli))
 
   # ============================================================================
   # 2.2 Combine the airport, aircraft, calibration, and climate data
@@ -235,10 +202,13 @@ fn_simulate <- function(icao) {
   rm(dt_cli)
 
   # Convert the airport code to a factor
-  dt_tko[, icao := as.factor(icao)]
+  set(x = dt_tko, j = "icao",  value = as.factor(dt_tko[, icao]))
 
   # Combine climatic observations with calibration data using the starting mass
   dt_tko <- dt_cal[dt_tko, on = c("type", "tom")]
+
+# FOR TESTING ONLY
+print(str(dt_tko))
 
   # ============================================================================
   # 2.3 Initialize takeoff parameters for the first simulation iteration
@@ -381,7 +351,9 @@ fn_simulate <- function(icao) {
         x = dt_tko,
         i = i,
         j = "dis_reg_sim",
-        value = (dt_tko[i, dis_gnd_sim] + dt_tko[i, dis_air_sim]) *
+        value =
+          (dt_tko[i, dis_gnd_sim] +
+          dt_tko[i, dis_air_sim]) *
           (sim$tod_mul - 1L)
       )
 
@@ -390,8 +362,11 @@ fn_simulate <- function(icao) {
         x = dt_tko,
         i = i,
         j = "todr",
-        value = ceiling(dt_tko[i, dis_gnd_sim] + dt_tko[i, dis_air_sim] +
-          dt_tko[i, dis_reg_sim])
+        value = ceiling(
+          dt_tko[i, dis_gnd_sim] +
+          dt_tko[i, dis_air_sim] +
+          dt_tko[i, dis_reg_sim]
+        )
       )
 
     } else { # Once there are no more observations that meet the conditions
@@ -424,8 +399,8 @@ fn_simulate <- function(icao) {
 
   # Select which columns to write to the database and in which order
   cols <- c(
-    "obs", "icao", "exp", "type", "hurs", "ps", "tas", "rho", "hdw", "rwy",
-    "toda", "todr", "vlof", "thr_red", "tom_red", "itr"
+    "year", "obs", "icao", "zone", "exp", "type", "hurs", "ps", "tas", "rho",
+    "hdw", "rwy", "toda", "todr", "vlof", "thr_red", "tom_red", "itr"
   )
 
   # Connect the worker to the database
@@ -464,6 +439,9 @@ fn_simulate <- function(icao) {
 # 3 Run the simulation across multiple cores
 # ==============================================================================
 
+# FOR TESTING ONLY
+dt_apt <- head(dt_apt, 1L)
+
 # Distribute the work across the cluster
 fn_par_lapply(
   crs = crs,
@@ -481,7 +459,8 @@ fn_sql_qry(
   statement = paste(
     "CREATE INDEX idx ON",
     tolower(dat$cli),
-    "(exp, zone, year, icao);", sep = " "
+    "(exp, zone, year, icao);",
+    sep = " "
   )
 )
 

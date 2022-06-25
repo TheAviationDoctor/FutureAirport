@@ -45,14 +45,13 @@ dat <- list(
   "imp" = "imp",     # Climate data imported from the NetCDF files
   "pop" = "pop",     # Population and sample airports
   "tko" = "tst",     # Takeoff performance calculation outputs
-  "tst" = "tst",     # FOR TESTING ONLY
   "idx" = "idx"      # Index name
 )
 
-# Visualization tables
-vis <- list(
-  "cli_glb" = "cli_glb", # Climate change, globally
-  "tko_cnt" = "tko_cnt"  # Number of takeoffs
+# Temporary tables
+tmp <- list(
+  "q1a" = "q1a", # Climate change, globally
+  "q1b" = "q1b"  # Number of takeoffs
 )
 
 # ==============================================================================

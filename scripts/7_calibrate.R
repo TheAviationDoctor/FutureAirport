@@ -12,7 +12,7 @@
 # 0 Housekeeping
 # ==============================================================================
 
-# Load required libraries
+# Load the required libraries
 library(data.table)
 library(DBI)
 library(ggplot2)
@@ -97,7 +97,7 @@ dt_cal <- rbindlist(l1)
   geom_vline(data = dt_act, mapping = aes(xintercept = tom_zero)) +
   scale_x_continuous("Takeoff mass in kg", labels = scales::comma) +
   scale_y_continuous("Regulatory TODR in m", labels = scales::comma) +
-  facet_wrap(~type, ncol = 2, scales = "free") +
+  facet_wrap(~type, ncol = 2L, scales = "free") +
   theme_light()) %>%
   ggsave(
     filename = "7_pre_interpol.png",

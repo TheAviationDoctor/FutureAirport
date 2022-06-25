@@ -12,7 +12,7 @@
 # 0 Housekeeping
 # ==============================================================================
 
-# Load required libraries
+# Load the required libraries
 library(dplyr)
 library(epwshiftr)
 

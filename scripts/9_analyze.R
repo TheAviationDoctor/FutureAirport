@@ -9,10 +9,18 @@
 # ==============================================================================
 
 # ==============================================================================
+#    NOTE: Some of the SQL queries below are memory-intensive. If you encounter
+# the MySQL error "The total number of locks exceeds the lock table size",
+# log as admin into MySQL Workbench and increase the InnoDB buffer size to
+# a value of X where X is how much RAM in GB you can dedicate to the process:
+# 'SET GLOBAL innodb_buffer_pool_size = X * 1024 * 1024 * 1024;'
+# ==============================================================================
+
+# ==============================================================================
 # 0 Housekeeping
 # ==============================================================================
 
-# Load required libraries
+# Load the required libraries
 library(data.table)
 library(DBI)
 library(ggplot2)
@@ -27,35 +35,28 @@ start_time <- Sys.time()
 # Clear the console
 cat("\014")
 
-# IMPORTANT NOTE
-# Some of the queries below are memory-intensive for the MySQL engine.
-# If you run into the following error:
-# "The total number of locks exceeds the lock table size",
-# log into MySQL Workbench with admin rights to increase the InnoDB buffer size:
-# 'SET GLOBAL innodb_buffer_pool_size = 64 * 1024 * 1024 * 1024;' [this is 64GB]
-
 # ==============================================================================
 # 1. Research question #1: How much change to near-surface air temperature,
 # air density, and headwind will airports experience in the 21st century?
 # ==============================================================================
 
-# # Create the summary data for climate change globally (runtime: ~22 minutes)
-# fn_sql_qry(
-#   statement = paste(
-#     "CREATE TABLE IF NOT EXISTS",
-#     tolower(vis$cli_glb),
-#     "AS SELECT
-#     YEAR(obs) AS year,
-#     AVG(tas) AS avg_tas, MAX(tas) AS max_tas,
-#     AVG(rho) AS avg_rho, MIN(rho) AS min_rho,
-#     AVG(hdw) AS avg_hdw,
-#     exp AS exp
-#     FROM", tolower(dat$cli),
-#     "GROUP BY year, exp;",
-#     sep = " "
-#   )
-# )
-# 
+# Summarize the climate data globally by year and SSP (runtime: ~22 minutes)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TEMPORARY TABLE IF NOT EXISTS",
+    tolower(tmp$q1a),
+    "AS SELECT
+    year AS year,
+    AVG(tas) AS avg_tas, MAX(tas) AS max_tas,
+    AVG(rho) AS avg_rho, MIN(rho) AS min_rho,
+    AVG(hdw) AS avg_hdw,
+    exp AS exp
+    FROM", tolower(dat$cli),
+    "GROUP BY year, exp;",
+    sep = " "
+  )
+)
+
 # # Fetch the summary data
 # dt_out <- fn_sql_qry(
 #   statement = paste(
@@ -95,7 +96,7 @@ cat("\014")
 #   j     = "avg_hdw",
 #   value = dt_cla[, avg_hdw] - dt_cla[1:exp_cnt, avg_hdw]
 # )
-# 
+
 # # Define a function to generate plots
 # fn_plot <- function(var1, var2) {
 #   (
@@ -156,26 +157,26 @@ cat("\014")
 # )
 
 # Create a list of sample airports by climate zone
-dt_out <- fn_sql_qry(
-  statement = paste(
-    "SELECT DISTINCT(icao) AS icao,",
-    "(CASE",
-      "WHEN ABS(lat) >", lat$tro$lower, "AND ABS(lat) <", lat$tro$upper, "THEN", lat$tro$name,
-      "WHEN ABS(lat) >", lat$sub$lower, "AND ABS(lat) <", lat$sub$upper, "THEN", lat$sub$name,
-      "WHEN ABS(lat) >", lat$tem$lower, "AND ABS(lat) <", lat$tem$upper, "THEN", lat$tem$name,
-      "WHEN ABS(lat) >", lat$fri$lower, "AND ABS(lat) <", lat$fri$upper, "THEN", lat$fri$name,
-    "END) AS zone",
-    "FROM",
-    tolower(dat$pop),
-    "WHERE traffic >",
-    sim$pop_thr,
-    "ORDER BY ABS(lat) DESC;",
-    sep = " "
-  )
-)
-
-
-View(dt_out)
+# dt_out <- fn_sql_qry(
+#   statement = paste(
+#     "SELECT DISTINCT(icao) AS icao,",
+#     "(CASE",
+#       "WHEN ABS(lat) >", lat$tro$lower, "AND ABS(lat) <", lat$tro$upper, "THEN", lat$tro$name,
+#       "WHEN ABS(lat) >", lat$sub$lower, "AND ABS(lat) <", lat$sub$upper, "THEN", lat$sub$name,
+#       "WHEN ABS(lat) >", lat$tem$lower, "AND ABS(lat) <", lat$tem$upper, "THEN", lat$tem$name,
+#       "WHEN ABS(lat) >", lat$fri$lower, "AND ABS(lat) <", lat$fri$upper, "THEN", lat$fri$name,
+#     "END) AS zone",
+#     "FROM",
+#     tolower(dat$pop),
+#     "WHERE traffic >",
+#     sim$pop_thr,
+#     "ORDER BY ABS(lat) DESC;",
+#     sep = " "
+#   )
+# )
+# 
+# 
+# View(dt_out)
 
 
 

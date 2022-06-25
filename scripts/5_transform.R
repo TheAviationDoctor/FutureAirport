@@ -12,7 +12,7 @@
 # 0 Housekeeping
 # ==============================================================================
 
-# Load required libraries
+# Load the required libraries
 library(data.table)
 library(DBI)
 library(parallel)
@@ -27,7 +27,7 @@ start_time <- Sys.time()
 # Clear the console
 cat("\014")
 
-# Set the lowest number of CPU cores that bottlenecks either the disk or the RAM
+# Set the number of CPU cores for parallel processing
 crs <- 22L
 
 # ==============================================================================
