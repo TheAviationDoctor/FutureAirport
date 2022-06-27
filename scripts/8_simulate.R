@@ -100,7 +100,7 @@ dt_apt <- fn_sql_qry(
 )
 
 # Create keys on the data table
-setkey(x = dt_cal, "icao")
+setkey(x = dt_apt, "icao")
 
 # ==============================================================================
 # 1.4 Exclude airports already processed
@@ -172,7 +172,8 @@ fn_simulate <- function(icao) {
   # Fetch the takeoff conditions at the airport
   dt_cli <- fn_sql_qry(
     statement = paste(
-      "SELECT * FROM", tolower(dat$cli),
+      "SELECT year, obs, icao, zone, exp, hurs, ps, tas, rho, hdw, rwy, toda",
+      "FROM", tolower(dat$cli),
       " WHERE icao = '", icao, "';",
       sep = " "
     )
