@@ -40,13 +40,18 @@ cat("\014")
 # air density, and headwind will airports experience in the 21st century?
 # ==============================================================================
 
+# ==============================================================================
+# 1.1 Climate change globally by SSPs
+# ==============================================================================
+
 # Summarize the climate data globally by year and SSP (runtime: ~22 minutes)
 fn_sql_qry(
   statement = paste(
     "CREATE TEMPORARY TABLE IF NOT EXISTS",
-    tolower(tmp$q1a),
+    tolower(tmp$q11),
     "AS SELECT
     year AS year,
+    zone AS zone,
     AVG(tas) AS avg_tas, MAX(tas) AS max_tas,
     AVG(rho) AS avg_rho, MIN(rho) AS min_rho,
     AVG(hdw) AS avg_hdw,
@@ -57,85 +62,152 @@ fn_sql_qry(
   )
 )
 
-# # Fetch the summary data
-# dt_out <- fn_sql_qry(
-#   statement = paste(
-#     "SELECT * FROM",
-#     tolower(vis$cli_glb),
-#     "ORDER BY year ASC, exp ASC;",
-#     sep = " "
-#   )
-# )
-# 
-# # Count number of SSPs
-# exp_cnt <- length(unique(dt_out[, exp]))
-# 
-# # Normalize observations based on first year values to show changes over time
-# set(
-#   x     = dt_cla,
-#   j     = "avg_tas",
-#   value = dt_cla[, avg_tas] - dt_cla[1:exp_cnt, avg_tas]
-# )
-# set(
-#   x     = dt_cla,
-#   j     = "max_tas",
-#   value = dt_cla[, max_tas] - dt_cla[1:exp_cnt, max_tas]
-# )
-# set(
-#   x     = dt_cla,
-#   j     = "avg_rho",
-#   value = dt_cla[, avg_rho] - dt_cla[1:exp_cnt, avg_rho]
-# )
-# set(
-#   x     = dt_cla,
-#   j     = "min_rho",
-#   value = dt_cla[, min_rho] - dt_cla[1:exp_cnt, min_rho]
-# )
-# set(
-#   x     = dt_cla,
-#   j     = "avg_hdw",
-#   value = dt_cla[, avg_hdw] - dt_cla[1:exp_cnt, avg_hdw]
-# )
+# Fetch the summary data
+dt_q11 <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q11),
+    "ORDER BY year ASC, exp ASC;",
+    sep = " "
+  )
+)
 
-# # Define a function to generate plots
-# fn_plot <- function(var1, var2) {
-#   (
-#     ggplot(
-#       data    = dt_out,
-#       mapping = aes(x = year, y = dt_out[[var1]], color = toupper(exp))
-#     ) +
-#       geom_line(size = .3) +
-#       geom_smooth(linetype = "dashed", size = .4) +
-#       scale_x_continuous("Year") +
-#       scale_y_continuous(var2) +
-#       facet_wrap(~ toupper(exp), ncol = 2) +
-#       guides(color = "none") +
-#       theme_light()
-#   ) |>
-#     ggsave(
-#       filename = paste("9_line_", as.name(var1), ".png", sep = ""),
-#       device   = "png",
-#       path     = "plots",
-#       scale    = 1,
-#       width    = 6,
-#       height   = NA,
-#       units    = "in",
-#       dpi      = "print"
-#     )
-# }
-# 
-# # Generate the plots for every variable
-# mapply(
-#   FUN  = fn_plot,
-#   var1 = c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw"),
-#   var2 = c(
-#     "Mean near-surface temperature increase in °C",
-#     "Max. near-surface temperature increase in °C",
-#     "Mean near-surface air density in kg/m3",
-#     "Min. near-surface air density in kg/m3",
-#     "Mean near-surface headwind speed in m/s"
-#   )
-# )
+# Count number of SSPs
+exp_cnt <- length(unique(dt_q11[, exp]))
+
+# Normalize observations based on first year values to show changes over time
+set(
+  x     = dt_q11,
+  j     = "avg_tas",
+  value = dt_q11[, avg_tas] - dt_q11[1:exp_cnt, avg_tas]
+)
+set(
+  x     = dt_q11,
+  j     = "max_tas",
+  value = dt_q11[, max_tas] - dt_q11[1:exp_cnt, max_tas]
+)
+set(
+  x     = dt_q11,
+  j     = "avg_rho",
+  value = dt_q11[, avg_rho] - dt_q11[1:exp_cnt, avg_rho]
+)
+set(
+  x     = dt_q11,
+  j     = "min_rho",
+  value = dt_q11[, min_rho] - dt_q11[1:exp_cnt, min_rho]
+)
+set(
+  x     = dt_q11,
+  j     = "avg_hdw",
+  value = dt_q11[, avg_hdw] - dt_q11[1:exp_cnt, avg_hdw]
+)
+
+# Define a function to generate plots
+fn_plot <- function(var1, var2) {
+  (
+    ggplot(
+      data    = dt_out,
+      mapping = aes(x = year, y = dt_out[[var1]], color = toupper(exp))
+    ) +
+      geom_line(size = .3) +
+      geom_smooth(linetype = "dashed", size = .4) +
+      scale_x_continuous("Year") +
+      scale_y_continuous(var2) +
+      facet_wrap(~ toupper(exp), ncol = 2) +
+      guides(color = "none") +
+      theme_light()
+  ) |>
+    ggsave(
+      filename = paste("9_line_", as.name(var1), ".png", sep = ""),
+      device   = "png",
+      path     = "plots",
+      scale    = 1,
+      width    = 6,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
+}
+
+# Generate the plots for every variable
+mapply(
+  FUN  = fn_plot,
+  var1 = c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw"),
+  var2 = c(
+    "Mean near-surface temperature increase in °C",
+    "Max. near-surface temperature increase in °C",
+    "Mean near-surface air density in kg/m3",
+    "Min. near-surface air density in kg/m3",
+    "Mean near-surface headwind speed in m/s"
+  )
+)
+
+# ==============================================================================
+# 1.2 Climate change by zone by SSPs
+# ==============================================================================
+
+# Summarize the climate data globally by year and SSP (runtime: ~22 minutes)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TEMPORARY TABLE IF NOT EXISTS",
+    tolower(tmp$q12),
+    "AS SELECT
+    year AS year,
+    zone AS zone,
+    AVG(tas) AS avg_tas, MAX(tas) AS max_tas,
+    AVG(rho) AS avg_rho, MIN(rho) AS min_rho,
+    AVG(hdw) AS avg_hdw,
+    exp AS exp
+    FROM", tolower(dat$cli),
+    "GROUP BY year, exp;",
+    sep = " "
+  )
+)
+
+# Fetch the summary data
+dt_q12 <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q12),
+    "ORDER BY year ASC, exp ASC;",
+    sep = " "
+  )
+)
+
+# Normalize observations based on first year values to show changes over time
+set(
+  x     = dt_q12,
+  j     = "avg_tas",
+  value = dt_q12[, avg_tas] - dt_q12[1:exp_cnt, avg_tas]
+)
+set(
+  x     = dt_q12,
+  j     = "max_tas",
+  value = dt_q12[, max_tas] - dt_q12[1:exp_cnt, max_tas]
+)
+set(
+  x     = dt_q12,
+  j     = "avg_rho",
+  value = dt_q12[, avg_rho] - dt_q12[1:exp_cnt, avg_rho]
+)
+set(
+  x     = dt_q12,
+  j     = "min_rho",
+  value = dt_q12[, min_rho] - dt_q12[1:exp_cnt, min_rho]
+)
+set(
+  x     = dt_q12,
+  j     = "avg_hdw",
+  value = dt_q12[, avg_hdw] - dt_q12[1:exp_cnt, avg_hdw]
+)
+
+
+
+
+
+# ==============================================================================
+# 1.1 Climate change by climatic zone across SSPs
+# ==============================================================================
 
 # # Create a list of sample airports by climate zone
 # dt_out <- fn_sql_qry(

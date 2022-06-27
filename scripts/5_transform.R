@@ -3,7 +3,7 @@
 #   INPUT: 2,213,829,660 rows of climate data read from the dat$imp table
 # ACTIONS: Pivot the data; calculate air density, wind vector, and active runway
 #  OUTPUT: 442,765,932 rows of takeoff conditions written to the dat$cli table
-# RUNTIME: ~7.3 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~9.5 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -28,7 +28,7 @@ start_time <- Sys.time()
 cat("\014")
 
 # Set the number of CPU cores for parallel processing
-crs <- 22L
+crs <- 12L
 
 # ==============================================================================
 # 1 Fetch the data that we need
@@ -92,6 +92,9 @@ fn_sql_qry(
 
 fn_transform <- function(apt) {
 
+  # Offset the start of each worker by a random duration to spread disk I/O load
+  Sys.sleep(time = sample(1:(crs * 10), 1L))
+
   # Inform the log file
   print(
     paste(
@@ -116,7 +119,7 @@ fn_transform <- function(apt) {
   # Fetch the climate data for the current airport
   dt_nc <- fn_sql_qry(
     statement = paste(
-      "SELECT * FROM ", tolower(dat$imp),
+      "SELECT obs, icao, zone, exp, var, val FROM ", tolower(dat$imp),
       " WHERE icao = '", apt, "';",
       sep = ""
     )

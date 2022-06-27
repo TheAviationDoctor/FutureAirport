@@ -34,7 +34,7 @@ start_time <- Sys.time()
 cat("\014")
 
 # Set the number of CPU cores for parallel processing
-crs <- 23L
+crs <- 18L
 
 # ==============================================================================
 # 1 Import the simulation data
@@ -75,7 +75,7 @@ dt_cal <- fn_sql_qry(
 )
 
 # Create keys on the data table
-setkey(x = dt_cal, c("type", "tom"))
+setkey(x = dt_cal, "type", "tom")
 
 # Convert the type column to factor
 set(x = dt_cal, j = "type",  value = as.factor(dt_cal[, type]))

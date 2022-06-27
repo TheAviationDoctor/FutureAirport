@@ -3,7 +3,7 @@
 #   INPUT: NetCDF files downloaded from the Earth System Grid Federation (ESGF)
 # ACTIONS: Extract time series of climate variables for each airport coordinates
 #  OUTPUT: 2,213,829,660 rows of climate data written to the dat$imp table
-# RUNTIME: ~8.3 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~7.4 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -28,7 +28,7 @@ start_time <- Sys.time()
 cat("\014")
 
 # Set the number of CPU cores for parallel processing
-crs <- 14L
+crs <- 16L
 
 # ==============================================================================
 # 1 Set up the database table to store the script outputs
@@ -220,6 +220,23 @@ fn_import <- function(nc_file) {
   # Remove cases beyond the time horizon
   dt_nc <- dt_nc[obs < horizon]
 
+  # Inform the log file
+  print(
+    paste(
+      Sys.time(),
+      " pid ",
+      stringr::str_pad(
+        Sys.getpid(),
+        width = 5L,
+        side  = "left",
+        pad   = " "
+      ),
+      " is writing ", basename(nc_file),
+      "...",
+      sep = ""
+    )
+  )
+
   # Connect the worker to the database
   conn <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
 
@@ -234,6 +251,23 @@ fn_import <- function(nc_file) {
 
   # Disconnect the worker from the database
   dbDisconnect(conn)
+
+  # Inform the log file
+  print(
+    paste(
+      Sys.time(),
+      " pid ",
+      stringr::str_pad(
+        Sys.getpid(),
+        width = 5L,
+        side  = "left",
+        pad   = " "
+      ),
+      " has written ", basename(nc_file),
+      ".",
+      sep = ""
+    )
+  )
 
 } # End of the fn_import function
 
