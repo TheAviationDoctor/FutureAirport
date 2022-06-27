@@ -44,7 +44,7 @@ dat <- list(
   "cli" = "cli",     # Climate data post-transformation
   "imp" = "imp",     # Climate data imported from the NetCDF files
   "pop" = "pop",     # Population and sample airports
-  "tko" = "tst",     # Takeoff performance calculation outputs
+  "tko" = "tko",     # Takeoff performance calculation outputs
   "idx" = "idx"      # Index name
 )
 

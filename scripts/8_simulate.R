@@ -173,9 +173,9 @@ fn_simulate <- function(icao) {
   dt_cli <- fn_sql_qry(
     statement = paste(
       "SELECT year, obs, icao, zone, exp, hurs, ps, tas, rho, hdw, rwy, toda",
-      "FROM", tolower(dat$cli),
+      " FROM ", tolower(dat$cli),
       " WHERE icao = '", icao, "';",
-      sep = " "
+      sep = ""
     )
   )
 
@@ -185,12 +185,10 @@ fn_simulate <- function(icao) {
   # Coerce columns into their correct class
   set(x = dt_cli, j = "obs",  value = as.POSIXct(dt_cli[, obs]))
   set(x = dt_cli, j = "icao", value = as.factor(dt_cli[, icao]))
+  set(x = dt_cli, j = "year", value = as.factor(dt_cli[, year]))
   set(x = dt_cli, j = "zone", value = as.factor(dt_cli[, zone]))
-  set(x = dt_cli, j = "rwy",  value = as.factor(dt_cli[, rwy]))
   set(x = dt_cli, j = "exp",  value = as.factor(dt_cli[, exp]))
-
-# FOR TESTING ONLY
-print(str(dt_cli))
+  set(x = dt_cli, j = "rwy",  value = as.factor(dt_cli[, rwy]))
 
   # ============================================================================
   # 2.2 Combine the airport, aircraft, calibration, and climate data
@@ -207,9 +205,6 @@ print(str(dt_cli))
 
   # Combine climatic observations with calibration data using the starting mass
   dt_tko <- dt_cal[dt_tko, on = c("type", "tom")]
-
-# FOR TESTING ONLY
-print(str(dt_tko))
 
   # ============================================================================
   # 2.3 Initialize takeoff parameters for the first simulation iteration
@@ -439,9 +434,6 @@ print(str(dt_tko))
 # ==============================================================================
 # 3 Run the simulation across multiple cores
 # ==============================================================================
-
-# FOR TESTING ONLY
-dt_apt <- head(dt_apt, 1L)
 
 # Distribute the work across the cluster
 fn_par_lapply(
