@@ -473,7 +473,7 @@ fn_sql_qry(
     name CHAR(", max(nchar(df_pop$name)), ") NOT NULL,
     lat FLOAT NOT NULL,
     lon FLOAT NOT NULL,
-    zone CHAR(10) NOT NULL,
+    zone CHAR(11) NOT NULL,
     rwy CHAR(5) NOT NULL,
     toda SMALLINT NOT NULL,
     PRIMARY KEY (id));",

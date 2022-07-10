@@ -72,7 +72,7 @@ fn_sql_qry(
     year YEAR NOT NULL,
     obs DATETIME NOT NULL,
     icao CHAR(4) NOT NULL,
-    zone CHAR(10) NOT NULL,
+    zone CHAR(11) NOT NULL,
     exp CHAR(6) NOT NULL,
     hurs FLOAT NOT NULL,
     ps FLOAT NOT NULL,

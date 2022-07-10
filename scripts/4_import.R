@@ -46,7 +46,7 @@ fn_sql_qry(
     "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     obs DATETIME NOT NULL,
     icao CHAR(4) NOT NULL,
-    zone CHAR(10) NOT NULL,
+    zone CHAR(11) NOT NULL,
     exp CHAR(6) NOT NULL,
     var CHAR(4) NOT NULL,
     val FLOAT NOT NULL,

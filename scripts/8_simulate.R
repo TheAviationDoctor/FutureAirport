@@ -99,7 +99,7 @@ dt_apt <- fn_sql_qry(
   )
 )
 
-# Create keys on the data table
+# Create a key on the data table
 setkey(x = dt_apt, "icao")
 
 # ==============================================================================
@@ -115,7 +115,7 @@ fn_sql_qry(
     year YEAR NOT NULL,
     obs DATETIME NOT NULL,
     icao CHAR(4) NOT NULL,
-    zone CHAR(10) NOT NULL,
+    zone CHAR(11) NOT NULL,
     exp CHAR(6) NOT NULL,
     type CHAR(4) NOT NULL,
     hurs FLOAT NOT NULL,
@@ -142,7 +142,7 @@ dt_exc <- fn_sql_qry(
   )
 )
 
-# Create keys on the data table
+# Create a key on the data table
 setkey(x = dt_exc, "icao")
 
 # Remove the airports already processed
@@ -179,7 +179,7 @@ fn_simulate <- function(icao) {
     )
   )
 
-  # Create keys on the data table
+  # Create a key on the data table
   setkey(x = dt_cli, "toda")
 
   # Coerce columns into their correct class
@@ -451,7 +451,7 @@ fn_par_lapply(
 fn_sql_qry(
   statement = paste(
     "CREATE INDEX idx ON",
-    tolower(dat$cli),
+    tolower(dat$tko),
     "(exp, zone, year, icao);",
     sep = " "
   )

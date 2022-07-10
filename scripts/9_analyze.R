@@ -41,84 +41,85 @@ cat("\014")
 # ==============================================================================
 
 # ==============================================================================
-# 1.1 Climate change globally by SSPs
+# 1.1 Climate change globally by SSP
 # ==============================================================================
 
-# Summarize the climate data globally by year and SSP (runtime: ~22 minutes)
+# Summarize the climate data (runtime: ~12 minutes)
 fn_sql_qry(
   statement = paste(
-    "CREATE TEMPORARY TABLE IF NOT EXISTS",
+    "CREATE TABLE IF NOT EXISTS",
     tolower(tmp$q11),
     "AS SELECT
+    exp AS exp,
     year AS year,
-    zone AS zone,
-    AVG(tas) AS avg_tas, MAX(tas) AS max_tas,
-    AVG(rho) AS avg_rho, MIN(rho) AS min_rho,
-    AVG(hdw) AS avg_hdw,
-    exp AS exp
+    AVG(tas) AS avg_tas,
+    MAX(tas) AS max_tas,
+    AVG(rho) AS avg_rho,
+    MIN(rho) AS min_rho,
+    AVG(hdw) AS avg_hdw
     FROM", tolower(dat$cli),
-    "GROUP BY year, exp;",
+    "GROUP BY exp, year;",
     sep = " "
   )
 )
 
-# Fetch the summary data
+# Fetch the data
 dt_q11 <- fn_sql_qry(
   statement = paste(
     "SELECT * FROM",
     tolower(tmp$q11),
-    "ORDER BY year ASC, exp ASC;",
+    "ORDER BY exp ASC, year ASC;",
     sep = " "
   )
 )
 
-# Count number of SSPs
-exp_cnt <- length(unique(dt_q11[, exp]))
+# Convert the shared socioeconomic pathway (SSP) to a factor
+set(x = dt_q11, j = "exp",  value = as.factor(dt_q11[, exp]))
 
-# Normalize observations based on first year values to show changes over time
-set(
-  x     = dt_q11,
-  j     = "avg_tas",
-  value = dt_q11[, avg_tas] - dt_q11[1:exp_cnt, avg_tas]
+# Convert the year to an interval variable for continuous scaling
+set(x = dt_q11, j = "year", value = as.integer(dt_q11[, year]))
+
+# Count the observations by SSP
+obs <- dt_q11[, .N, by = exp]
+
+# Define the variables of interest
+cols <- c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw")
+
+# Define their labels
+labs <- c(
+  "Relative change in the mean temperature in °C",
+  "Relative change in the max. temperature in °C",
+  "Relative change in the mean air density in kg/m3",
+  "Relative change in the min. air density in kg/m3",
+  "Relative change in the mean headwind speed in m/s"
 )
-set(
-  x     = dt_q11,
-  j     = "max_tas",
-  value = dt_q11[, max_tas] - dt_q11[1:exp_cnt, max_tas]
-)
-set(
-  x     = dt_q11,
-  j     = "avg_rho",
-  value = dt_q11[, avg_rho] - dt_q11[1:exp_cnt, avg_rho]
-)
-set(
-  x     = dt_q11,
-  j     = "min_rho",
-  value = dt_q11[, min_rho] - dt_q11[1:exp_cnt, min_rho]
-)
-set(
-  x     = dt_q11,
-  j     = "avg_hdw",
-  value = dt_q11[, avg_hdw] - dt_q11[1:exp_cnt, avg_hdw]
-)
+
+# Build a data table of the first year values by SSP for each variable
+ini <- dt_q11[, .SD[1:1], by = exp][rep(1:.N, times = obs$N)]
+
+# Subtract the starting value (first year) from each variable and observation
+dt_q11[, (cols) := dt_q11[, cols, with = FALSE] - ini[, cols, with = FALSE]]
+
+# Save the data for offline analysis
+fwrite(x = dt_q11, file = paste(dir$res, "dt_q11.csv", sep = "/"))
 
 # Define a function to generate plots
 fn_plot <- function(var1, var2) {
   (
     ggplot(
-      data    = dt_out,
-      mapping = aes(x = year, y = dt_out[[var1]], color = toupper(exp))
+      data    = dt_q11,
+      mapping = aes(x = year, y = dt_q11[[var1]])
     ) +
-      geom_line(size = .3) +
-      geom_smooth(linetype = "dashed", size = .4) +
+      geom_line(size = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
       scale_x_continuous("Year") +
       scale_y_continuous(var2) +
-      facet_wrap(~ toupper(exp), ncol = 2) +
-      guides(color = "none") +
+      facet_wrap(~toupper(exp), ncol = 2) +
+      # guides(color = "none") +
       theme_light()
   ) |>
     ggsave(
-      filename = paste("9_line_", as.name(var1), ".png", sep = ""),
+      filename = paste("9q11_", as.name(var1), ".png", sep = ""),
       device   = "png",
       path     = "plots",
       scale    = 1,
@@ -132,78 +133,100 @@ fn_plot <- function(var1, var2) {
 # Generate the plots for every variable
 mapply(
   FUN  = fn_plot,
-  var1 = c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw"),
-  var2 = c(
-    "Mean near-surface temperature increase in °C",
-    "Max. near-surface temperature increase in °C",
-    "Mean near-surface air density in kg/m3",
-    "Min. near-surface air density in kg/m3",
-    "Mean near-surface headwind speed in m/s"
-  )
+  var1 = cols,
+  var2 = labs
 )
 
 # ==============================================================================
-# 1.2 Climate change by zone by SSPs
+# 1.2 Climate change by zone and SSP
 # ==============================================================================
 
-# Summarize the climate data globally by year and SSP (runtime: ~22 minutes)
+# Summarize the climate data (runtime: ~12 minutes)
 fn_sql_qry(
   statement = paste(
-    "CREATE TEMPORARY TABLE IF NOT EXISTS",
+    "CREATE TABLE IF NOT EXISTS",
     tolower(tmp$q12),
     "AS SELECT
-    year AS year,
     zone AS zone,
-    AVG(tas) AS avg_tas, MAX(tas) AS max_tas,
-    AVG(rho) AS avg_rho, MIN(rho) AS min_rho,
-    AVG(hdw) AS avg_hdw,
-    exp AS exp
+    exp AS exp,
+    year AS year,
+    AVG(tas) AS avg_tas,
+    MAX(tas) AS max_tas,
+    AVG(rho) AS avg_rho,
+    MIN(rho) AS min_rho,
+    AVG(hdw) AS avg_hdw
     FROM", tolower(dat$cli),
-    "GROUP BY year, exp;",
+    "GROUP BY zone, exp, year;",
     sep = " "
   )
 )
 
-# Fetch the summary data
+# Fetch the data
 dt_q12 <- fn_sql_qry(
   statement = paste(
     "SELECT * FROM",
     tolower(tmp$q12),
-    "ORDER BY year ASC, exp ASC;",
+    "ORDER BY zone ASC, exp ASC, year ASC;",
     sep = " "
   )
 )
 
-# Normalize observations based on first year values to show changes over time
-set(
-  x     = dt_q12,
-  j     = "avg_tas",
-  value = dt_q12[, avg_tas] - dt_q12[1:exp_cnt, avg_tas]
-)
-set(
-  x     = dt_q12,
-  j     = "max_tas",
-  value = dt_q12[, max_tas] - dt_q12[1:exp_cnt, max_tas]
-)
-set(
-  x     = dt_q12,
-  j     = "avg_rho",
-  value = dt_q12[, avg_rho] - dt_q12[1:exp_cnt, avg_rho]
-)
-set(
-  x     = dt_q12,
-  j     = "min_rho",
-  value = dt_q12[, min_rho] - dt_q12[1:exp_cnt, min_rho]
-)
-set(
-  x     = dt_q12,
-  j     = "avg_hdw",
-  value = dt_q12[, avg_hdw] - dt_q12[1:exp_cnt, avg_hdw]
-)
+# Convert the climatic zone to a factor
+set(x = dt_q12, j = "zone",  value = as.factor(dt_q12[, zone]))
 
+# Convert the SSP to a factor
+set(x = dt_q12, j = "exp",  value = as.factor(dt_q12[, exp]))
 
+# Convert the year to an interval variable for continuous scaling
+set(x = dt_q12, j = "year", value = as.integer(dt_q12[, year]))
 
+# Count the observations by zone and SSP
+obs <- dt_q12[, .N, by = c("zone", "exp")]
 
+# Build a data table of the first year values by zone and SSP for each variable
+ini <- dt_q12[, .SD[1:1], by = c("zone", "exp")][rep(1:.N, times = obs$N)]
+
+# Subtract the starting value (first year) from each variable and observation
+dt_q12[, (cols) := dt_q12[, cols, with = FALSE] - ini[, cols, with = FALSE]]
+
+# Save the data for offline analysis
+fwrite(x = dt_q12, file = paste(dir$res, "dt_q12.csv", sep = "/"))
+
+# Define a function to generate plots
+fn_plot <- function(var1, var2) {
+  (
+    ggplot(
+      data    = dt_q12,
+      # mapping = aes(x = year, y = dt_q12[[var1]], color = toupper(exp))
+      mapping = aes(x = year, y = dt_q12[[var1]], color = zone)
+    ) +
+      geom_line(size = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      scale_x_continuous("Year") +
+      scale_y_continuous(var2) +
+      # facet_wrap(~zone, ncol = 2) +
+      facet_wrap(~toupper(exp), ncol = 2) +
+      # guides(color = "none") +
+      theme_light()
+  ) |>
+  ggsave(
+    filename = paste("9q12_", as.name(var1), ".png", sep = ""),
+    device   = "png",
+    path     = "plots",
+    scale    = 1,
+    width    = 6,
+    height   = NA,
+    units    = "in",
+    dpi      = "print"
+  )
+}
+
+# Generate the plots for every variable
+mapply(
+  FUN  = fn_plot,
+  var1 = cols,
+  var2 = labs
+)
 
 # ==============================================================================
 # 1.1 Climate change by climatic zone across SSPs
