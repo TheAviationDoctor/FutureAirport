@@ -1,0 +1,9 @@
+!commands add what $(eval if ('$(query)'.toLowerCase().includes('map')) { '$(user) Namalsk - https://dayz.ginfo.gg/namalskSat/' } else if ('$(query)'.toLowerCase().includes('server')) { '$(user), we generally do not give out the server during the stream. However, if we or somebody does, please refrain from being in the stream and on the server at the same time. This will result in a ban and no one wants that.' } else { ' ' })
+
+!commands add what's -a=what $(query)
+
+!commands add which -a=what $(query)
+
+!commands edit !map -a=what map
+
+!commands edit !server -a=what server

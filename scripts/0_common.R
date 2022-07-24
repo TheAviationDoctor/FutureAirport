@@ -109,7 +109,7 @@ sim <- list(
 lat <- list(
   "tro" = list(name = "Tropical",    lower = 0L,      upper = 23.4365),
   "sub" = list(name = "Subtropical", lower = 23.4365, upper = 30L), 
-  "tem" = list(name = "Temperate",   lower = 23.4365, upper = 66.5635),
+  "tem" = list(name = "Temperate",   lower = 30L,     upper = 66.5635),
   "fri" = list(name = "Frigid",      lower = 66.5635, upper = 90L)
 )
 

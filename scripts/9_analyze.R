@@ -9,7 +9,7 @@
 # ==============================================================================
 
 # ==============================================================================
-#    NOTE: Some of the SQL queries below are memory-intensive. If you encounter
+# NOTE: Some of the SQL queries below are memory-intensive. If you encounter
 # the MySQL error "The total number of locks exceeds the lock table size",
 # log as admin into MySQL Workbench and increase the InnoDB buffer size to
 # a value of X where X is how much RAM in GB you can dedicate to the process:
@@ -24,7 +24,6 @@
 library(data.table)
 library(DBI)
 library(ggplot2)
-library(magrittr)
 
 # Import the common settings
 source("scripts/0_common.R")
@@ -44,98 +43,102 @@ cat("\014")
 # 1.1 Climate change globally by SSP
 # ==============================================================================
 
-# Summarize the climate data (runtime: ~12 minutes)
-fn_sql_qry(
-  statement = paste(
-    "CREATE TABLE IF NOT EXISTS",
-    tolower(tmp$q11),
-    "AS SELECT
-    exp AS exp,
-    year AS year,
-    AVG(tas) AS avg_tas,
-    MAX(tas) AS max_tas,
-    AVG(rho) AS avg_rho,
-    MIN(rho) AS min_rho,
-    AVG(hdw) AS avg_hdw
-    FROM", tolower(dat$cli),
-    "GROUP BY exp, year;",
-    sep = " "
-  )
-)
-
-# Fetch the data
-dt_q11 <- fn_sql_qry(
-  statement = paste(
-    "SELECT * FROM",
-    tolower(tmp$q11),
-    "ORDER BY exp ASC, year ASC;",
-    sep = " "
-  )
-)
-
-# Convert the shared socioeconomic pathway (SSP) to a factor
-set(x = dt_q11, j = "exp",  value = as.factor(dt_q11[, exp]))
-
-# Convert the year to an interval variable for continuous scaling
-set(x = dt_q11, j = "year", value = as.integer(dt_q11[, year]))
-
-# Count the observations by SSP
-obs <- dt_q11[, .N, by = exp]
-
-# Define the variables of interest
-cols <- c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw")
-
-# Define their labels
-labs <- c(
-  "Relative change in the mean temperature in °C",
-  "Relative change in the max. temperature in °C",
-  "Relative change in the mean air density in kg/m3",
-  "Relative change in the min. air density in kg/m3",
-  "Relative change in the mean headwind speed in m/s"
-)
-
-# Build a data table of the first year values by SSP for each variable
-ini <- dt_q11[, .SD[1:1], by = exp][rep(1:.N, times = obs$N)]
-
-# Subtract the starting value (first year) from each variable and observation
-dt_q11[, (cols) := dt_q11[, cols, with = FALSE] - ini[, cols, with = FALSE]]
-
-# Save the data for offline analysis
-fwrite(x = dt_q11, file = paste(dir$res, "dt_q11.csv", sep = "/"))
-
-# Define a function to generate plots
-fn_plot <- function(var1, var2) {
-  (
-    ggplot(
-      data    = dt_q11,
-      mapping = aes(x = year, y = dt_q11[[var1]])
-    ) +
-      geom_line(size = .2) +
-      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-      scale_x_continuous("Year") +
-      scale_y_continuous(var2) +
-      facet_wrap(~toupper(exp), ncol = 2) +
-      # guides(color = "none") +
-      theme_light()
-  ) |>
-    ggsave(
-      filename = paste("9q11_", as.name(var1), ".png", sep = ""),
-      device   = "png",
-      path     = "plots",
-      scale    = 1,
-      width    = 6,
-      height   = NA,
-      units    = "in",
-      dpi      = "print"
-    )
-}
-
-# Generate the plots for every variable
-mapply(
-  FUN  = fn_plot,
-  var1 = cols,
-  var2 = labs
-)
+# # Summarize the climate data (runtime: ~12 minutes)
+# fn_sql_qry(
+#   statement = paste(
+#     "CREATE TABLE IF NOT EXISTS",
+#     tolower(tmp$q11),
+#     "AS SELECT
+#     exp AS exp,
+#     year AS year,
+#     AVG(tas) AS avg_tas,
+#     MAX(tas) AS max_tas,
+#     AVG(rho) AS avg_rho,
+#     MIN(rho) AS min_rho,
+#     AVG(hdw) AS avg_hdw
+#     FROM", tolower(dat$cli),
+#     "GROUP BY exp, year;",
+#     sep = " "
+#   )
+# )
+# 
+# # Fetch the data
+# dt_q11 <- fn_sql_qry(
+#   statement = paste(
+#     "SELECT * FROM",
+#     tolower(tmp$q11),
+#     "ORDER BY exp ASC, year ASC;",
+#     sep = " "
+#   )
+# )
+# 
+# # Convert the shared socioeconomic pathway (SSP) to a factor
+# set(x = dt_q11, j = "exp",  value = as.factor(dt_q11[, exp]))
+# 
+# # Convert the year to an interval variable for continuous scaling
+# set(x = dt_q11, j = "year", value = as.integer(dt_q11[, year]))
+# 
+# # Count the observations by SSP
+# obs_q11 <- dt_q11[, .N, by = exp]
+# 
+# # Define the variables of interest
+# cols_q11 <- c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw")
+# 
+# # Define their labels
+# labs_q11 <- c(
+#   "Relative change in the mean temperature in °C",
+#   "Relative change in the max. temperature in °C",
+#   "Relative change in the mean air density in kg/m3",
+#   "Relative change in the min. air density in kg/m3",
+#   "Relative change in the mean headwind speed in m/s"
+# )
+# 
+# # Build a data table of the first year values by SSP for each variable
+# ini_q11 <- dt_q11[, .SD[1:1], by = exp][rep(1:.N, times = obs_q11$N)]
+# 
+# # Subtract the starting value (first year) from each variable and observation
+# dt_q11[, (cols_q11) := dt_q11[, cols_q11, with = FALSE] -
+#   ini_q11[, cols_q11, with = FALSE]]
+# 
+# # Save the data for offline analysis
+# fwrite(x = dt_q11, file = paste(dir$res, "dt_q11.csv", sep = "/"))
+# 
+# # Define a function to generate plots
+# fn_plot_q11 <- function(var1, var2) {
+#   (
+#     ggplot(
+#       data    = dt_q11,
+#       mapping = aes(x = year, y = dt_q11[[var1]])
+#     ) +
+#       geom_line(size = .2) +
+#       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+#       scale_x_continuous("Year") +
+#       scale_y_continuous(var2) +
+#       facet_wrap(~toupper(exp), ncol = 2) +
+#       # guides(color = "none") +
+#       theme_light()
+#   ) |>
+#     ggsave(
+#       filename = paste("9_q11_", as.name(var1), ".png", sep = ""),
+#       device   = "png",
+#       path     = "plots",
+#       scale    = 1,
+#       width    = 6,
+#       height   = NA,
+#       units    = "in",
+#       dpi      = "print"
+#     )
+# }
+# 
+# # Generate the plots for every variable
+# mapply(
+#   FUN  = fn_plot_q11,
+#   var1 = cols_q11,
+#   var2 = labs_q11
+# )
+# 
+# # Display a summary table of the values for the final year
+# dt_q11[dt_q11[, .I[year == max(year)], by = exp]$V1]
 
 # ==============================================================================
 # 1.2 Climate change by zone and SSP
@@ -180,98 +183,86 @@ set(x = dt_q12, j = "exp",  value = as.factor(dt_q12[, exp]))
 # Convert the year to an interval variable for continuous scaling
 set(x = dt_q12, j = "year", value = as.integer(dt_q12[, year]))
 
-# Count the observations by zone and SSP
-obs <- dt_q12[, .N, by = c("zone", "exp")]
+# # Count the observations by zone and SSP
+obs_q12 <- dt_q12[, .N, by = c("zone", "exp")]
 
-# Build a data table of the first year values by zone and SSP for each variable
-ini <- dt_q12[, .SD[1:1], by = c("zone", "exp")][rep(1:.N, times = obs$N)]
+# Define the variables of interest
+cols_q12 <- c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw")
 
-# Subtract the starting value (first year) from each variable and observation
-dt_q12[, (cols) := dt_q12[, cols, with = FALSE] - ini[, cols, with = FALSE]]
-
-# Save the data for offline analysis
-fwrite(x = dt_q12, file = paste(dir$res, "dt_q12.csv", sep = "/"))
-
-# Define a function to generate plots
-fn_plot <- function(var1, var2) {
-  (
-    ggplot(
-      data    = dt_q12,
-      # mapping = aes(x = year, y = dt_q12[[var1]], color = toupper(exp))
-      mapping = aes(x = year, y = dt_q12[[var1]], color = zone)
-    ) +
-      geom_line(size = .2) +
-      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-      scale_x_continuous("Year") +
-      scale_y_continuous(var2) +
-      # facet_wrap(~zone, ncol = 2) +
-      facet_wrap(~toupper(exp), ncol = 2) +
-      # guides(color = "none") +
-      theme_light()
-  ) |>
-  ggsave(
-    filename = paste("9q12_", as.name(var1), ".png", sep = ""),
-    device   = "png",
-    path     = "plots",
-    scale    = 1,
-    width    = 6,
-    height   = NA,
-    units    = "in",
-    dpi      = "print"
-  )
-}
-
-# Generate the plots for every variable
-mapply(
-  FUN  = fn_plot,
-  var1 = cols,
-  var2 = labs
+# Define their labels
+labs_q12 <- c(
+  "Relative change in the mean temperature in °C",
+  "Relative change in the max. temperature in °C",
+  "Relative change in the mean air density in kg/m3",
+  "Relative change in the min. air density in kg/m3",
+  "Relative change in the mean headwind speed in m/s"
 )
 
-# ==============================================================================
-# 1.1 Climate change by climatic zone across SSPs
-# ==============================================================================
+# Build a data table of the first year values by zone and SSP for each variable
+ini_q12 <- dt_q12[, .SD[1:1], by = c("zone", "exp")][rep(
+  1:.N,
+  times = obs_q12$N
+)]
 
-# # Create a list of sample airports by climate zone
-# dt_out <- fn_sql_qry(
-#   statement = paste(
-#     "SELECT DISTINCT(icao) AS icao, ABS(lat) AS lat,",
-#     "(CASE",
-#       "WHEN ABS(lat) >", lat$tro$lower, "AND ABS(lat) <", lat$tro$upper, "THEN", lat$tro$name,
-#       "WHEN ABS(lat) >", lat$sub$lower, "AND ABS(lat) <", lat$sub$upper, "THEN", lat$sub$name,
-#       "WHEN ABS(lat) >", lat$tem$lower, "AND ABS(lat) <", lat$tem$upper, "THEN", lat$tem$name,
-#       "WHEN ABS(lat) >", lat$fri$lower, "AND ABS(lat) <", lat$fri$upper, "THEN", lat$fri$name,
-#     "END) AS zone",
-#     "FROM",
-#     tolower(dat$pop),
-#     "WHERE traffic >",
-#     sim$pop_thr,
-#     "ORDER BY ABS(lat) DESC;",
-#     sep = " "
+# Subtract the starting value (first year) from each variable and observation
+dt_q12[, (cols_q12) := dt_q12[, cols_q12, with = FALSE] -
+  ini_q12[, cols_q12, with = FALSE]]
+
+# # Save the data for offline analysis
+# fwrite(x = dt_q12, file = paste(dir$res, "dt_q12.csv", sep = "/"))
+# 
+# # Define a function to generate plots
+# fn_plot_q12 <- function(var1, var2) {
+#   (
+#     ggplot(
+#       data    = dt_q12,
+#       mapping = aes(x = year, y = dt_q12[[var1]], color = zone)
+#     ) +
+#       geom_line(size = .2) +
+#       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+#       scale_x_continuous("Year") +
+#       scale_y_continuous(var2) +
+#       # facet_wrap(~zone, ncol = 2) +
+#       facet_wrap(~toupper(exp), ncol = 2) +
+#       # guides(color = "none") +
+#       theme_light()
+#   ) |>
+#   ggsave(
+#     filename = paste("9_q12_", as.name(var1), ".png", sep = ""),
+#     device   = "png",
+#     path     = "plots",
+#     scale    = 1,
+#     width    = 6,
+#     height   = NA,
+#     units    = "in",
+#     dpi      = "print"
 #   )
+# }
+# 
+# # Generate the plots for every variable
+# mapply(
+#   FUN  = fn_plot_q12,
+#   var1 = cols_q12,
+#   var2 = labs_q12
 # )
 
-# Create a list of sample airports by climate zone
-# dt_out <- fn_sql_qry(
-#   statement = paste(
-#     "SELECT DISTINCT(icao) AS icao,",
-#     "(CASE",
-#       "WHEN ABS(lat) >", lat$tro$lower, "AND ABS(lat) <", lat$tro$upper, "THEN", lat$tro$name,
-#       "WHEN ABS(lat) >", lat$sub$lower, "AND ABS(lat) <", lat$sub$upper, "THEN", lat$sub$name,
-#       "WHEN ABS(lat) >", lat$tem$lower, "AND ABS(lat) <", lat$tem$upper, "THEN", lat$tem$name,
-#       "WHEN ABS(lat) >", lat$fri$lower, "AND ABS(lat) <", lat$fri$upper, "THEN", lat$fri$name,
-#     "END) AS zone",
-#     "FROM",
-#     tolower(dat$pop),
-#     "WHERE traffic >",
-#     sim$pop_thr,
-#     "ORDER BY ABS(lat) DESC;",
-#     sep = " "
-#   )
-# )
-# 
-# 
-# View(dt_out)
+# Return the local polynomial regression fitting values to smooth the volatility
+dt_q12[, paste("loess_", (cols_q12), sep = "") := lapply(
+    X = .SD,
+    FUN = function(x) {
+      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+    }
+  ),
+  by = c("zone", "exp"),
+  .SDcols = cols_q12
+]
+
+# Display a summary table of the values for the final year
+dt_q12[dt_q12[, .I[year == max(year)], by = c("zone", "exp")]$V1]
+
+# Temp
+View(dt_q12[dt_q12[, .I[year == max(year)], by = c("zone", "exp")]$V1])
+
 
 
 
