@@ -52,7 +52,8 @@ dat <- list(
 # Temporary tables for visualization
 tmp <- list(
   "q11" = "q11", # Climate change, globally
-  "q12" = "q12"  # Number of takeoffs
+  "q12" = "q12",  # Number of takeoffs
+  "q13" = "q13"  # Number of takeoffs
 )
 
 # ==============================================================================
