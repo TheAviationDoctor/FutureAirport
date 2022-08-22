@@ -34,13 +34,41 @@ start_time <- Sys.time()
 # Clear the console
 cat("\014")
 
+# Define a function to generate plots
+fn_plot <- function(dtid, var1, var2) {
+  (
+    ggplot(
+      data    = dtid,
+      mapping = aes(x = year, y = eval(parse(text = paste(as.name(dtid), "[, ", as.name(var1), "]", sep = ""))))
+    ) +
+      geom_line(size = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      scale_x_continuous("Year") +
+      scale_y_continuous(var2) +
+      facet_wrap(~toupper(exp), ncol = 2) +
+      theme_light() +
+      theme(axis.title.y = element_blank()) # Hide y axis title
+  ) |>
+    ggsave(
+      # filename = paste("9_", as.name(dt),"_", as.name(var1), ".png", sep = ""),
+      filename = "test.png",
+      device   = "png",
+      path     = "plots",
+      scale    = 1,
+      width    = 6,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
+}
+
 # ==============================================================================
 # 1. Research question #1: How much change to near-surface air temperature,
 # air density, and headwind will airports experience in the 21st century?
 # ==============================================================================
 
 # ==============================================================================
-# 1.1 Climate change globally
+# 1.1 Relative change in the global mean
 # ==============================================================================
 
 # # Summarize the climate data (runtime: ~12 minutes)
@@ -155,7 +183,7 @@ cat("\014")
 # dt_q11[dt_q11[, .I[year == max(year)], by = "exp"]$V1]
 
 # ==============================================================================
-# 1.2 Relative Change in the Global Maximum Near-Surface Temperature in °C
+# 1.2 Relative change in the global maximum near-surface temperature in °C
 # ==============================================================================
 
 # Summarize the climate data (runtime: ~6 minutes)
@@ -193,56 +221,125 @@ set(x = dt_q12, j = "year", value = as.integer(dt_q12[, year]))
 # Convert the airport code to a factor
 set(x = dt_q12, j = "icao", value = as.factor(dt_q12[, icao]))
 
-# Save the data for later reference
-fwrite(
-  x = dt_q12,
-  file = paste(dir$res, "dt_q12.csv", sep = "/")
+# # Save the data for later reference FOR TESTING ONLY
+# fwrite(
+#   x = dt_q12,
+#   file = paste(dir$res, "dt_q12.csv", sep = "/")
+# )
+
+# Calculate the mean maximum temperature across all airports by SSP and year
+dt_q12 <- dt_q12[, avg_max_tas := mean(max_tas), by = c("exp", "year")]
+
+# Remove the airport code and maximum temperature
+dt_q12 <- dt_q12[, .SD, .SDcols = !c("icao", "max_tas")]
+
+# Keep only the first observation by group
+dt_q12 <- dt_q12[, .SD[1:1], c("exp", "year")]
+
+# Count the observations by SSP
+obs_q12 <- dt_q12[, .N, by = exp]
+
+# Define the variables of interest
+cols_q12 <- c("avg_max_tas")
+
+# Define their labels
+labs_q12 <- c(
+  "Relative Change in the Global Mean Maximum Near-Surface Temperature in °C"
+)
+
+# Build a data table of the first year values by SSP for each variable
+ini_q12 <- dt_q12[, .SD[1:1], by = exp][rep(1:.N, times = obs_q12$N)]
+
+# Subtract the starting value (first year) from each variable and observation
+dt_q12[, (cols_q12) := dt_q12[, cols_q12, with = FALSE] -
+  ini_q12[, cols_q12, with = FALSE]]
+
+# # Define a function to generate plots
+# fn_plot_q12 <- function(var1, var2) {
+#   (
+#     ggplot(
+#       data    = dt_q12,
+#       mapping = aes(x = year, y = dt_q12[[var1]])
+#     ) +
+#       geom_line(size = .2) +
+#       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+#       scale_x_continuous("Year") +
+#       scale_y_continuous(var2) +
+#       facet_wrap(~toupper(exp), ncol = 2) +
+#       theme_light() +
+#       theme(axis.title.y = element_blank()) # Hide y axis title
+#   ) |>
+#     ggsave(
+#       filename = paste("9_q12_", as.name(var1), ".png", sep = ""),
+#       device   = "png",
+#       path     = "plots",
+#       scale    = 1,
+#       width    = 6,
+#       height   = NA,
+#       units    = "in",
+#       dpi      = "print"
+#     )
+# }
+
+# # Generate the plots for every variable
+# mapply(
+#   FUN  = fn_plot_q12,
+#   var1 = cols_q12,
+#   var2 = labs_q12
+# )
+
+# Generate the plots for every variable
+mapply(
+  FUN  = fn_plot,
+  dtid = dt_q12,
+  var1 = cols_q12,
+  var2 = labs_q12
 )
 
 # ==============================================================================
 # 1.3 Relative Change in the Global Minimum Near-Surface Air Density in °C
 # ==============================================================================
 
-# Summarize the climate data (runtime: ~6 minutes)
-fn_sql_qry(
-  statement = paste(
-    "CREATE TABLE IF NOT EXISTS",
-    tolower(tmp$q13),
-    "AS SELECT
-    exp AS exp,
-    year AS year,
-    icao AS icao,
-    MIN(rho) AS min_rho
-    FROM", tolower(dat$cli),
-    "GROUP BY exp, year, icao;",
-    sep = " "
-  )
-)
-
-# Fetch the data
-dt_q13 <- fn_sql_qry(
-  statement = paste(
-    "SELECT * FROM",
-    tolower(tmp$q13),
-    "ORDER BY exp ASC, year ASC, icao ASC;",
-    sep = " "
-  )
-)
-
-# Convert the shared socioeconomic pathway (SSP) to a factor
-set(x = dt_q13, j = "exp",  value = as.factor(dt_q13[, exp]))
-
-# Convert the year to an interval variable for continuous scaling
-set(x = dt_q13, j = "year", value = as.integer(dt_q13[, year]))
-
-# Convert the airport code to a factor
-set(x = dt_q13, j = "icao", value = as.factor(dt_q13[, icao]))
-
-# Save the data for later reference
-fwrite(
-  x = dt_q13,
-  file = paste(dir$res, "dt_q13.csv", sep = "/")
-)
+# # Summarize the climate data (runtime: ~6 minutes)
+# fn_sql_qry(
+#   statement = paste(
+#     "CREATE TABLE IF NOT EXISTS",
+#     tolower(tmp$q13),
+#     "AS SELECT
+#     exp AS exp,
+#     year AS year,
+#     icao AS icao,
+#     MIN(rho) AS min_rho
+#     FROM", tolower(dat$cli),
+#     "GROUP BY exp, year, icao;",
+#     sep = " "
+#   )
+# )
+# 
+# # Fetch the data
+# dt_q13 <- fn_sql_qry(
+#   statement = paste(
+#     "SELECT * FROM",
+#     tolower(tmp$q13),
+#     "ORDER BY exp ASC, year ASC, icao ASC;",
+#     sep = " "
+#   )
+# )
+# 
+# # Convert the shared socioeconomic pathway (SSP) to a factor
+# set(x = dt_q13, j = "exp",  value = as.factor(dt_q13[, exp]))
+# 
+# # Convert the year to an interval variable for continuous scaling
+# set(x = dt_q13, j = "year", value = as.integer(dt_q13[, year]))
+# 
+# # Convert the airport code to a factor
+# set(x = dt_q13, j = "icao", value = as.factor(dt_q13[, icao]))
+# 
+# # Save the data for later reference
+# fwrite(
+#   x = dt_q13,
+#   file = paste(dir$res, "dt_q13.csv", sep = "/")
+# )
 
 # ==============================================================================
 # 1.3 Climate change by zone

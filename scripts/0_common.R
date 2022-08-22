@@ -51,9 +51,12 @@ dat <- list(
 
 # Temporary tables for visualization
 tmp <- list(
-  "q11" = "q11", # Climate change, globally
-  "q12" = "q12",  # Number of takeoffs
-  "q13" = "q13"  # Number of takeoffs
+  "q11" = "q11", # Rel. change in mean temp., density, and headwind globally
+  "q12" = "q12", # Rel. change in maximum near-surface temperature globally
+  "q13" = "q13", # Rel. change in minimum near-surface air density globally
+  "q14" = "q14", # Rel. change in mean air temp., density, and headwind by zone
+  "q15" = "q15", # Rel. change in maximum near-surface temperature by zone
+  "q16" = "q16"  # Rel. change in minimum near-surface air density by zone
 )
 
 # ==============================================================================
