@@ -110,11 +110,22 @@ sim <- list(
 )
 
 # Absolute latitudinal boundaries for the Earth's climate zones
-lat <- list(
-  "tro" = list(name = "Tropical",    lower = 0L,      upper = 23.4365),
-  "sub" = list(name = "Subtropical", lower = 23.4365, upper = 30L), 
-  "tem" = list(name = "Temperate",   lower = 30L,     upper = 66.5635),
-  "fri" = list(name = "Frigid",      lower = 66.5635, upper = 90L)
+# lat <- list(
+#   "tro" = list(name = "Tropical",    lower = 0L,      upper = 23.4365),
+#   "sub" = list(name = "Subtropical", lower = 23.4365, upper = 30L), 
+#   "tem" = list(name = "Temperate",   lower = 30L,     upper = 66.5635),
+#   "fri" = list(name = "Frigid",      lower = 66.5635, upper = 90L)
+# )
+
+# Absolute latitudinal boundaries for the Earth's climate zones
+geo <- list(
+  "Antarctic"              = c(-90L,     -66.5635),
+  "South temperate zone"   = c(-66.5635, -30L),
+  "South subtropical zone" = c(-30L,     -23.4365),
+  "Tropical zone"          = c(-23.4365,  23.4365),
+  "North subtropical zone" = c( 23.4365,  30L),
+  "North temperate zone"   = c( 30L,      66.5635),
+  "Arctic"                 = c( 66.5635,  90L)
 )
 
 # ==============================================================================
