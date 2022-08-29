@@ -24,6 +24,7 @@
 library(data.table)
 library(DBI)
 library(ggplot2)
+library(scales)
 
 # Import the common settings
 source("scripts/0_common.R")
@@ -35,15 +36,14 @@ start_time <- Sys.time()
 cat("\014")
 
 # ==============================================================================
-# 1. Research question #1: How much change to near-surface air temperature,
-# air density, and headwind will airports experience in the 21st century?
+# 1. Climate change at the sample airports
 # ==============================================================================
 
 # ==============================================================================
 # 1.1 Relative change in mean temperature, air density, and headwind globally
 # ==============================================================================
 
-# # Summarize the climate data (runtime: ~12 minutes)
+# # Create the summary table (runtime: ~12 minutes)
 # fn_sql_qry(
 #   statement = paste(
 #     "CREATE TABLE IF NOT EXISTS",
@@ -54,7 +54,8 @@ cat("\014")
 #     AVG(tas) AS avg_tas,
 #     AVG(rho) AS avg_rho,
 #     AVG(hdw) AS avg_hdw
-#     FROM", tolower(dat$cli),
+#     FROM",
+#     tolower(dat$cli),
 #     "GROUP BY exp, year;",
 #     sep = " "
 #   )
@@ -105,11 +106,11 @@ cat("\014")
 #     ) +
 #       geom_line(size = .2) +
 #       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-#       scale_x_continuous("Year") +
-#       scale_y_continuous(labs) +
+#       scale_x_continuous(name = "Year") +
+#       scale_y_continuous(name = labs) +
 #       facet_wrap(~toupper(exp), ncol = 2) +
 #       theme_light() +
-#       theme(axis.title.y = element_blank()) # Hide y axis title
+#       theme(axis.title.y = element_blank())
 #   ) |>
 #     ggsave(
 #       filename = paste("9_q11_", as.name(cols), "_globally.png", sep = ""),
@@ -147,14 +148,14 @@ cat("\014")
 #   file = paste(dir$res, "dt_q11.csv", sep = "/")
 # )
 # 
-# # Display a summary table of the values for the final year
+# # Display the summary table of the values for the final year
 # View(x = dt_q11[dt_q11[, .I[year == max(year)], by = "exp"]$V1], title = "Q11")
 
 # ==============================================================================
 # 1.2 Relative change in the maximum near-surface temperature globally
 # ==============================================================================
 
-# # Summarize the climate data (runtime: ~6 minutes)
+# # Create the summary table (runtime: ~6 minutes)
 # fn_sql_qry(
 #   statement = paste(
 #     "CREATE TABLE IF NOT EXISTS",
@@ -164,7 +165,8 @@ cat("\014")
 #     year AS year,
 #     icao AS icao,
 #     MAX(tas) AS max_tas
-#     FROM", tolower(dat$cli),
+#     FROM",
+#     tolower(dat$cli),
 #     "GROUP BY exp, year, icao;",
 #     sep = " "
 #   )
@@ -225,11 +227,11 @@ cat("\014")
 #     ) +
 #       geom_line(size = .2) +
 #       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-#       scale_x_continuous("Year") +
-#       scale_y_continuous(labs) +
+#       scale_x_continuous(name = "Year") +
+#       scale_y_continuous(name = labs) +
 #       facet_wrap(~toupper(exp), ncol = 2) +
 #       theme_light() +
-#       theme(axis.title.y = element_blank()) # Hide y axis title
+#       theme(axis.title.y = element_blank())
 #   ) |>
 #     ggsave(
 #       filename = paste("9_q12_", as.name(cols), "_globally.png", sep = ""),
@@ -267,14 +269,14 @@ cat("\014")
 #   file = paste(dir$res, "dt_q12.csv", sep = "/")
 # )
 # 
-# # Display a summary table of the values for the final year
+# # Display the summary table of the values for the final year
 # View(x = dt_q12[dt_q12[, .I[year == max(year)], by = "exp"]$V1], title = "Q12")
 
 # ==============================================================================
 # 1.3 Relative change in the minimum near-surface air density globally
 # ==============================================================================
 
-# # Summarize the climate data (runtime: ~6 minutes)
+# # Create the summary table (runtime: ~6 minutes)
 # fn_sql_qry(
 #   statement = paste(
 #     "CREATE TABLE IF NOT EXISTS",
@@ -284,7 +286,8 @@ cat("\014")
 #     year AS year,
 #     icao AS icao,
 #     MIN(rho) AS min_rho
-#     FROM", tolower(dat$cli),
+#     FROM",
+#     tolower(dat$cli),
 #     "GROUP BY exp, year, icao;",
 #     sep = " "
 #   )
@@ -345,11 +348,11 @@ cat("\014")
 #     ) +
 #       geom_line(size = .2) +
 #       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-#       scale_x_continuous("Year") +
-#       scale_y_continuous(labs) +
+#       scale_x_continuous(name = "Year") +
+#       scale_y_continuous(name = labs) +
 #       facet_wrap(~toupper(exp), ncol = 2) +
 #       theme_light() +
-#       theme(axis.title.y = element_blank()) # Hide y axis title
+#       theme(axis.title.y = element_blank())
 #   ) |>
 #     ggsave(
 #       filename = paste("9_q13_", as.name(cols), "_globally.png", sep = ""),
@@ -387,14 +390,14 @@ cat("\014")
 #   file = paste(dir$res, "dt_q13.csv", sep = "/")
 # )
 # 
-# # Display a summary table of the values for the final year
+# # Display the summary table of the values for the final year
 # View(x = dt_q13[dt_q13[, .I[year == max(year)], by = "exp"]$V1], title = "Q13")
 
 # ==============================================================================
 # 1.4 Relative change in mean air temperature, air density, and headwind by zone
 # ==============================================================================
 
-# # Summarize the climate data (runtime: ~11 minutes)
+# # Create the summary table (runtime: ~11 minutes)
 # fn_sql_qry(
 #   statement = paste(
 #     "CREATE TABLE IF NOT EXISTS",
@@ -406,7 +409,8 @@ cat("\014")
 #     AVG(tas) AS avg_tas,
 #     AVG(rho) AS avg_rho,
 #     AVG(hdw) AS avg_hdw
-#     FROM", tolower(dat$cli),
+#     FROM",
+#     tolower(dat$cli),
 #     "GROUP BY zone, exp, year;",
 #     sep = " "
 #   )
@@ -463,12 +467,12 @@ cat("\014")
 #     ) +
 #       geom_line(size = .2) +
 #       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-#       scale_x_continuous("Year") +
-#       scale_y_continuous(labs) +
+#       scale_x_continuous(name = "Year") +
+#       scale_y_continuous(name = labs) +
 #       facet_wrap(~toupper(exp), ncol = 2) +
 #       labs(color = "Climate zone") +
 #       theme_light() +
-#       theme(axis.title.y = element_blank()) # Hide y axis title
+#       theme(axis.title.y = element_blank())
 #   ) |>
 #   ggsave(
 #     filename = paste("9_q14_", as.name(cols), "_by_zone.png", sep = ""),
@@ -506,7 +510,7 @@ cat("\014")
 #   file = paste(dir$res, "dt_q14.csv", sep = "/")
 # )
 # 
-# # Display a summary table of the values for the final year
+# # Display the summary table of the values for the final year
 # View(
 #   x = dt_q14[dt_q14[, .I[year == max(year)], by = c("zone", "exp")]$V1],
 #   title = "Q14"
@@ -516,7 +520,7 @@ cat("\014")
 # 1.5 Relative change in the maximum near-surface temperature by zone
 # ==============================================================================
 
-# # Summarize the climate data (runtime: ~14 minutes)
+# # Create the summary table (runtime: ~14 minutes)
 # fn_sql_qry(
 #   statement = paste(
 #     "CREATE TABLE IF NOT EXISTS",
@@ -527,7 +531,8 @@ cat("\014")
 #     year AS year,
 #     icao AS icao,
 #     MAX(tas) AS max_tas
-#     FROM", tolower(dat$cli),
+#     FROM",
+#     tolower(dat$cli),
 #     "GROUP BY exp, year, icao;",
 #     sep = " "
 #   )
@@ -594,12 +599,12 @@ cat("\014")
 #     ) +
 #       geom_line(size = .2) +
 #       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-#       scale_x_continuous("Year") +
-#       scale_y_continuous(labs) +
+#       scale_x_continuous(name = "Year") +
+#       scale_y_continuous(name = labs) +
 #       facet_wrap(~toupper(exp), ncol = 2) +
 #       labs(color = "Climate zone") +
 #       theme_light() +
-#       theme(axis.title.y = element_blank()) # Hide y axis title
+#       theme(axis.title.y = element_blank())
 #   ) |>
 #   ggsave(
 #     filename = paste("9_q15_", as.name(cols), "_by_zone.png", sep = ""),
@@ -637,7 +642,7 @@ cat("\014")
 #   file = paste(dir$res, "dt_q15.csv", sep = "/")
 # )
 # 
-# # Display a summary table of the values for the final year
+# # Display the summary table of the values for the final year
 # View(
 #   x = dt_q15[dt_q15[, .I[year == max(year)], by = c("zone", "exp")]$V1],
 #   title = "Q15"
@@ -647,7 +652,7 @@ cat("\014")
 # 1.6 Relative change in the minimum near-surface air density by zone
 # ==============================================================================
 
-# # Summarize the climate data (runtime: ~14 minutes)
+# # Create the summary table (runtime: ~14 minutes)
 # fn_sql_qry(
 #   statement = paste(
 #     "CREATE TABLE IF NOT EXISTS",
@@ -658,7 +663,8 @@ cat("\014")
 #     year AS year,
 #     icao AS icao,
 #     MIN(rho) AS min_rho
-#     FROM", tolower(dat$cli),
+#     FROM",
+#     tolower(dat$cli),
 #     "GROUP BY exp, year, icao;",
 #     sep = " "
 #   )
@@ -725,12 +731,12 @@ cat("\014")
 #     ) +
 #       geom_line(size = .2) +
 #       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-#       scale_x_continuous("Year") +
-#       scale_y_continuous(labs) +
+#       scale_x_continuous(name = "Year") +
+#       scale_y_continuous(name = labs) +
 #       facet_wrap(~toupper(exp), ncol = 2) +
 #       labs(color = "Climate zone") +
 #       theme_light() +
-#       theme(axis.title.y = element_blank()) # Hide y axis title
+#       theme(axis.title.y = element_blank())
 #   ) |>
 #   ggsave(
 #     filename = paste("9_q16_", as.name(cols), "_by_zone.png", sep = ""),
@@ -768,168 +774,322 @@ cat("\014")
 #   file = paste(dir$res, "dt_q16.csv", sep = "/")
 # )
 # 
-# # Display a summary table of the values for the final year
+# # Display the summary table of the values for the final year
 # View(
 #   x = dt_q16[dt_q16[, .I[year == max(year)], by = c("zone", "exp")]$V1],
 #   title = "Q16"
 # )
 
 # ==============================================================================
-# 2. Research question #2: How much thrust increase and payload removal
-# will be needed?
+# 2. Takeoff performance at the sample airports
 # ==============================================================================
 
 # ==============================================================================
-# 2.1 Unique takeoffs
-# Takes 4.7 minutes
+# 2.1 Takeoffs and iterations
 # ==============================================================================
 
-# ==============================================================================
-# 1.1 Summarize the climate data in the data in the database
-# Runtime: ~21 minutes
-# ==============================================================================
-
-# # Create the visualization table
+# # Create the summary table (runtime: ~33 minutes)
 # fn_sql_qry(
 #   statement = paste(
 #     "CREATE TABLE IF NOT EXISTS",
-#     tolower(vis$tko_cnt),
+#     tolower(tmp$q21),
+#     "(tko_cnt INT, itr_sum BIGINT, itr_avg FLOAT)",
 #     "AS SELECT
-#     COUNT(*) AS count,
-#     SUM(itr) AS sum,
-#     AVG(itr) AS avg
-#     FROM", tolower(dat$tko),
+#     COUNT(*),
+#     SUM(itr),
+#     AVG(itr)
+#     FROM",
+#     tolower(dat$tko),
 #     ";",
 #     sep = " "
 #   )
 # )
-
-
-
+# 
 # # Fetch the data
-# dt_uni <- fn_sql_sel(
-#   select = "COUNT(*) AS count",
-#   from   = dat$tko,
-#   where  = NULL,
-#   group  = NULL,
-#   order  = NULL
-# )
-# 
-# # Output results to the console
-# print(paste("Count of unique takeoffs:", format(dt_uni, big.mark = ",")))
-
-# ==============================================================================
-# 2.2 Takeoff iterations
-# ==============================================================================
-
-# # Fetch the data
-# dt_itr <- fn_sql_sel(
-#   select = "SUM(itr) AS sum, AVG(itr) AS avg",
-#   from   = dat$tst,
-#   where  = NULL,
-#   group  = NULL,
-#   order  = NULL
-# )
-# 
-# # Output results to the console
-# print(paste("Count of iterations:", format(dt_itr[, sum], big.mark = ",")))
-# print(paste("Average iterations:", format(dt_itr[, avg], big.mark = ",")))
-
-# ==============================================================================
-# 2.3 Takeoff outcomes
-# ==============================================================================
-
-# # Fetch the data
-# dt_uns <- fn_sql_sel(
-#   select = "YEAR(obs) AS year, exp AS exp, COUNT(*) AS count",
-#   from   = dat$tst,
-#   where  = "todr > toda",
-#   group  = "year, exp",
-#   order  = NULL
-# )
-# 
-# # Output results to the console
-# # Unsuccessful takeoffs are those where TODR > TODA even after increasing the
-# #  thrust to 100% and decreasing the mass to BELF mass.
-# print(paste("Unsuccessful (n):", format(length(dt_uns), big.mark = ",")))
-# print(paste("Successful (n):", format(dt_uni - length(dt_uns), big.mark = ",")))
-# print(paste("Successful (%):", format((dt_uni - length(dt_uns)) / dt_uni, nsmall = "2")))
-# 
-# # Set y-axis limits
-# lim <- c(1130E3, 1195E3)
-# 
-# # Create and save the plot
-# (ggplot(data = dt_uns) +
-#     geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
-#     scale_x_continuous(name = "Year") +
-#     scale_y_continuous(name = "Count", labels = scales::comma, limits = lim) +
-#     facet_wrap(~toupper(exp), ncol = 2) +
-#     theme_light()) %>%
-#   ggsave(
-#     filename = "9_line_uns_to_cnt.png",
-#     device = "png",
-#     path = "plots",
-#     scale = 1,
-#     width = 6,
-#     height = NA,
-#     units = "in",
-#     dpi = "print"
+# dt_q21 <- fn_sql_qry(
+#   statement = paste(
+#     "SELECT * FROM",
+#     tolower(tmp$q21),
+#     sep = " "
 #   )
-#
-# # Add a column for percentage
-# set(x = dt_uns, j = "per", value = dt_uns[, count] / dt_uni * 100)
-# 
-# # Create and save the plot
-# (ggplot(data = dt_uns) +
-#     geom_line(mapping = aes(x = year, y = per), color = "black", size = 1) +
-#     scale_x_continuous(name = "Year") +
-#     scale_y_continuous(name = "Count", labels = scales::percent) +
-#     facet_wrap(~toupper(exp), ncol = 2) +
-#     theme_light()) %>%
-#   ggsave(
-#     filename = "9_line_uns_to_per.png",
-#     device = "png",
-#     path = "plots",
-#     scale = 1,
-#     width = 6,
-#     height = NA,
-#     units = "in",
-#     dpi = "print"
-#   )
-
-# ==============================================================================
-# 2.4 Takeoff thrust reduction
-# ==============================================================================
-
-# # Fetch the data
-# dt_thr <- fn_sql_sel(
-#   select = "YEAR(obs) AS year, exp AS exp, AVG(thr_red) AS avg",
-#   from   = dat$tst,
-#   where  = NULL,
-#   group  = "year, exp",
-#   order  = NULL
 # )
 # 
-# # Output results to the console
-# print(paste("Thrust reduction:", format(dt_thr[, avg], big.mark = ",")))
-# 
-# # Create and save the plot
-# (ggplot(data = dt_uns) +
-#     geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
-#     scale_x_continuous(name = "Year") +
-#     scale_y_continuous(name = "Percent", labels = scales::percent) +
-#     facet_wrap(~toupper(exp), ncol = 2) +
-#     theme_light()) %>%
-#   ggsave(
-#     filename = "9_line_thr_red.png",
-#     device = "png",
-#     path = "plots",
-#     scale = 1,
-#     width = 6,
-#     height = NA,
-#     units = "in",
-#     dpi = "print"
+# # Display the summary table of the takeoffs
+# View(
+#   x     = dt_q21,
+#   title = "Takeoffs & iterations"
+# )
+
+# ==============================================================================
+# 2.2 Takeoff outcomes
+# ==============================================================================
+
+# Create the summary table (runtime: ~70 minutes)
+# a. tko_ok_thr_min refers to a successful takeoff with thrust at 75% TOGA
+# b. tko_ok_thr_mid refers to a successful takeoff with thrust at 76%-99% TOGA
+# c. tko_ok_thr_max refers to a successful takeoff with thrust at 100% TOGA
+# d. tko_ok refers to a successful takeoff (a + b + c)
+# e. tko_ko refers to an unsuccessful takeoff
+# f. tko refers to any takeoff (d + e)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(tmp$q22),
+    "(year YEAR, exp CHAR(6), type CHAR(4),
+    tko_ok_thr_min INT, tko_ok_thr_mid INT, tko_ok_thr_max INT,
+    tko_ok INT, tko_ko INT,
+    tko INT)
+    AS SELECT
+    YEAR(obs) AS year,
+    exp,
+    type,
+    SUM(thr_red =", sim$thr_ini, ") AS tko_ok_thr_min,
+    SUM(thr_red BETWEEN 1 AND ", sim$thr_ini - 1L, ") AS tko_ok_thr_mid,
+    SUM(thr_red = 0 AND todr <= toda) AS tko_ok_thr_max,
+    SUM(todr <= toda) AS tko_ok,
+    SUM(todr > toda) AS tko_ko,
+    COUNT(*) AS tko
+    FROM",
+    tolower(dat$tko),
+    "GROUP BY year, exp, type",
+    ";",
+    sep = " "
+  )
+)
+
+# Fetch the data
+dt_q22 <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q22),
+    sep = " "
+  )
+)
+
+# Convert the year to an interval variable for continuous scaling
+set(x = dt_q22, j = "year", value = as.integer(dt_q22[, year]))
+
+# Convert the shared socioeconomic pathway (SSP) to a factor
+set(x = dt_q22, j = "exp",  value = as.factor(dt_q22[, exp]))
+
+# Convert the aircraft type to a factor
+set(x = dt_q22, j = "type",  value = as.factor(dt_q22[, type]))
+
+# Combine narrowbodies and widebodies, respectively
+levels(dt_q22$type) <- c(
+  "A20n" = "Narrowbody",
+  "B39m" = "Narrowbody",
+  "A359" = "Widebody",
+  "B789" = "Widebody"
+)
+
+# Define the variables of interest
+cols_q31 <- c(
+  "tko_ok_thr_min",
+  "tko_ok_thr_mid",
+  "tko_ok_thr_max",
+  "tko_ok",
+  "tko_ko",
+  "tko"
+)
+
+# Define their labels
+labs_q31 <- c(
+  "75% TOGA",
+  "76%-99% TOGA",
+  "TOGA",
+  "Succesful takeoff",
+  "Unsuccessful takeoff",
+  "All takeoffs"
+)
+
+# Summarize the data
+dt_q22 <- dt_q22[, lapply(.SD, sum),
+  by = c("year", "exp", "type"),
+  .SDcols = cols_q31
+]
+
+# Convert thrust-reduced takeoffs to percentages of all takeoffs row-wise
+dt_q22[, c(
+    "tko_ok_thr_min_per",
+    "tko_ok_thr_mid_per",
+    "tko_ok_thr_max_per",
+    "tko_ok_per",
+    "tko_ko_per",
+    "tko_per"
+  ) := lapply(
+    X = .SD,
+    FUN = function(x) {
+      x / dt_q22[, tko]
+    }
+  ),
+  .SDcols = cols_q31
+]
+
+# Return the local polynomial regression fitting values to smooth the volatility
+dt_q22[, paste(
+    c("tko_ok_thr_min_per", "tko_ko_per"),
+    "_loess",
+    sep = ""
+  ) := lapply(
+    X = .SD,
+    FUN = function(x) {
+      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+    }
+  ),
+  by = c("exp", "type"),
+  .SDcols = c("tko_ok_thr_min_per", "tko_ko_per")
+]
+
+# Display the summary table
+View(
+  x     = dt_q22,
+  title = "Takeoff outcomes"
+)
+
+# Define a function to generate plots
+fn_plot_q22 <- function(cols, labs) {
+  (
+    ggplot(
+      data    = dt_q22,
+      mapping = aes(x = year, y = dt_q22[[cols]])
+    ) +
+      geom_line() +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      scale_x_continuous(name = "Year") +
+      scale_y_continuous(
+        name   = labs,
+        labels = scales::percent) +
+      facet_wrap(toupper(exp) ~ type, ncol = 2, scales = "free_y") +
+      theme_light() +
+      theme(axis.title.y = element_blank())
+  ) |>
+    ggsave(
+      filename = paste("9_q22_", as.name(cols), ".png", sep = ""),
+      device   = "png",
+      path     = "plots",
+      scale    = 1,
+      width    = 6,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
+}
+
+# Generate the plots for every variable
+mapply(
+  FUN  = fn_plot_q22,
+  cols = c("tko_ok_thr_min_per", "tko_ko_per"),
+  labs = c("75% TOGA", "Unsuccessful takeoffs")
+)
+
+# ==============================================================================
+# 3. Research question #1
+# How much thrust increase will be required to lift an equivalent payload?
+# ==============================================================================
+
+# ==============================================================================
+# 3.1 Average takeoff thrust
+# ==============================================================================
+
+# # Create the summary table (runtime: ~60 minutes)
+# fn_sql_qry(
+#   statement = paste(
+#     "CREATE TABLE IF NOT EXISTS",
+#     tolower(tmp$q35),
+#     "(year YEAR, exp CHAR(6), zone CHAR(11), type CHAR(4), thr_red_avg FLOAT)",
+#     "AS SELECT
+#     YEAR(obs) AS year,
+#     exp,
+#     zone,
+#     type,
+#     AVG(thr_red) AS thr_red_avg
+#     FROM",
+#     tolower(dat$tko),
+#     "WHERE todr <= toda",
+#     "GROUP BY year, exp, zone, type",
+#     ";",
+#     sep = " "
 #   )
+# )
+# 
+# # Fetch the data
+# dt_q35 <- fn_sql_qry(
+#   statement = paste(
+#     "SELECT * FROM",
+#     tolower(tmp$q35),
+#     sep = " "
+#   )
+# )
+# 
+# # Convert the year to an interval variable for continuous scaling
+# set(x = dt_q35, j = "year", value = as.integer(dt_q35[, year]))
+# 
+# # Convert the climatic zone to a factor
+# set(x = dt_q35, j = "zone",  value = as.factor(dt_q35[, zone]))
+# 
+# # Convert the shared socioeconomic pathway (SSP) to a factor
+# set(x = dt_q35, j = "exp",  value = as.factor(dt_q35[, exp]))
+# 
+# # Convert the aircraft type to a factor
+# set(x = dt_q35, j = "type",  value = as.factor(dt_q35[, type]))
+# 
+# # Convert the mean thrust reduction to mean thrust as a percentage of TOGA
+# set(x = dt_q35, j = "thr_red_avg",  value = (100 - dt_q35[, thr_red_avg]) / 100)
+# 
+# # Combine narrowbodies and widebodies, respectively
+# levels(dt_q35$type) <- c(
+#   "A20n" = "Narrowbody",
+#   "B39m" = "Narrowbody",
+#   "A359" = "Widebody",
+#   "B789" = "Widebody"
+# )
+# 
+# # FOR TESTING
+# fwrite(dt_q35, file = "dt_q35.csv")
+# 
+# # Summarize the average thrust reduction by year, SSP, and aircraft type
+# dt_q35 <- dt_q35[, lapply(.SD, mean),
+#   by = c("year", "exp", "type"),
+#   .SDcols = c("thr_red_avg")
+# ]
+# 
+# # Pivot the data from wide to long for plotting
+# dt_q35 <- dcast(data = dt_q35, id.vars = "year")
+# 
+# # Keep only one aircraft type
+# # dt_q35 <- dt_q35[type == "Widebody"]
+# 
+# # Display the summary table
+# View(
+#   x     = dt_q35,
+#   title = "Average thrust reduction"
+# )
+# 
+# # Create a plot
+# (
+#   ggplot(
+#     data    = dt_q35,
+#     mapping = aes(x = year, y = thr_red_avg)
+#   ) +
+#     geom_line() +
+#     geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+#     scale_x_continuous(name = "Year") +
+#     facet_wrap(~toupper(exp), ncol = 2) +
+#     theme_light() +
+#     theme(axis.title.y = element_blank())
+# )
+# |>
+# ggsave(
+#   filename = paste("9_q31_thr_red.png", sep = ""),
+#   device   = "png",
+#   path     = "plots",
+#   scale    = 1,
+#   width    = 6,
+#   height   = NA,
+#   units    = "in",
+#   dpi      = "print"
+# )
 
 # ==============================================================================
 # 2.5 Takeoff payload removal

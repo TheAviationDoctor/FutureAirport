@@ -56,7 +56,15 @@ tmp <- list(
   "q13" = "q13", # Rel. change in minimum near-surface air density globally
   "q14" = "q14", # Rel. change in mean air temp., density, and headwind by zone
   "q15" = "q15", # Rel. change in maximum near-surface temperature by zone
-  "q16" = "q16"  # Rel. change in minimum near-surface air density by zone
+  "q16" = "q16", # Rel. change in minimum near-surface air density by zone
+  "q21" = "q21", # Takeoff and iteration count
+  "q22" = "q22", # Successful and unsuccessful takeoffs by group
+  "q31" = "q31", # 
+  "q32" = "q32", #
+  "q33" = "q33", #
+  "q34" = "q34", #
+  "q35" = "q35", #
+  "tst" = "tst"  # TEST TABLE, DELETE AFTERWARDS
 )
 
 # ==============================================================================
