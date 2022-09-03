@@ -470,7 +470,7 @@ cat("\014")
 #       scale_x_continuous(name = "Year") +
 #       scale_y_continuous(name = labs) +
 #       facet_wrap(~toupper(exp), ncol = 2) +
-#       labs(color = "Climate zone") +
+#       labs(color = "climatic zone") +
 #       theme_light() +
 #       theme(axis.title.y = element_blank())
 #   ) |>
@@ -602,7 +602,7 @@ cat("\014")
 #       scale_x_continuous(name = "Year") +
 #       scale_y_continuous(name = labs) +
 #       facet_wrap(~toupper(exp), ncol = 2) +
-#       labs(color = "Climate zone") +
+#       labs(color = "climatic zone") +
 #       theme_light() +
 #       theme(axis.title.y = element_blank())
 #   ) |>
@@ -734,7 +734,7 @@ cat("\014")
 #       scale_x_continuous(name = "Year") +
 #       scale_y_continuous(name = labs) +
 #       facet_wrap(~toupper(exp), ncol = 2) +
-#       labs(color = "Climate zone") +
+#       labs(color = "climatic zone") +
 #       theme_light() +
 #       theme(axis.title.y = element_blank())
 #   ) |>
@@ -785,46 +785,81 @@ cat("\014")
 # ==============================================================================
 
 # ==============================================================================
-# 2.1 Takeoffs and iterations
+# 2.1a Takeoff count overall
 # ==============================================================================
 
-# # Create the summary table (runtime: ~33 minutes)
-# fn_sql_qry(
-#   statement = paste(
-#     "CREATE TABLE IF NOT EXISTS",
-#     tolower(tmp$q21),
-#     "(tko_cnt INT, itr_sum BIGINT, itr_avg FLOAT)",
-#     "AS SELECT
-#     COUNT(*),
-#     SUM(itr),
-#     AVG(itr)
-#     FROM",
-#     tolower(dat$tko),
-#     ";",
-#     sep = " "
-#   )
-# )
-# 
-# # Fetch the data
-# dt_q21 <- fn_sql_qry(
-#   statement = paste(
-#     "SELECT * FROM",
-#     tolower(tmp$q21),
-#     sep = " "
-#   )
-# )
-# 
-# # Display the summary table of the takeoffs
-# View(
-#   x     = dt_q21,
-#   title = "Takeoffs & iterations"
-# )
+# Create the summary table (runtime: ~33 minutes)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(tmp$q21a),
+    "(tko_cnt INT, itr_sum BIGINT, itr_avg FLOAT)",
+    "AS SELECT
+    COUNT(*),
+    SUM(itr),
+    AVG(itr)
+    FROM",
+    tolower(dat$tko),
+    ";",
+    sep = " "
+  )
+)
+
+# Fetch the data
+dt_q21a <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q21a),
+    sep = " "
+  )
+)
+
+# Save the results
+fwrite(x = dt_q21a, file = paste(dir$res, "dt_q21a.csv", sep = "/"))
 
 # ==============================================================================
-# 2.2 Takeoff outcomes
+# 2.1b Takeoff count by group
 # ==============================================================================
 
-# Create the summary table (runtime: ~70 minutes)
+# Create the summary table (runtime: ~60 minutes)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(tmp$q21b),
+    "(exp CHAR(6), type CHAR(4), zone CHAR(11),
+    tko_cnt INT, itr_sum BIGINT, itr_avg FLOAT)",
+    "AS SELECT
+    exp,
+    type,
+    zone,
+    COUNT(*) AS tko_cnt,
+    SUM(itr) AS itr_sum,
+    AVG(itr) AS itr_avg
+    FROM",
+    tolower(dat$tko),
+    "GROUP BY exp, type, zone",
+    ";",
+    sep = " "
+  )
+)
+
+# Fetch the data
+dt_q21b <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q21b),
+    sep = " "
+  )
+)
+
+# Save the results
+fwrite(x = dt_q21b, file = paste(dir$res, "dt_q21b.csv", sep = "/"))
+
+# ==============================================================================
+# 2.2a Takeoff outcomes globally
+# ==============================================================================
+
+# Create the summary table (runtime: ~95 minutes)
 # a. tko_ok_thr_min refers to a successful takeoff with thrust at 75% TOGA
 # b. tko_ok_thr_mid refers to a successful takeoff with thrust at 76%-99% TOGA
 # c. tko_ok_thr_max refers to a successful takeoff with thrust at 100% TOGA
@@ -834,11 +869,14 @@ cat("\014")
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
-    tolower(tmp$q22),
+    tolower(tmp$q22a),
     "(year YEAR, exp CHAR(6), type CHAR(4),
-    tko_ok_thr_min INT, tko_ok_thr_mid INT, tko_ok_thr_max INT,
-    tko_ok INT, tko_ko INT,
-    tko INT)
+    tko_ok_thr_min MEDIUMINT,
+    tko_ok_thr_mid MEDIUMINT,
+    tko_ok_thr_max MEDIUMINT,
+    tko_ok MEDIUMINT,
+    tko_ko MEDIUMINT,
+    tko MEDIUMINT)
     AS SELECT
     YEAR(obs) AS year,
     exp,
@@ -858,25 +896,25 @@ fn_sql_qry(
 )
 
 # Fetch the data
-dt_q22 <- fn_sql_qry(
+dt_q22a <- fn_sql_qry(
   statement = paste(
     "SELECT * FROM",
-    tolower(tmp$q22),
+    tolower(tmp$q22a),
     sep = " "
   )
 )
 
 # Convert the year to an interval variable for continuous scaling
-set(x = dt_q22, j = "year", value = as.integer(dt_q22[, year]))
+set(x = dt_q22a, j = "year", value = as.integer(dt_q22a[, year]))
 
 # Convert the shared socioeconomic pathway (SSP) to a factor
-set(x = dt_q22, j = "exp",  value = as.factor(dt_q22[, exp]))
+set(x = dt_q22a, j = "exp",  value = as.factor(dt_q22a[, exp]))
 
 # Convert the aircraft type to a factor
-set(x = dt_q22, j = "type",  value = as.factor(dt_q22[, type]))
+set(x = dt_q22a, j = "type",  value = as.factor(dt_q22a[, type]))
 
 # Combine narrowbodies and widebodies, respectively
-levels(dt_q22$type) <- c(
+levels(dt_q22a$type) <- c(
   "A20n" = "Narrowbody",
   "B39m" = "Narrowbody",
   "A359" = "Widebody",
@@ -884,7 +922,7 @@ levels(dt_q22$type) <- c(
 )
 
 # Define the variables of interest
-cols_q31 <- c(
+cols_q22a <- c(
   "tko_ok_thr_min",
   "tko_ok_thr_mid",
   "tko_ok_thr_max",
@@ -894,7 +932,7 @@ cols_q31 <- c(
 )
 
 # Define their labels
-labs_q31 <- c(
+labs_q22a <- c(
   "75% TOGA",
   "76%-99% TOGA",
   "TOGA",
@@ -904,13 +942,13 @@ labs_q31 <- c(
 )
 
 # Summarize the data
-dt_q22 <- dt_q22[, lapply(.SD, sum),
+dt_q22a <- dt_q22a[, lapply(.SD, sum),
   by = c("year", "exp", "type"),
-  .SDcols = cols_q31
+  .SDcols = cols_q22a
 ]
 
 # Convert thrust-reduced takeoffs to percentages of all takeoffs row-wise
-dt_q22[, c(
+dt_q22a[, c(
     "tko_ok_thr_min_per",
     "tko_ok_thr_mid_per",
     "tko_ok_thr_max_per",
@@ -920,14 +958,14 @@ dt_q22[, c(
   ) := lapply(
     X = .SD,
     FUN = function(x) {
-      x / dt_q22[, tko]
+      x / dt_q22a[, tko]
     }
   ),
-  .SDcols = cols_q31
+  .SDcols = cols_q22a
 ]
 
 # Return the local polynomial regression fitting values to smooth the volatility
-dt_q22[, paste(
+dt_q22a[, paste(
     c("tko_ok_thr_min_per", "tko_ko_per"),
     "_loess",
     sep = ""
@@ -941,18 +979,12 @@ dt_q22[, paste(
   .SDcols = c("tko_ok_thr_min_per", "tko_ko_per")
 ]
 
-# Display the summary table
-View(
-  x     = dt_q22,
-  title = "Takeoff outcomes"
-)
-
 # Define a function to generate plots
-fn_plot_q22 <- function(cols, labs) {
+fn_plot_q22a <- function(cols, labs) {
   (
     ggplot(
-      data    = dt_q22,
-      mapping = aes(x = year, y = dt_q22[[cols]])
+      data    = dt_q22a,
+      mapping = aes(x = year, y = dt_q22a[[cols]])
     ) +
       geom_line() +
       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
@@ -965,7 +997,7 @@ fn_plot_q22 <- function(cols, labs) {
       theme(axis.title.y = element_blank())
   ) |>
     ggsave(
-      filename = paste("9_q22_", as.name(cols), ".png", sep = ""),
+      filename = paste("9_q22a_", as.name(cols), ".png", sep = ""),
       device   = "png",
       path     = "plots",
       scale    = 1,
@@ -978,10 +1010,562 @@ fn_plot_q22 <- function(cols, labs) {
 
 # Generate the plots for every variable
 mapply(
-  FUN  = fn_plot_q22,
+  FUN  = fn_plot_q22a,
   cols = c("tko_ok_thr_min_per", "tko_ko_per"),
   labs = c("75% TOGA", "Unsuccessful takeoffs")
 )
+
+# Save the results
+fwrite(x = dt_q22a, file = paste(dir$res, "dt_q22a.csv", sep = "/"))
+
+# ==============================================================================
+# 2.2b Takeoff outcomes by zone
+# ==============================================================================
+
+# Create the summary table (runtime: ~80 minutes)
+# a. tko_ok_thr_min refers to a successful takeoff with thrust at 75% TOGA
+# b. tko_ok_thr_mid refers to a successful takeoff with thrust at 76%-99% TOGA
+# c. tko_ok_thr_max refers to a successful takeoff with thrust at 100% TOGA
+# d. tko_ok refers to a successful takeoff (a + b + c)
+# e. tko_ko refers to an unsuccessful takeoff
+# f. tko refers to any takeoff (d + e)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(tmp$q22b),
+    "(year YEAR, exp CHAR(6), type CHAR(4), zone CHAR(11),
+    tko_ok_thr_min MEDIUMINT,
+    tko_ok_thr_mid MEDIUMINT,
+    tko_ok_thr_max MEDIUMINT,
+    tko_ok MEDIUMINT,
+    tko_ko MEDIUMINT,
+    tko MEDIUMINT)
+    AS SELECT
+    YEAR(obs) AS year,
+    exp,
+    type,
+    zone,
+    SUM(thr_red =", sim$thr_ini, ") AS tko_ok_thr_min,
+    SUM(thr_red BETWEEN 1 AND ", sim$thr_ini - 1L, ") AS tko_ok_thr_mid,
+    SUM(thr_red = 0 AND todr <= toda) AS tko_ok_thr_max,
+    SUM(todr <= toda) AS tko_ok,
+    SUM(todr > toda) AS tko_ko,
+    COUNT(*) AS tko
+    FROM",
+    tolower(dat$tko),
+    "GROUP BY year, exp, type, zone",
+    ";",
+    sep = " "
+  )
+)
+
+# Fetch the data
+dt_q22b <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q22b),
+    sep = " "
+  )
+)
+
+# Convert the year to an interval variable for continuous scaling
+set(x = dt_q22b, j = "year", value = as.integer(dt_q22b[, year]))
+
+# Convert the shared socioeconomic pathway (SSP) to a factor
+set(x = dt_q22b, j = "exp",  value = as.factor(dt_q22b[, exp]))
+
+# Convert the aircraft type to a factor
+set(x = dt_q22b, j = "type",  value = as.factor(dt_q22b[, type]))
+
+# Convert the climatic zone to a factor
+set(x = dt_q22b, j = "zone",  value = as.factor(dt_q22b[, zone]))
+
+# Combine narrowbodies and widebodies, respectively
+levels(dt_q22b$type) <- c(
+  "A20n" = "Narrowbody",
+  "B39m" = "Narrowbody",
+  "A359" = "Widebody",
+  "B789" = "Widebody"
+)
+
+# Define the variables of interest
+cols_q22b <- c(
+  "tko_ok_thr_min",
+  "tko_ok_thr_mid",
+  "tko_ok_thr_max",
+  "tko_ok",
+  "tko_ko",
+  "tko"
+)
+
+# Define their labels
+labs_q22b <- c(
+  "75% TOGA",
+  "76%-99% TOGA",
+  "TOGA",
+  "Succesful takeoff",
+  "Unsuccessful takeoff",
+  "All takeoffs"
+)
+
+# Summarize the data
+dt_q22b <- dt_q22b[, lapply(.SD, sum),
+  by = c("year", "exp", "type", "zone"),
+  .SDcols = cols_q22b
+]
+
+# Convert thrust-reduced takeoffs to percentages of all takeoffs row-wise
+dt_q22b[, c(
+  "tko_ok_thr_min_per",
+  "tko_ok_thr_mid_per",
+  "tko_ok_thr_max_per",
+  "tko_ok_per",
+  "tko_ko_per",
+  "tko_per"
+) := lapply(
+  X = .SD,
+  FUN = function(x) {
+    x / dt_q22b[, tko]
+  }
+),
+.SDcols = cols_q22b
+]
+
+# Return the local polynomial regression fitting values to smooth the volatility
+dt_q22b[, paste(
+  c("tko_ok_thr_min_per", "tko_ko_per"),
+  "_loess",
+  sep = ""
+) := lapply(
+  X = .SD,
+  FUN = function(x) {
+    predict(loess(formula = x ~ year, span = .75, model = TRUE))
+  }
+),
+by = c("exp", "type", "zone"),
+.SDcols = c("tko_ok_thr_min_per", "tko_ko_per")
+]
+
+# Define a function to generate plots
+fn_plot_q22b <- function(cols, labs) {
+  (
+    ggplot(
+      data    = dt_q22b,
+      mapping = aes(x = year, y = dt_q22b[[cols]], color = zone)
+    ) +
+      geom_line() +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      scale_x_continuous(name = "Year") +
+      scale_y_continuous(
+        name   = labs,
+        labels = scales::percent) +
+      facet_wrap(toupper(exp) ~ type, ncol = 2, scales = "free_y") +
+      theme_light() +
+      theme(axis.title.y = element_blank())
+  ) |>
+    ggsave(
+      filename = paste("9_q22b_", as.name(cols), ".png", sep = ""),
+      device   = "png",
+      path     = "plots",
+      scale    = 1,
+      width    = 6,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
+}
+
+# Generate the plots for every variable
+mapply(
+  FUN  = fn_plot_q22b,
+  cols = c("tko_ok_thr_min_per", "tko_ko_per"),
+  labs = c("75% TOGA", "Unsuccessful takeoffs")
+)
+
+# Save the results
+fwrite(x = dt_q22b, file = paste(dir$res, "dt_q22b.csv", sep = "/"))
+
+# ==============================================================================
+# 2.3a Takeoff speeds globally
+# ==============================================================================
+
+# Create the summary table (runtime: ~60 minutes)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(tmp$q23a),
+    "(year YEAR, exp CHAR(6), type CHAR(4), vlof_avg FLOAT)
+    AS SELECT
+    YEAR(obs) AS year,
+    exp,
+    type,
+    AVG(vlof) AS vlof_avg
+    FROM",
+    tolower(dat$tko),
+    "GROUP BY year, exp, type",
+    ";",
+    sep = " "
+  )
+)
+
+# Fetch the data
+dt_q23a <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q23a),
+    sep = " "
+  )
+)
+
+# Convert the year to an interval variable for continuous scaling
+set(x = dt_q23a, j = "year", value = as.integer(dt_q23a[, year]))
+
+# Convert the shared socioeconomic pathway (SSP) to a factor
+set(x = dt_q23a, j = "exp",  value = as.factor(dt_q23a[, exp]))
+
+# Convert the aircraft type to a factor
+set(x = dt_q23a, j = "type",  value = as.factor(dt_q23a[, type]))
+
+# Combine narrowbodies and widebodies, respectively
+levels(dt_q23a$type) <- c(
+  "A20n" = "Narrowbody",
+  "B39m" = "Narrowbody",
+  "A359" = "Widebody",
+  "B789" = "Widebody"
+)
+
+# Summarize the data
+dt_q23a <- dt_q23a[, lapply(.SD, mean),
+  by = c("year", "exp", "type"),
+  .SDcols = "vlof_avg"
+]
+
+# Return the local polynomial regression fitting values to smooth the volatility
+dt_q23a[, "vlof_avg_loess" := lapply(
+    X = .SD,
+    FUN = function(x) {
+      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+    }
+  ),
+  by = c("exp", "type"),
+  .SDcols = "vlof_avg"
+]
+
+# Generate plot
+(
+ggplot(data = dt_q23a, mapping = aes(x = year, y = vlof_avg)) +
+  geom_line() +
+  geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+  scale_x_continuous(name = "Year") +
+  scale_y_continuous(
+    name   = "Vlof",
+    labels = scales::comma) +
+  facet_wrap(toupper(exp) ~ type, ncol = 2, scales = "free_y") +
+  theme_light() +
+  theme(axis.title.y = element_blank())
+) |>
+ggsave(
+  filename = paste("9_q23a_vlof_avg.png", sep = ""),
+  device   = "png",
+  path     = "plots",
+  scale    = 1,
+  width    = 6,
+  height   = NA,
+  units    = "in",
+  dpi      = "print"
+)
+
+# Save the results
+fwrite(x = dt_q23a, file = paste(dir$res, "dt_q23a.csv", sep = "/"))
+
+# ==============================================================================
+# 2.3b Takeoff speeds by zone
+# ==============================================================================
+
+# Create the summary table (runtime: ~60 minutes)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(tmp$q23b),
+    "(year YEAR, exp CHAR(6), type CHAR(4), zone CHAR(11), vlof_avg FLOAT)
+    AS SELECT
+    YEAR(obs) AS year,
+    exp,
+    type,
+    zone,
+    AVG(vlof) AS vlof_avg
+    FROM",
+    tolower(dat$tko),
+    "GROUP BY year, exp, type, zone",
+    ";",
+    sep = " "
+  )
+)
+
+# Fetch the data
+dt_q23b <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q23b),
+    sep = " "
+  )
+)
+
+# Convert the year to an interval variable for continuous scaling
+set(x = dt_q23b, j = "year", value = as.integer(dt_q23b[, year]))
+
+# Convert the shared socioeconomic pathway (SSP) to a factor
+set(x = dt_q23b, j = "exp",  value = as.factor(dt_q23b[, exp]))
+
+# Convert the aircraft type to a factor
+set(x = dt_q23b, j = "type",  value = as.factor(dt_q23b[, type]))
+
+# Convert the climatic zone to a factor
+set(x = dt_q23b, j = "zone",  value = as.factor(dt_q23b[, zone]))
+
+# Combine narrowbodies and widebodies, respectively
+levels(dt_q23b$type) <- c(
+  "A20n" = "Narrowbody",
+  "B39m" = "Narrowbody",
+  "A359" = "Widebody",
+  "B789" = "Widebody"
+)
+
+# Summarize the data
+dt_q23b <- dt_q23b[, lapply(.SD, mean),
+                   by = c("year", "exp", "type", "zone"),
+                   .SDcols = "vlof_avg"
+]
+
+# Return the local polynomial regression fitting values to smooth the volatility
+dt_q23b[, "vlof_avg_loess" := lapply(
+  X = .SD,
+  FUN = function(x) {
+    predict(loess(formula = x ~ year, span = .75, model = TRUE))
+  }
+),
+by = c("exp", "type", "zone"),
+.SDcols = "vlof_avg"
+]
+
+# Generate plot
+(
+  ggplot(data = dt_q23b, mapping = aes(x = year, y = vlof_avg, color = zone)) +
+    geom_line() +
+    geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+    scale_x_continuous(name = "Year") +
+    scale_y_continuous(
+      name   = "Vlof",
+      labels = scales::comma) +
+    facet_wrap(toupper(exp) ~ type, ncol = 2, scales = "free_y") +
+    theme_light() +
+    theme(axis.title.y = element_blank())
+) |>
+  ggsave(
+    filename = paste("9_q23b_vlof_avg.png", sep = ""),
+    device   = "png",
+    path     = "plots",
+    scale    = 1,
+    width    = 6,
+    height   = NA,
+    units    = "in",
+    dpi      = "print"
+  )
+
+# Save the results
+fwrite(x = dt_q23b, file = paste(dir$res, "dt_q23b.csv", sep = "/"))
+
+# ==============================================================================
+# 2.4a Takeoff distances globally
+# ==============================================================================
+
+# Create the summary table (runtime: ~55 minutes)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(tmp$q24a),
+    "(year YEAR, exp CHAR(6), type CHAR(4), todr_avg FLOAT)
+    AS SELECT
+    YEAR(obs) AS year,
+    exp,
+    type,
+    AVG(todr) AS todr_avg
+    FROM",
+    tolower(dat$tko),
+    "GROUP BY year, exp, type",
+    ";",
+    sep = " "
+  )
+)
+
+# Fetch the data
+dt_q24a <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q24a),
+    sep = " "
+  )
+)
+
+# Convert the year to an interval variable for continuous scaling
+set(x = dt_q24a, j = "year", value = as.integer(dt_q24a[, year]))
+
+# Convert the shared socioeconomic pathway (SSP) to a factor
+set(x = dt_q24a, j = "exp",  value = as.factor(dt_q24a[, exp]))
+
+# Convert the aircraft type to a factor
+set(x = dt_q24a, j = "type",  value = as.factor(dt_q24a[, type]))
+
+# Combine narrowbodies and widebodies, respectively
+levels(dt_q24a$type) <- c(
+  "A20n" = "Narrowbody",
+  "B39m" = "Narrowbody",
+  "A359" = "Widebody",
+  "B789" = "Widebody"
+)
+
+# Summarize the data
+dt_q24a <- dt_q24a[, lapply(.SD, mean),
+  by = c("year", "exp", "type"),
+  .SDcols = "todr_avg"
+]
+
+# Return the local polynomial regression fitting values to smooth the volatility
+dt_q24a[, "todr_avg_loess" := lapply(
+  X = .SD,
+  FUN = function(x) {
+    predict(loess(formula = x ~ year, span = .75, model = TRUE))
+  }
+),
+by = c("exp", "type"),
+.SDcols = "todr_avg"
+]
+
+# Generate plot
+(
+  ggplot(data = dt_q24a, mapping = aes(x = year, y = todr_avg)) +
+    geom_line() +
+    geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+    scale_x_continuous(name = "Year") +
+    scale_y_continuous(
+      name   = "TODR",
+      labels = scales::label_number(accuracy = 1, big.mark = ",")
+    ) +
+    facet_wrap(toupper(exp) ~ type, ncol = 2, scales = "free_y") +
+    theme_light() +
+    theme(axis.title.y = element_blank())
+) |>
+ggsave(
+  filename = paste("9_q24a_todr_avg.png", sep = ""),
+  device   = "png",
+  path     = "plots",
+  scale    = 1,
+  width    = 6,
+  height   = NA,
+  units    = "in",
+  dpi      = "print"
+)
+
+# Save the results
+fwrite(x = dt_q24a, file = paste(dir$res, "dt_q24a.csv", sep = "/"))
+
+# ==============================================================================
+# 2.4b Takeoff distances by climatic zone
+# ==============================================================================
+
+# Create the summary table (runtime: ~X minutes)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(tmp$q24b),
+    "(year YEAR, exp CHAR(6), type CHAR(4), zone CHAR(11), todr_avg FLOAT)
+    AS SELECT
+    YEAR(obs) AS year,
+    exp,
+    type,
+    zone,
+    AVG(todr) AS todr_avg
+    FROM",
+    tolower(dat$tko),
+    "GROUP BY year, exp, type, zone",
+    ";",
+    sep = " "
+  )
+)
+
+# Fetch the data
+dt_q24b <- fn_sql_qry(
+  statement = paste(
+    "SELECT * FROM",
+    tolower(tmp$q24b),
+    sep = " "
+  )
+)
+
+# Convert the year to an interval variable for continuous scaling
+set(x = dt_q24b, j = "year", value = as.integer(dt_q24b[, year]))
+
+# Convert the shared socioeconomic pathway (SSP) to a factor
+set(x = dt_q24b, j = "exp",  value = as.factor(dt_q24b[, exp]))
+
+# Convert the aircraft type to a factor
+set(x = dt_q24b, j = "type",  value = as.factor(dt_q24b[, type]))
+
+# Convert the climatic zone to a factor
+set(x = dt_q24b, j = "zone",  value = as.factor(dt_q24b[, zone]))
+
+# Combine narrowbodies and widebodies, respectively
+levels(dt_q24b$type) <- c(
+  "A20n" = "Narrowbody",
+  "B39m" = "Narrowbody",
+  "A359" = "Widebody",
+  "B789" = "Widebody"
+)
+
+# Summarize the data
+dt_q24b <- dt_q24b[, lapply(.SD, mean),
+                   by = c("year", "exp", "type", "zone"),
+                   .SDcols = "todr_avg"
+]
+
+# Return the local polynomial regression fitting values to smooth the volatility
+dt_q24b[, "todr_avg_loess" := lapply(
+  X = .SD,
+  FUN = function(x) {
+    predict(loess(formula = x ~ year, span = .75, model = TRUE))
+  }
+),
+by = c("exp", "type", "zone"),
+.SDcols = "todr_avg"
+]
+
+# Generate plot
+(
+  ggplot(data = dt_q24b, mapping = aes(x = year, y = todr_avg, color = zone)) +
+    geom_line() +
+    geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+    scale_x_continuous(name = "Year") +
+    scale_y_continuous(
+      name   = "TODR",
+      labels = scales::label_number(accuracy = 1, big.mark = ",")
+    ) +
+    facet_wrap(toupper(exp) ~ type, ncol = 2, scales = "free_y") +
+    theme_light() +
+    theme(axis.title.y = element_blank())
+) |>
+  ggsave(
+    filename = paste("9_q24b_todr_avg.png", sep = ""),
+    device   = "png",
+    path     = "plots",
+    scale    = 1,
+    width    = 6,
+    height   = NA,
+    units    = "in",
+    dpi      = "print"
+  )
+
+# Save the results
+fwrite(x = dt_q24b, file = paste(dir$res, "dt_q24b.csv", sep = "/"))
 
 # ==============================================================================
 # 3. Research question #1
@@ -1059,12 +1643,6 @@ mapply(
 # 
 # # Keep only one aircraft type
 # # dt_q35 <- dt_q35[type == "Widebody"]
-# 
-# # Display the summary table
-# View(
-#   x     = dt_q35,
-#   title = "Average thrust reduction"
-# )
 # 
 # # Create a plot
 # (

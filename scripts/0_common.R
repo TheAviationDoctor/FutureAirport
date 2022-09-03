@@ -51,14 +51,20 @@ dat <- list(
 
 # Temporary tables for visualization
 tmp <- list(
-  "q11" = "q11", # Rel. change in mean temp., density, and headwind globally
-  "q12" = "q12", # Rel. change in maximum near-surface temperature globally
-  "q13" = "q13", # Rel. change in minimum near-surface air density globally
-  "q14" = "q14", # Rel. change in mean air temp., density, and headwind by zone
-  "q15" = "q15", # Rel. change in maximum near-surface temperature by zone
-  "q16" = "q16", # Rel. change in minimum near-surface air density by zone
-  "q21" = "q21", # Takeoff and iteration count
-  "q22" = "q22", # Successful and unsuccessful takeoffs by group
+  "q11"  = "q11", # Rel. change in mean temp., density, and headwind globally
+  "q12"  = "q12", # Rel. change in maximum near-surface temperature globally
+  "q13"  = "q13", # Rel. change in minimum near-surface air density globally
+  "q14"  = "q14", # Rel. change in mean air temp., density, and headwind by zone
+  "q15"  = "q15", # Rel. change in maximum near-surface temperature by zone
+  "q16"  = "q16", # Rel. change in minimum near-surface air density by zone
+  "q21a" = "q21a", # Takeoff count overall
+  "q21b" = "q21b", # Takeoff count by group
+  "q22a" = "q22a", # Takeoff outcomes globally
+  "q22b" = "q22b", # Takeoff outcomes by zone
+  "q23a" = "q23a", # Takeoff speeds globally
+  "q23b" = "q23b", # Takeoff speeds by zone
+  "q24a" = "q24a", # Takeoff distances globally
+  "q24b" = "q24b", # Takeoff distances by zone
   "q31" = "q31", # 
   "q32" = "q32", #
   "q33" = "q33", #
