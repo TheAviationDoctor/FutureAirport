@@ -46,6 +46,8 @@ dat <- list(
   "imp" = "imp",     # Climate data imported from the NetCDF files
   "pop" = "pop",     # Population and sample airports
   "tko" = "tko",     # Takeoff performance calculation outputs
+  "an1" = "an1",     # Climate change summary
+  "an2" = "an2",     # Takeoff simulation summary
   "idx" = "idx"      # Index name
 )
 
@@ -59,6 +61,7 @@ tmp <- list(
   "q16"  = "q16", # Rel. change in minimum near-surface air density by zone
   "q21a" = "q21a", # Takeoff count overall
   "q21b" = "q21b", # Takeoff count by group
+  "q21c" = "q21c", # 
   "q22a" = "q22a", # Takeoff outcomes globally
   "q22b" = "q22b", # Takeoff outcomes by zone
   "q23a" = "q23a", # Takeoff speeds globally
@@ -70,6 +73,10 @@ tmp <- list(
   "q33" = "q33", #
   "q34" = "q34", #
   "q35" = "q35", #
+  "q36" = "q36", #
+  "q37" = "q37", #
+  "sum_cli" = "sum_cli", #
+  "sum_tko" = "sum_tko", #
   "tst" = "tst"  # TEST TABLE, DELETE AFTERWARDS
 )
 
@@ -82,6 +89,11 @@ act <- list(
   "Airbus A350-900"  = "A359", # Trent XWB-84 engine
   "Boeing 737 MAX 9" = "B39m", # CFM LEAP-1B27 engine
   "Boeing 787-9"     = "B789"  # Trent 1000-K2 engine
+)
+
+bod <- list(
+  "Narrowbody" = c("A20n", "B39m"),
+  "Widebody"   = c("A359", "B789")
 )
 
 # ==============================================================================

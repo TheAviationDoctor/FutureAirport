@@ -138,15 +138,15 @@ fn_transform <- function(apt) {
   # Polynomial approximation for the saturation vapor pressure at 0°C in mbar
   # Based on the ESW(T) function at https://icoads.noaa.gov/software/other/profs
   pol <- 0.99999683 +
-    (dt_nc[, tas] - 273.15) * (-0.90826951E-02 +
-      (dt_nc[, tas] - 273.15) * (0.78736169E-04 +
-        (dt_nc[, tas] - 273.15) * (-0.61117958E-06 +
-          (dt_nc[, tas] - 273.15) * (0.43884187E-08 +
-            (dt_nc[, tas] - 273.15) * (-0.29883885E-10 +
-              (dt_nc[, tas] - 273.15) * (0.21874425E-12 +
-                (dt_nc[, tas] - 273.15) * (-0.17892321E-14 +
-                  (dt_nc[, tas] - 273.15) * (0.11112018E-16 +
-                    (dt_nc[, tas] - 273.15) * (-0.30994571E-19)))))))))
+    (dt_nc[, tas] - sim$k_to_c) * (-0.90826951E-02 +
+      (dt_nc[, tas] - sim$k_to_c) * (0.78736169E-04 +
+        (dt_nc[, tas] - sim$k_to_c) * (-0.61117958E-06 +
+          (dt_nc[, tas] - sim$k_to_c) * (0.43884187E-08 +
+            (dt_nc[, tas] - sim$k_to_c) * (-0.29883885E-10 +
+              (dt_nc[, tas] - sim$k_to_c) * (0.21874425E-12 +
+                (dt_nc[, tas] - sim$k_to_c) * (-0.17892321E-14 +
+                  (dt_nc[, tas] - sim$k_to_c) * (0.11112018E-16 +
+                    (dt_nc[, tas] - sim$k_to_c) * (-0.30994571E-19)))))))))
 
   # Calculate the partial pressure of water vapor in mbar
   pv <- (sim$sat_ref / pol^8L) * (dt_nc[, hurs] / 100L)
