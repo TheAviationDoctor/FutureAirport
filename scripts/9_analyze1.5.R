@@ -1581,51 +1581,86 @@ setnames(x = dt_q37, old = "avg_thr_red", new = "avg_thr")
 set(x = dt_q37, j = "avg_tom_red",  value = dt_q37[, avg_tom_red] / sim$pax_avg)
 setnames(x = dt_q37, old = "avg_tom_red", new = "avg_pax")
 
-# CURRENTLY READY TO TEST THIS BUT NEED TO RE-CREATE TABLE Q37 FOR ALL YEARS IN MYSQL FIRST (JUST RUN THIS SCRIPT)
-# Replace data with local polynomial regression fitting to dampen the volatility
-dt_q37[, avg_thr_loess :=
-         lapply(X = .SD, FUN = function(x)
-           predict(loess(formula = x ~ year, span = .75, model = TRUE))
-         ),
-       by = c("exp", "zone", "type"),
-       .SDcols = "avg_thr"
-]
-
-# FOR TESTING ONLY
-View(dt_q37)
-stop()
+# Define the variables of interest
+cols_q37 <- c("avg_thr", "avg_pax")
 
 # Summarize the data and combine
-dt_res <- rbind(
+dt_q37 <- rbind(
   # Zonal summary
   dt_q37[, lapply(.SD, mean),
     by = c("year", "exp", "zone", "type"),
-    .SDcols = c("avg_thr")
+    .SDcols = cols_q37
   ],
   # Global summary
   dt_q37[, zone := "Global"][, lapply(.SD, mean),
     by = c("year", "exp", "zone", "type"),
-    .SDcols = c("avg_thr")
+    .SDcols = cols_q37
   ]
 )
 
-View(dt_res)
+# Perform local polynomial regression fitting to dampen the volatility
+dt_q37[, paste(cols_q37, "_loess", sep = "") :=
+  lapply(X = .SD, FUN = function(x) {
+    predict(loess(formula = x ~ year, span = .75, model = TRUE))
+  }),
+  by = c("exp", "zone", "type"),
+  .SDcols = cols_q37
+]
+
+# Count the observations by group
+# obs_q37 <- dt_q37[, .N, by = c("exp", "zone", "type")]
+
+# Extend the first-year values by group
+# ini_q37 <- dt_q37[, .SD[1:1], by = c("exp", "zone", "type")]
+
+# merge(
+#   x = dt_q37,
+#   y = dt_q37[, .SD[1:1], by = c("exp", "zone", "type")][, c("avg_thr_loess", "avg_pax_loess")],
+#   by = c("exp", "zone", "type")
+# )
+
+# Add the first-year values by group
+dt_q37 <- dt_q37[dt_q37[, .SD[1:1], by = c("exp", "zone", "type")],
+       on = c("exp", "zone", "type")][, !("i.year")]
+
+# Rename the new columns
+setnames(
+  x   = dt_q37,
+  old = c("i.avg_thr", "i.avg_pax", "i.avg_thr_loess", "i.avg_pax_loess"),
+  new = c("avg_thr_ini", "avg_pax_ini", "avg_thr_loess_ini", "avg_pax_loess_ini")
+)
+
+# Calculate relative increase in thrust
+dt_q37[, avg_thr_inc := (avg_thr - avg_thr_ini) / avg_thr_ini]
+dt_q37[, avg_thr_loess_inc := (avg_thr_loess - avg_thr_loess_ini) /
+         avg_thr_loess_ini]
+
+# Calculate relative increase in pax removals
+dt_q37[, avg_pax_inc := (avg_pax - avg_pax_ini) / avg_pax_ini]
+dt_q37[, avg_pax_loess_inc := (avg_pax_loess - avg_pax_loess_ini) /
+         avg_pax_loess_ini]
+
+
+# Update the variables of interest
+# cols_q37 <- c("avg_thr_loess", "avg_pax_loess")
 
 # Create a plot
 (
   ggplot(
-    data    = dt_res,
-    mapping = aes(x = year, y = avg_thr, color = zone)
+    data    = dt_q37,
+    mapping = aes(x = year, y = avg_thr_inc, color = zone)
   ) +
     geom_line() +
     geom_smooth(formula = y ~ x, method = "loess", size = .5) +
     scale_x_continuous(name = "Year") +
-    facet_wrap(toupper(exp) ~ type, ncol = 2, scales = "free_y") +
+    scale_y_continuous(name = "Percentage", labels = scales::percent) +
+    # facet_wrap(toupper(exp) ~ type, ncol = 2, scales = "free_y") +
+    facet_wrap(toupper(exp) ~ type, ncol = 2) +
     theme_light() +
     theme(axis.title.y = element_blank())
 ) |>
 ggsave(
-  filename = paste("test.png", sep = ""),
+  filename = paste("test2.png", sep = ""),
   device   = "png",
   path     = "plots",
   scale    = 1,
