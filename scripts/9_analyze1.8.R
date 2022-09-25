@@ -1571,33 +1571,178 @@ set(x = dt_q36, j = "zone", value = as.factor(dt_q36[, zone]))
 set(x = dt_q36, j = "exp",  value = as.factor(dt_q36[, exp]))
 set(x = dt_q36, j = "icao", value = as.factor(dt_q36[, icao]))
 
-# Declare dependent variables of interest
-cols <- c("avg_tas", "avg_rho", "avg_hdw", "max_tas")
+# Convert near-surface temperatures from °K to °C for display
+dt_q36[, avg_tas := avg_tas - sim$k_to_c]
+dt_q36[, max_tas := max_tas - sim$k_to_c]
 
-# Save the data to disk
-fwrite(
-  x    = dt_q36,
-  file = paste(dir$res, "dt_q36.csv", sep = "/")
-)
+# Declare dependent variables of interest
+cols <- c("avg_tas", "avg_rho", "avg_hdw", "max_tas", "min_rho")
+
+# Declare grouping of interest
+grp <- c("year", "exp", "zone")
 
 # Summarize and combine the data by group
 dt_q36 <- rbind(
   # Zonal summary
   cbind(
-    dt_q36[, lapply(.SD, mean), by = c("year", "exp", "zone"), .SDcols = c("avg_tas", "avg_rho", "avg_hdw")],
-    dt_q36[, lapply(.SD, max),  by = c("year", "exp", "zone"), .SDcols = c("max_tas")][, "max_tas"],
-    dt_q36[, lapply(.SD, min),  by = c("year", "exp", "zone"), .SDcols = c("min_rho")][, "min_rho"]
+    dt_q36[, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = c("avg_tas", "avg_rho", "avg_hdw")
+    ],
+    dt_q36[, lapply(X = .SD, FUN = max),
+      by = grp,
+      .SDcols = c("max_tas")
+    ][, "max_tas"],
+    dt_q36[, lapply(X = .SD, FUN = min),
+      by = grp,
+      .SDcols = c("min_rho")
+    ][, "min_rho"]
   ),
   # Global summary
   cbind(
-    dt_q36[, zone := "Global"][, lapply(.SD, mean), by = c("year", "exp", "zone"), .SDcols = c("avg_tas", "avg_rho", "avg_hdw")],
-    dt_q36[, zone := "Global"][, lapply(.SD, max),  by = c("year", "exp", "zone"), .SDcols = c("max_tas")][, "max_tas"],
-    dt_q36[, zone := "Global"][, lapply(.SD, min),  by = c("year", "exp", "zone"), .SDcols = c("min_rho")][, "min_rho"]
+    dt_q36[, zone := "Global"][, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = c("avg_tas", "avg_rho", "avg_hdw")
+    ],
+    dt_q36[, zone := "Global"][, lapply(X = .SD, FUN = max),
+      by = grp,
+      .SDcols = c("max_tas")
+    ][, "max_tas"],
+    dt_q36[, zone := "Global"][, lapply(X = .SD, FUN = min),
+      by = grp,
+      .SDcols = c("min_rho")
+    ][, "min_rho"]
   )
 )
 
-# CHECK THAT THE DATA IN DT_Q36.CSV MATCHES THE VIEW
-View(dt_q36)
+# Update grouping of interest
+grp <- c("exp", "zone")
+
+# Perform local polynomial regression fitting to dampen the volatility
+dt_q36[,
+  paste(cols, "loess", sep = "_") := lapply(
+    X = .SD,
+    FUN = function(x) {
+      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+    }
+  ),
+  by = grp,
+  .SDcols = cols
+]
+
+# Add the first-year values by group
+dt_q36 <- dt_q36[dt_q36[, .SD[1:1], by = grp], on = grp][,
+  c("i.year",
+    "i.avg_tas",
+    "i.avg_rho",
+    "i.avg_hdw",
+    "i.max_tas",
+    "i.min_rho"
+  ) := NULL
+]
+
+# Calculate relative changes in dependent variables and remove initial values
+# dt_q36[, avg_tas_per := (avg_tas_loess - i.avg_tas_loess) /
+#   i.avg_tas_loess][, i.avg_tas_loess := NULL]
+# dt_q36[, avg_rho_per := (avg_rho_loess - i.avg_rho_loess) /
+#   i.avg_rho_loess][, i.avg_rho_loess := NULL]
+# dt_q36[, avg_hdw_per := (avg_hdw_loess - i.avg_hdw_loess) /
+#   i.avg_hdw_loess][, i.avg_hdw_loess := NULL]
+# dt_q36[, max_tas_per := (max_tas_loess - i.max_tas_loess) /
+#   i.max_tas_loess][, i.max_tas_loess := NULL]
+# dt_q36[, min_rho_per := (min_rho_loess - i.min_rho_loess) /
+#   i.min_rho_loess][, i.min_rho_loess := NULL]
+
+# Calculate relative changes in dependent variables and remove initial values
+lapply(
+  X = cols,
+  FUN = function(x) {
+    dt_q36[, paste(x, "per", sep = "_") :=
+      (
+        get(paste(x, "loess", sep = "_")) -
+        get(paste("i.", x, "_loess", sep = ""))
+      ) /
+        get(paste("i.", x, "_loess", sep = ""))
+    ][, paste("i.", x, "_loess", sep = "") := NULL]
+  }
+)
+
+# Create a function to plot results
+fn_plot <- function(cols) {
+  (
+    ggplot(
+      data    = dt_q36,
+      mapping = aes(
+        x     = year,
+        y     = dt_q36[[as.character(cols)]],
+        color = zone
+      )
+    ) +
+      geom_line(size = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      # Starting value labels
+      geom_text(
+        data       = dt_q36[, .SD[which.min(year)], by = grp],
+        aes(
+          x        = year,
+          y        = dt_q36[, .SD[which.min(year)], by = grp]
+                      [[paste(as.character(cols), "loess", sep = "_")]],
+          color    = zone,
+          label    = round(
+            x      = dt_q36[, .SD[which.min(year)], by = grp]
+                      [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        size  = 2L,
+        vjust = -1L
+      ) +
+      # Ending value labels
+      geom_text(
+        data       = dt_q36[, .SD[which.max(year)], by = grp],
+        aes(
+          x        = year,
+          y        = dt_q36[, .SD[which.max(year)], by = grp]
+                      [[paste(as.character(cols), "loess", sep = "_")]],
+          color    = zone,
+          label    = round(
+            x      = dt_q36[, .SD[which.max(year)], by = grp]
+                      [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        size  = 2L,
+        vjust = -1L
+      ) +
+      scale_x_continuous(name = "Year") +
+      scale_y_continuous(name = "Value") +
+      facet_wrap(~toupper(exp), ncol = 2L) +
+      theme_light() +
+      theme(axis.title.y = element_blank())
+  ) |>
+  ggsave(
+    filename = tolower(paste("9_", cols, ".png", sep = "")),
+    device   = "png",
+    path     = "plots",
+    scale    = 1L,
+    width    = 6L,
+    height   = NA,
+    units    = "in",
+    dpi      = "print"
+  )
+}
+
+# Generate the plots
+mapply(
+  FUN  = fn_plot,
+  cols = cols
+)
+
+# # Save the data to disk
+# fwrite(
+#   x    = dt_q36,
+#   file = paste(dir$res, "dt_q36.csv", sep = "/")
+# )
 
 # ==============================================================================
 # 3.7 WORKING/FINAL - THRUST INCREASE & PAX REMOVALS
@@ -1669,51 +1814,50 @@ View(dt_q36)
 # # Declare dependent variables of interest
 # cols <- c("avg_thr", "avg_pax")
 # 
+# # Declare grouping of interest
+# grp <- c("year", "exp", "zone", "type")
+# 
 # # Summarize and combine the data by group
 # dt_q37 <- rbind(
 #   # Zonal summary
-#   dt_q37[, lapply(.SD, mean),
-#     by = c("year", "exp", "zone", "type"),
+#   dt_q37[, lapply(X = .SD, FUN = mean),
+#     by = grp,
 #     .SDcols = cols
 #   ],
 #   # Global summary
-#   dt_q37[, zone := "Global"][, lapply(.SD, mean),
-#     by = c("year", "exp", "zone", "type"),
+#   dt_q37[, zone := "Global"][, lapply(X = .SD, FUN = mean),
+#     by = grp,
 #     .SDcols = cols
 #   ]
 # )
 # 
-# # Perform local polynomial regression fitting to dampen the volatility
+# # Update grouping of interest
+# grp <- c("exp", "zone", "type")
+# 
+# Perform local polynomial regression fitting to dampen the volatility
 # dt_q37[,
-#   paste(
-#     cols,
-#     "loess",
-#     sep = "_"
-#   ) := lapply(
+#   paste(cols, "loess", sep = "_") := lapply(
 #     X = .SD,
 #     FUN = function(x) {
 #       predict(loess(formula = x ~ year, span = .75, model = TRUE))
 #     }
 #   ),
-#   by = c("exp", "zone", "type"),
+#   by = grp,
 #   .SDcols = cols
 # ]
 # 
 # # Add the first-year values by group
-# dt_q37 <- dt_q37[dt_q37[, .SD[1:1], by = c("exp", "zone", "type")],
-#  on = c("exp", "zone", "type")][, c("i.year", "i.avg_thr", "i.avg_pax") := NULL]
+# dt_q37 <- dt_q37[dt_q37[, .SD[1:1], by = grp],
+#  on = grp][, c("i.year", "i.avg_thr", "i.avg_pax") := NULL]
 # 
-# # Calculate relative changes in thrust & pax removals and remove initial values
+# # Calculate relative changes in dependent variables and remove initial values
 # dt_q37[, avg_thr_per := (avg_thr_loess - i.avg_thr_loess) /
 #   i.avg_thr_loess][, i.avg_thr_loess := NULL]
 # dt_q37[, avg_pax_per := (avg_pax_loess - i.avg_pax_loess) /
 #   i.avg_pax_loess][, i.avg_pax_loess := NULL]
 # 
-# # Save the data to disk
-# fwrite(
-#   x    = dt_q37,
-#   file = paste(dir$res, "dt_q37.csv", sep = "/")
-# )
+# # Update grouping of interest
+# grp <- c("exp", "zone")
 # 
 # # Create a function to plot results
 # fn_plot <- function(body, cols) {
@@ -1731,16 +1875,16 @@ View(dt_q36)
 #       # Starting value labels
 #       geom_text(
 #         data       = dt_q37[type == body]
-#                       [, .SD[which.min(year)], by = c("exp", "zone")],
+#                       [, .SD[which.min(year)], by = grp],
 #         aes(
 #           x        = year,
 #           y        = dt_q37[type == body]
-#                       [, .SD[which.min(year)], by = c("exp", "zone")]
+#                       [, .SD[which.min(year)], by = grp]
 #                       [[paste(as.character(cols), "loess", sep = "_")]],
 #           color    = zone,
 #           label    = round(
 #             x      = dt_q37[type == body]
-#                       [, .SD[which.min(year)], by = c("exp", "zone")]
+#                       [, .SD[which.min(year)], by = grp]
 #                       [[paste(as.character(cols), "loess", sep = "_")]],
 #             digits = 2L
 #           )
@@ -1751,16 +1895,16 @@ View(dt_q36)
 #       # Ending value labels
 #       geom_text(
 #         data       = dt_q37[type == body]
-#                       [, .SD[which.max(year)], by = c("exp", "zone")],
+#                       [, .SD[which.max(year)], by = grp],
 #         aes(
 #           x        = year,
 #           y        = dt_q37[type == body]
-#                       [, .SD[which.max(year)], by = c("exp", "zone")]
+#                       [, .SD[which.max(year)], by = grp]
 #                       [[paste(as.character(cols), "loess", sep = "_")]],
 #           color    = zone,
 #           label    = round(
 #             x      = dt_q37[type == body]
-#                       [, .SD[which.max(year)], by = c("exp", "zone")]
+#                       [, .SD[which.max(year)], by = grp]
 #                       [[paste(as.character(cols), "loess", sep = "_")]],
 #             digits = 2L
 #           )
@@ -1797,6 +1941,12 @@ View(dt_q36)
 #   FUN  = fn_plot,
 #   body = mix$body,
 #   cols = mix$cols
+# )
+# 
+# # Save the data to disk
+# fwrite(
+#   x    = dt_q37,
+#   file = paste(dir$res, "dt_q37.csv", sep = "/")
 # )
 
 # ==============================================================================

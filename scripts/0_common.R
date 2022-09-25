@@ -36,7 +36,6 @@ fls <- list(
 # 2 Database parameters
 # ==============================================================================
 
-# Data tables
 dat <- list(
   "cnf" = ".my.cnf", # File that contains the database connection parameters
   "grp" = "phd",     # Group name within the cnf file
@@ -47,37 +46,9 @@ dat <- list(
   "pop" = "pop",     # Population and sample airports
   "tko" = "tko",     # Takeoff performance calculation outputs
   "an1" = "an1",     # Climate change summary
-  "an2" = "an2",     # Takeoff simulation summary
+  "an2" = "an2",     # Takeoff outcomes summary
+  "an3" = "an3",     # Research questions summary
   "idx" = "idx"      # Index name
-)
-
-# Temporary tables for visualization
-tmp <- list(
-  "q11"  = "q11", # Rel. change in mean temp., density, and headwind globally
-  "q12"  = "q12", # Rel. change in maximum near-surface temperature globally
-  "q13"  = "q13", # Rel. change in minimum near-surface air density globally
-  "q14"  = "q14", # Rel. change in mean air temp., density, and headwind by zone
-  "q15"  = "q15", # Rel. change in maximum near-surface temperature by zone
-  "q16"  = "q16", # Rel. change in minimum near-surface air density by zone
-  "q21a" = "q21a", # Takeoff count overall
-  "q21b" = "q21b", # Takeoff count by group
-  "q21c" = "q21c", # 
-  "q22a" = "q22a", # Takeoff outcomes globally
-  "q22b" = "q22b", # Takeoff outcomes by zone
-  "q23a" = "q23a", # Takeoff speeds globally
-  "q23b" = "q23b", # Takeoff speeds by zone
-  "q24a" = "q24a", # Takeoff distances globally
-  "q24b" = "q24b", # Takeoff distances by zone
-  "q31" = "q31", # 
-  "q32" = "q32", #
-  "q33" = "q33", #
-  "q34" = "q34", #
-  "q35" = "q35", #
-  "q36" = "q36", #
-  "q37" = "q37", #
-  "sum_cli" = "sum_cli", #
-  "sum_tko" = "sum_tko", #
-  "tst" = "tst"  # TEST TABLE, DELETE AFTERWARDS
 )
 
 # ==============================================================================
@@ -85,10 +56,10 @@ tmp <- list(
 # ==============================================================================
 
 act <- list(
-  "Airbus A320neo"   = "A20n", # LEAP-1A29 engine
-  "Airbus A350-900"  = "A359", # Trent XWB-84 engine
-  "Boeing 737 MAX 9" = "B39m", # CFM LEAP-1B27 engine
-  "Boeing 787-9"     = "B789"  # Trent 1000-K2 engine
+  "Airbus A320neo"   = "A20n", # With LEAP-1A29 engines
+  "Airbus A350-900"  = "A359", # With Trent XWB-84 engines
+  "Boeing 737 MAX 9" = "B39m", # With CFM LEAP-1B27 engines
+  "Boeing 787-9"     = "B789"  # With Trent 1000-K2 engines
 )
 
 bod <- list(
@@ -134,14 +105,6 @@ sim <- list(
   "rsp_air"     = 287.058,     # Specific gas constant for dry air in J/(kg·K)
   "rsp_h2o"     = 461.495      # Spec. gas constant for water vapor in J/(kg·K)
 )
-
-# Absolute latitudinal boundaries for the Earth's climate zones
-# lat <- list(
-#   "tro" = list(name = "Tropical",    lower = 0L,      upper = 23.4365),
-#   "sub" = list(name = "Subtropical", lower = 23.4365, upper = 30L), 
-#   "tem" = list(name = "Temperate",   lower = 30L,     upper = 66.5635),
-#   "fri" = list(name = "Frigid",      lower = 66.5635, upper = 90L)
-# )
 
 # Absolute latitudinal boundaries for the Earth's climate zones
 geo <- list(
