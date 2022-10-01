@@ -260,28 +260,26 @@ cat("\014")
 # 2. Takeoff outcomes summary
 # ==============================================================================
 
-# Create the summary table (runtime: ~80 minutes)
+# Create the summary table (runtime: ~X minutes)
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
       tolower(dat$an2),
     "(
-      year           YEAR,
       exp            CHAR(6),
       zone           CHAR(11),
       icao           CHAR(4),
       type           CHAR(4),
       itr_avg        FLOAT,
-      itr_sum        MEDIUMINT,
-      tko_ok_thr_min SMALLINT,
-      tko_ok_thr_mid SMALLINT,
-      tko_ok_thr_max SMALLINT,
-      tko_ok         SMALLINT,
-      tko_ko         SMALLINT,
-      tko            SMALLINT
+      itr_sum        INT,
+      tko_ok_thr_min MEDIUMINT,
+      tko_ok_thr_mid MEDIUMINT,
+      tko_ok_thr_max MEDIUMINT,
+      tko_ok         MEDIUMINT,
+      tko_ko         MEDIUMINT,
+      tko            MEDIUMINT
     )
     AS SELECT
-      year,
       exp,
       zone,
       icao,
@@ -297,7 +295,6 @@ fn_sql_qry(
     FROM",
       tolower(dat$tko),
     "GROUP BY
-      year,
       exp,
       icao,
       type
@@ -319,11 +316,11 @@ dt_an2 <- fn_sql_qry(
 )
 
 # Recast column types
-set(x = dt_an2, j = "year", value = as.integer(dt_an2[, year]))
-set(x = dt_an2, j = "zone", value = as.factor(dt_an2[, zone]))
-set(x = dt_an2, j = "exp",  value = as.factor(dt_an2[, exp]))
-set(x = dt_an2, j = "icao", value = as.factor(dt_an2[, icao]))
-set(x = dt_an2, j = "type", value = as.factor(dt_an2[, type]))
+set(x = dt_an2, j = "zone",    value = as.factor(dt_an2[, zone]))
+set(x = dt_an2, j = "exp",     value = as.factor(dt_an2[, exp]))
+set(x = dt_an2, j = "icao",    value = as.factor(dt_an2[, icao]))
+set(x = dt_an2, j = "type",    value = as.factor(dt_an2[, type]))
+set(x = dt_an2, j = "itr_sum", value = as.numeric(dt_an2[, itr_sum]))
 
 # Combine the aircraft types to narrow/widebody
 levels(dt_an2$type) <- bod
@@ -341,13 +338,7 @@ cols <- c(
 )
 
 # Declare grouping of interest
-grp <- c("year", "exp", "zone", "type")
-
-# Save the data to disk
-fwrite(
-  x    = dt_an2,
-  file = paste(dir$res, "dt_an2_original.csv", sep = "/")
-)
+grp <- c("exp", "zone", "type")
 
 # Summarize and combine the data by group
 dt_an2 <- rbind(
@@ -387,14 +378,16 @@ dt_an2 <- rbind(
     dt_an2[, zone := "Global"][, lapply(X = .SD, FUN = mean),
       by = grp,
       .SDcols = c("itr_avg")
-    ][, "itr_avg"],
+    ][, "itr_avg"]
   )
 )
+
+
 
 # Save the data to disk
 fwrite(
   x    = dt_an2,
-  file = paste(dir$res, "dt_an2_processed.csv", sep = "/")
+  file = paste(dir$res, "dt_an2.csv", sep = "/")
 )
 
 # # ==============================================================================
