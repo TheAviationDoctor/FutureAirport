@@ -309,75 +309,75 @@ cat("\014")
 # 2.1 Create, fetch, and cleanse the data
 # ==============================================================================
 
-# Create the summary table (runtime: ~80 minutes)
-fn_sql_qry(
-  statement = paste(
-    "CREATE TABLE IF NOT EXISTS",
-      tolower(dat$an2),
-    "(
-      year           YEAR,
-      exp            CHAR(6),
-      zone           CHAR(11),
-      icao           CHAR(4),
-      type           CHAR(4),
-      itr_avg        FLOAT,
-      itr_sum        INT,
-      tko_ok_thr_min MEDIUMINT,
-      tko_ok_thr_mid MEDIUMINT,
-      tko_ok_thr_max MEDIUMINT,
-      tko_ok         MEDIUMINT,
-      tko_ko         MEDIUMINT,
-      tko            MEDIUMINT
-    )
-    AS SELECT
-      year,
-      exp,
-      zone,
-      icao,
-      type,
-      AVG(itr)                                         AS itr_avg,
-      SUM(itr)                                         AS itr_sum,
-      SUM(thr_red =", sim$thr_ini, ")                  AS tko_ok_thr_min,
-      SUM(thr_red BETWEEN 1 AND", sim$thr_ini - 1L, ") AS tko_ok_thr_mid,
-      SUM(thr_red = 0 AND todr <= toda)                AS tko_ok_thr_max,
-      SUM(todr <= toda)                                AS tko_ok,
-      SUM(todr > toda)                                 AS tko_ko,
-      COUNT(*)                                         AS tko
-    FROM",
-      tolower(dat$tko),
-    "GROUP BY
-      year,
-      exp,
-      icao,
-      type
-    ;",
-    sep = " "
-  )
-)
-
-# Fetch the data
-dt_an2 <- fn_sql_qry(
-  statement = paste(
-    "SELECT
-      *
-    FROM",
-      tolower(dat$an2),
-    ";",
-    sep = " "
-  )
-)
-
-# Recast column types
-set(x = dt_an2, j = "year",    value = as.integer(dt_an2[, year]))
-set(x = dt_an2, j = "zone",    value = as.factor(dt_an2[, zone]))
-set(x = dt_an2, j = "exp",     value = as.factor(dt_an2[, exp]))
-set(x = dt_an2, j = "icao",    value = as.factor(dt_an2[, icao]))
-set(x = dt_an2, j = "type",    value = as.factor(dt_an2[, type]))
-set(x = dt_an2, j = "itr_sum", value = as.numeric(dt_an2[, itr_sum]))
-
-# Combine the aircraft types to narrow/widebody
-levels(dt_an2$type) <- bod
-
+# # Create the summary table (runtime: ~80 minutes)
+# fn_sql_qry(
+#   statement = paste(
+#     "CREATE TABLE IF NOT EXISTS",
+#       tolower(dat$an2),
+#     "(
+#       year           YEAR,
+#       exp            CHAR(6),
+#       zone           CHAR(11),
+#       icao           CHAR(4),
+#       type           CHAR(4),
+#       itr_avg        FLOAT,
+#       itr_sum        INT,
+#       tko_ok_thr_min MEDIUMINT,
+#       tko_ok_thr_mid MEDIUMINT,
+#       tko_ok_thr_max MEDIUMINT,
+#       tko_ok         MEDIUMINT,
+#       tko_ko         MEDIUMINT,
+#       tko            MEDIUMINT
+#     )
+#     AS SELECT
+#       year,
+#       exp,
+#       zone,
+#       icao,
+#       type,
+#       AVG(itr)                                         AS itr_avg,
+#       SUM(itr)                                         AS itr_sum,
+#       SUM(thr_red =", sim$thr_ini, ")                  AS tko_ok_thr_min,
+#       SUM(thr_red BETWEEN 1 AND", sim$thr_ini - 1L, ") AS tko_ok_thr_mid,
+#       SUM(thr_red = 0 AND todr <= toda)                AS tko_ok_thr_max,
+#       SUM(todr <= toda)                                AS tko_ok,
+#       SUM(todr > toda)                                 AS tko_ko,
+#       COUNT(*)                                         AS tko
+#     FROM",
+#       tolower(dat$tko),
+#     "GROUP BY
+#       year,
+#       exp,
+#       icao,
+#       type
+#     ;",
+#     sep = " "
+#   )
+# )
+# 
+# # Fetch the data
+# dt_an2 <- fn_sql_qry(
+#   statement = paste(
+#     "SELECT
+#       *
+#     FROM",
+#       tolower(dat$an2),
+#     ";",
+#     sep = " "
+#   )
+# )
+# 
+# # Recast column types
+# set(x = dt_an2, j = "year",    value = as.integer(dt_an2[, year]))
+# set(x = dt_an2, j = "zone",    value = as.factor(dt_an2[, zone]))
+# set(x = dt_an2, j = "exp",     value = as.factor(dt_an2[, exp]))
+# set(x = dt_an2, j = "icao",    value = as.factor(dt_an2[, icao]))
+# set(x = dt_an2, j = "type",    value = as.factor(dt_an2[, type]))
+# set(x = dt_an2, j = "itr_sum", value = as.numeric(dt_an2[, itr_sum]))
+# 
+# # Combine the aircraft types to narrow/widebody
+# levels(dt_an2$type) <- bod
+# 
 # # ==============================================================================
 # # 2.2 Treat dependent variables of interest
 # # ==============================================================================
@@ -392,7 +392,7 @@ levels(dt_an2$type) <- bod
 #   "tko"
 # )
 # 
-# # Convert dependent variables from absolute to relative
+# # Express dependent variables as a percentage of all takeoffs
 # lapply(
 #   X = cols,
 #   FUN = function(x) {
@@ -461,8 +461,8 @@ levels(dt_an2$type) <- bod
 # 
 # # Declare dependent variables for regression fitting
 # cols <- c(
-#   "tko_ko_rel",
-#   "tko_ok_thr_min_rel"
+#   "tko_ok_thr_min_rel",
+#   "tko_ko_rel"
 # )
 # 
 # # Declare independent variables for grouping
@@ -494,7 +494,7 @@ levels(dt_an2$type) <- bod
 # # ==============================================================================
 # 
 # # Omit frigid airports as they squish the scale
-# dt_an2 <- dt_an2[zone != "Frigid"]
+# # dt_an2 <- dt_an2[zone != "Frigid"]
 # 
 # # Update independent variables for grouping
 # grp <- c("exp", "zone")
@@ -506,55 +506,57 @@ levels(dt_an2$type) <- bod
 #       data    = dt_an2[type == body],
 #       mapping = aes(
 #         x     = year,
-#         y     = dt_an2[type == body][[as.character(cols)]],
-#         color = zone
+#         y     = dt_an2[type == body][[as.character(cols)]]
 #       )
 #     ) +
 #     geom_line(size = .2) +
 #     geom_smooth(formula = y ~ x, method = "loess", size = .5) +
 #     # Starting value labels
-#     geom_text(
+#     geom_label(
 #       data       = dt_an2[type == body][, .SD[which.min(year)], by = grp],
 #       aes(
 #         x        = year,
 #         y        = dt_an2[type == body][, .SD[which.min(year)], by = grp]
 #                     [[paste(as.character(cols), "loess", sep = "_")]],
-#         color    = zone,
-#         label    = round(
-#           x      = dt_an2[type == body]
+#         label    = sprintf(fmt = "%1.1f%%", dt_an2[type == body]
 #                     [, .SD[which.min(year)], by = grp]
-#                     [[paste(as.character(cols), "loess", sep = "_")]],
-#           digits = 2L
+#                     [[paste(as.character(cols), "loess", sep = "_")]] * 100L
 #         )
 #       ),
-#       size  = 2L,
-#       hjust = -.25,
-#       vjust = -1L
+#       alpha      = .5,
+#       fill       = "white",
+#       label.r    = unit(0L, "lines"),
+#       label.size = 0L,
+#       nudge_x    = 4L,
+#       size       = 2L
 #     ) +
 #     # Ending value labels
-#     geom_text(
+#     geom_label(
 #       data       = dt_an2[type == body][, .SD[which.max(year)], by = grp],
 #       aes(
 #         x        = year,
 #         y        = dt_an2[type == body][, .SD[which.max(year)], by = grp]
 #                     [[paste(as.character(cols), "loess", sep = "_")]],
-#         color    = zone,
-#         label    = round(
-#           x      = dt_an2[type == body]
+#         label    = sprintf(fmt = "%1.1f%%", dt_an2[type == body]
 #                     [, .SD[which.max(year)], by = grp]
-#                     [[paste(as.character(cols), "loess", sep = "_")]],
-#           digits = 2L
+#                     [[paste(as.character(cols), "loess", sep = "_")]] * 100L
 #         )
 #       ),
-#       size  = 2L,
-#       hjust = 1L,
-#       vjust = -1L
+#       alpha      = .5,
+#       fill       = "white",
+#       label.r    = unit(0L, "lines"),
+#       label.size = 0L,
+#       nudge_x    = -4L,
+#       size       = 2L
 #     ) +
 #     scale_x_continuous(name = "Year", n.breaks = 3L) +
 #     scale_y_continuous(name = "Value", labels = scales::percent) +
-#     facet_wrap(facets = ~toupper(exp), ncol = 4L) +
+#     facet_grid(zone ~ toupper(exp), scales = "free_y") +
 #     theme_light() +
-#     theme(axis.title.y = element_blank())
+#     theme(
+#       axis.title.y = element_blank(),
+#       text = element_text(size = 8)
+#     )
 #   ) |>
 #   ggsave(
 #     filename = tolower(paste("9_", body, "_", cols, ".png", sep = "")),
@@ -580,7 +582,7 @@ levels(dt_an2$type) <- bod
 #   body = mix$body,
 #   cols = mix$cols
 # )
-# 
+
 # # ==============================================================================
 # # 3. Research questions summary
 # # ==============================================================================
