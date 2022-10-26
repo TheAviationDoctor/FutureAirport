@@ -48,7 +48,7 @@ cat("\014")
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
-      tolower(dat$an1),
+    tolower(dat$an1),
     "(
       year     YEAR,
       exp      CHAR(6),
@@ -75,7 +75,7 @@ fn_sql_qry(
       MAX(tas)  AS max_tas,
       MIN(rho)  AS min_rho
     FROM",
-      tolower(dat$cli),
+    tolower(dat$cli),
     "GROUP BY
       year,
       exp,
@@ -91,7 +91,7 @@ dt_an1 <- fn_sql_qry(
     "SELECT
       *
     FROM",
-      tolower(dat$an1),
+    tolower(dat$an1),
     ";",
     sep = " "
   )
@@ -100,7 +100,7 @@ dt_an1 <- fn_sql_qry(
 # Recast column types
 set(x = dt_an1, j = "year", value = as.integer(dt_an1[, year]))
 set(x = dt_an1, j = "zone", value = as.factor(dt_an1[, zone]))
-set(x = dt_an1, j = "exp",  value = as.factor(dt_an1[, exp]))
+set(x = dt_an1, j = "exp", value = as.factor(dt_an1[, exp]))
 set(x = dt_an1, j = "icao", value = as.factor(dt_an1[, icao]))
 
 # ==============================================================================
@@ -202,10 +202,9 @@ lapply(
     dt_an1[, paste(x, "loess", "per", sep = "_") :=
       (
         get(paste(x, "loess", sep = "_")) -
-        get(paste("i.", x, "_loess", sep = ""))
+          get(paste("i.", x, "_loess", sep = ""))
       ) /
-        get(paste("i.", x, "_loess", sep = ""))
-    ]
+        get(paste("i.", x, "_loess", sep = ""))]
   }
 )
 
@@ -226,73 +225,73 @@ fwrite(
 fn_plot <- function(cols) {
   (
     ggplot(
-      data    = dt_an1,
+      data = dt_an1,
       mapping = aes(
         x     = year,
         y     = dt_an1[[as.character(cols)]]
       )
     ) +
-    geom_line(size = .2) +
-    geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-    # Starting value labels
-    geom_label(
-      data       = dt_an1[, .SD[which.min(year)], by = grp],
-      aes(
-        x        = year,
-        y        = dt_an1[, .SD[which.min(year)], by = grp]
-        [[paste(as.character(cols), "loess", sep = "_")]],
-        label    = round(
-          x      = dt_an1[, .SD[which.min(year)], by = grp]
+      geom_line(size = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      # Starting value labels
+      geom_label(
+        data = dt_an1[, .SD[which.min(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an1[, .SD[which.min(year)], by = grp]
           [[paste(as.character(cols), "loess", sep = "_")]],
-          digits = 2L
-        )
-      ),
-      alpha      = .5,
-      fill       = "white",
-      label.r    = unit(0L, "lines"),
-      label.size = 0L,
-      nudge_x    = 4L,
-      size       = 2L
-    ) +
-    # Ending value labels
-    geom_label(
-      data       = dt_an1[, .SD[which.max(year)], by = grp],
-      aes(
-        x        = year,
-        y        = dt_an1[, .SD[which.max(year)], by = grp]
-        [[paste(as.character(cols), "loess", sep = "_")]],
-        label    = round(
-          x      = dt_an1[, .SD[which.max(year)], by = grp]
+          label = round(
+            x = dt_an1[, .SD[which.min(year)], by = grp]
+            [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = 4L,
+        size       = 2L
+      ) +
+      # Ending value labels
+      geom_label(
+        data = dt_an1[, .SD[which.max(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an1[, .SD[which.max(year)], by = grp]
           [[paste(as.character(cols), "loess", sep = "_")]],
-          digits = 2L
-        )
-      ),
-      alpha      = .5,
-      fill       = "white",
-      label.r    = unit(0L, "lines"),
-      label.size = 0L,
-      nudge_x    = -4L,
-      size       = 2L
-    ) +
-    scale_x_continuous(name = "Year", n.breaks = 5L) +
-    scale_y_continuous(name = "Value", labels = label_comma(accuracy = .01)) +
-    facet_grid(zone ~ toupper(exp), scales = "free_y") +
-    theme_light() +
-    theme(
-      axis.title.y = element_blank(),
-      text = element_text(size = 8)
-    )
+          label = round(
+            x = dt_an1[, .SD[which.max(year)], by = grp]
+            [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = -4L,
+        size       = 2L
+      ) +
+      scale_x_continuous(name = "Year", n.breaks = 5L) +
+      scale_y_continuous(name = "Value", labels = label_comma(accuracy = .01)) +
+      facet_grid(zone ~ toupper(exp), scales = "free_y") +
+      theme_light() +
+      theme(
+        axis.title.y = element_blank(),
+        text = element_text(size = 8)
+      )
   ) |>
-  ggsave(
-    filename = tolower(paste("9_", cols, ".png", sep = "")),
-    device   = "png",
-    path     = "plots",
-    scale    = 1L,
-    width    = 6L,
-    height   = NA,
-    units    = "in",
-    dpi      = "print"
-  )
+    ggsave(
+      filename = tolower(paste("9_", cols, ".png", sep = "")),
+      device   = "png",
+      path     = "plots",
+      scale    = 1L,
+      width    = 6L,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
 }
 
 # Generate the plots
@@ -313,7 +312,7 @@ mapply(
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
-      tolower(dat$an2),
+    tolower(dat$an2),
     "(
       year           YEAR,
       exp            CHAR(6),
@@ -344,7 +343,7 @@ fn_sql_qry(
       SUM(todr > toda)                                 AS tko_ko,
       COUNT(*)                                         AS tko
     FROM",
-      tolower(dat$tko),
+    tolower(dat$tko),
     "GROUP BY
       year,
       exp,
@@ -361,18 +360,18 @@ dt_an2 <- fn_sql_qry(
     "SELECT
       *
     FROM",
-      tolower(dat$an2),
+    tolower(dat$an2),
     ";",
     sep = " "
   )
 )
 
 # Recast column types
-set(x = dt_an2, j = "year",    value = as.integer(dt_an2[, year]))
-set(x = dt_an2, j = "zone",    value = as.factor(dt_an2[, zone]))
-set(x = dt_an2, j = "exp",     value = as.factor(dt_an2[, exp]))
-set(x = dt_an2, j = "icao",    value = as.factor(dt_an2[, icao]))
-set(x = dt_an2, j = "type",    value = as.factor(dt_an2[, type]))
+set(x = dt_an2, j = "year", value = as.integer(dt_an2[, year]))
+set(x = dt_an2, j = "zone", value = as.factor(dt_an2[, zone]))
+set(x = dt_an2, j = "exp", value = as.factor(dt_an2[, exp]))
+set(x = dt_an2, j = "icao", value = as.factor(dt_an2[, icao]))
+set(x = dt_an2, j = "type", value = as.factor(dt_an2[, type]))
 set(x = dt_an2, j = "itr_sum", value = as.numeric(dt_an2[, itr_sum]))
 
 # Combine the aircraft types to narrow/widebody
@@ -503,71 +502,69 @@ grp <- c("exp", "zone")
 fn_plot <- function(body, cols) {
   (
     ggplot(
-      data    = dt_an2[type == body],
+      data = dt_an2[type == body],
       mapping = aes(
         x     = year,
         y     = dt_an2[type == body][[as.character(cols)]]
       )
     ) +
-    geom_line(size = .2) +
-    geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-    # Starting value labels
-    geom_label(
-      data       = dt_an2[type == body][, .SD[which.min(year)], by = grp],
-      aes(
-        x        = year,
-        y        = dt_an2[type == body][, .SD[which.min(year)], by = grp]
-                    [[paste(as.character(cols), "loess", sep = "_")]],
-        label    = sprintf(fmt = "%1.1f%%", dt_an2[type == body]
-                    [, .SD[which.min(year)], by = grp]
-                    [[paste(as.character(cols), "loess", sep = "_")]] * 100L
-        )
-      ),
-      alpha      = .5,
-      fill       = "white",
-      label.r    = unit(0L, "lines"),
-      label.size = 0L,
-      nudge_x    = 4L,
-      size       = 2L
-    ) +
-    # Ending value labels
-    geom_label(
-      data       = dt_an2[type == body][, .SD[which.max(year)], by = grp],
-      aes(
-        x        = year,
-        y        = dt_an2[type == body][, .SD[which.max(year)], by = grp]
-                    [[paste(as.character(cols), "loess", sep = "_")]],
-        label    = sprintf(fmt = "%1.1f%%", dt_an2[type == body]
-                    [, .SD[which.max(year)], by = grp]
-                    [[paste(as.character(cols), "loess", sep = "_")]] * 100L
-        )
-      ),
-      alpha      = .5,
-      fill       = "white",
-      label.r    = unit(0L, "lines"),
-      label.size = 0L,
-      nudge_x    = -4L,
-      size       = 2L
-    ) +
-    scale_x_continuous(name = "Year", n.breaks = 3L) +
-    scale_y_continuous(name = "Value", labels = scales::percent) +
-    facet_grid(zone ~ toupper(exp), scales = "free_y") +
-    theme_light() +
-    theme(
-      axis.title.y = element_blank(),
-      text = element_text(size = 8)
-    )
+      geom_line(size = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      # Starting value labels
+      geom_label(
+        data = dt_an2[type == body][, .SD[which.min(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an2[type == body][, .SD[which.min(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = sprintf(fmt = "%1.1f%%", dt_an2[type == body]
+          [, .SD[which.min(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]] * 100L)
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = 4L,
+        size       = 2L
+      ) +
+      # Ending value labels
+      geom_label(
+        data = dt_an2[type == body][, .SD[which.max(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an2[type == body][, .SD[which.max(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = sprintf(fmt = "%1.1f%%", dt_an2[type == body]
+          [, .SD[which.max(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]] * 100L)
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = -4L,
+        size       = 2L
+      ) +
+      scale_x_continuous(name = "Year", n.breaks = 3L) +
+      scale_y_continuous(name = "Value", labels = scales::percent) +
+      facet_grid(zone ~ toupper(exp), scales = "free_y") +
+      theme_light() +
+      theme(
+        axis.title.y = element_blank(),
+        text = element_text(size = 8)
+      )
   ) |>
-  ggsave(
-    filename = tolower(paste("9_", body, "_", cols, ".png", sep = "")),
-    device   = "png",
-    path     = "plots",
-    scale    = 1L,
-    width    = 6L,
-    height   = NA,
-    units    = "in",
-    dpi      = "print"
-  )
+    ggsave(
+      filename = tolower(paste("9_", body, "_", cols, ".png", sep = "")),
+      device   = "png",
+      path     = "plots",
+      scale    = 1L,
+      width    = 6L,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
 }
 
 # Combine the aircraft bodies and dependent variables to be plotted
@@ -595,7 +592,7 @@ mapply(
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
-      tolower(dat$an3),
+    tolower(dat$an3),
     "(
       year        YEAR,
       exp         CHAR(6),
@@ -616,7 +613,7 @@ fn_sql_qry(
       AVG(thr_red) AS avg_thr_red,
       AVG(tom_red) AS avg_tom_red
     FROM",
-      tolower(dat$tko),
+    tolower(dat$tko),
     "WHERE
       todr <= toda
     GROUP BY
@@ -635,7 +632,7 @@ dt_an3 <- fn_sql_qry(
     "SELECT
       *
     FROM",
-      tolower(dat$an3),
+    tolower(dat$an3),
     ";",
     sep = " "
   )
@@ -644,7 +641,7 @@ dt_an3 <- fn_sql_qry(
 # Recast column types
 set(x = dt_an3, j = "year", value = as.integer(dt_an3[, year]))
 set(x = dt_an3, j = "zone", value = as.factor(dt_an3[, zone]))
-set(x = dt_an3, j = "exp",  value = as.factor(dt_an3[, exp]))
+set(x = dt_an3, j = "exp", value = as.factor(dt_an3[, exp]))
 set(x = dt_an3, j = "icao", value = as.factor(dt_an3[, icao]))
 set(x = dt_an3, j = "type", value = as.factor(dt_an3[, type]))
 
@@ -746,12 +743,12 @@ fn_plot <- function(body, cols) {
             digits = 2L
           )
         ),
-        alpha = .5,
-        fill = "white",
-        label.r = unit(0L, "lines"),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
         label.size = 0L,
-        nudge_x = 6L,
-        size = 2L
+        nudge_x    = 6L,
+        size       = 2L
       ) +
       # Ending value labels
       geom_label(
@@ -767,12 +764,12 @@ fn_plot <- function(body, cols) {
             digits = 2L
           )
         ),
-        alpha = .5,
-        fill = "white",
-        label.r = unit(0L, "lines"),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
         label.size = 0L,
-        nudge_x = -6L,
-        size = 2L
+        nudge_x    = -6L,
+        size       = 2L
       ) +
       facet_grid(zone ~ toupper(exp), scales = "free_y") +
       theme_light() +
