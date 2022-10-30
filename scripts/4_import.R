@@ -2,8 +2,8 @@
 #    NAME: scripts/4_import.R
 #   INPUT: NetCDF files downloaded from the Earth System Grid Federation (ESGF)
 # ACTIONS: Extract time series of climate variables for each airport coordinates
-#  OUTPUT: 2,213,829,660 rows of climate data written to the dat$imp table
-# RUNTIME: ~7.4 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+#  OUTPUT: 2,213,829,660 rows of climate data written to the database
+# RUNTIME: ~7.4 hours
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================

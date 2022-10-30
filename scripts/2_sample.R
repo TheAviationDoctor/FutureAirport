@@ -19,6 +19,7 @@ library(kgc)
 library(maps)
 library(rgeos)
 library(rnaturalearth)
+library(scales)
 library(tidyverse)
 
 # Import the common settings
@@ -85,13 +86,6 @@ sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))]) /
 
 # Define the world object from the Natural Earth package
 world <- ne_countries(scale = "small", returnclass = "sf")
-
-# Define the Earth's five geographical zones
-geo_zones <- c(-90L, -66.5635, -23.4365, 23.4365, 66.5635, 90L)
-geo_labels <- c(
-  "Antarctic", "South temperate zone", "Tropics",
-  "North temperate zone", "Arctic"
-)
 
 # Define the traffic bins (logarithmic sequence)
 breaks <- c(1L %o% 10^(0:9))
@@ -185,8 +179,8 @@ dt_pop_binned <- dt_pop[!duplicated(dt_pop$icao), ] %>%
   mutate(
     geo = cut(
       x              = lat,
-      breaks         = geo_zones,
-      labels         = geo_labels,
+      breaks         = unique(unlist(geo, use.names = FALSE)),
+      labels         = names(geo),
       include.lowest = TRUE,
       right          = FALSE
     )
@@ -206,8 +200,8 @@ df_smp_binned <- df_smp[!duplicated(df_smp$icao), ] %>%
   mutate(
     geo = cut(
       x              = lat,
-      breaks         = geo_zones,
-      labels         = geo_labels,
+      breaks         = unique(unlist(geo, use.names = FALSE)),
+      labels         = names(geo),
       include.lowest = TRUE,
       right          = FALSE
     )
@@ -217,34 +211,39 @@ df_smp_binned <- df_smp[!duplicated(df_smp$icao), ] %>%
 dt_pop_binned %>%
   group_by(geo) %>%
   dplyr::summarize(n = n()) %>%
-  mutate(per = percent(n / nrow(dt_pop_binned), accuracy = .01))
+  mutate(per = n / nrow(dt_pop_binned) * 100L) %>%
+  # bind_rows(summarize_all(., ~if(is.numeric(.)) sum(.) else "Total")) %>%
+  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total"))) %>%
+  View(x = ., title = "Population airports")
 
 # Count the sample airports by geographical zone
 df_smp_binned %>%
   group_by(geo) %>%
   dplyr::summarize(n = n()) %>%
-  mutate(per = percent(n / nrow(df_smp_binned), accuracy = .01))
+  mutate(per = n / nrow(df_smp_binned) * 100L) %>%
+  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total"))) %>%
+  View(x = ., title = "Sample airports")
 
 # Sum the population traffic by geographical zone
 dt_pop_binned %>%
   group_by(geo) %>%
-  summarize(n = sum(traffic)) %>%
-  mutate(per = percent(n / sum(dt_pop[!duplicated(dt_pop$icao), ]$traffic),
-    accuracy = .01
-  ))
+  summarize(n = sum(traffic) / 10^6) %>%
+  mutate(per = n / sum(dt_pop[!duplicated(dt_pop$icao), ]$traffic) * 10^8) %>%
+  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total"))) %>%
+  View(x = ., title = "Population traffic")
 
 # Sum the sample traffic by geographical zone
 df_smp_binned %>%
   group_by(geo) %>%
-  summarize(n = sum(traffic)) %>% # Sum
-  mutate(per = percent(n / sum(df_smp[!duplicated(df_smp$icao), ]$traffic),
-    accuracy = .01
-  ))
+  summarize(n = sum(traffic) / 10^6) %>% # Sum
+  mutate(per = n / sum(df_smp[!duplicated(df_smp$icao), ]$traffic) * 10^8) %>%
+  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total"))) %>%
+  View(x = ., title = "Sample traffic")
 
 # Build a world map and plot the airports
 (ggplot() +
   geom_sf(data = world, color = NA, fill = "gray", alpha = .5) +
-  scale_y_continuous(breaks = geo_zones) +
+  scale_y_continuous(breaks = unique(unlist(geo, use.names = FALSE))) +
   coord_sf(expand = FALSE) +
   geom_point(
     data     = dt_pop[!duplicated(dt_pop$icao), ],
@@ -313,14 +312,15 @@ df_smp_binned %>%
     linetype = "dashed"
   ) +
   theme_light() +
+  # theme(plot.margin = grid::unit(c(0, 0, 0, 0), "mm")) +
   theme(axis.title = element_blank(), axis.text.x = element_blank())) %>%
   ggsave(
     filename = "2_world.png",
     device   = "png",
     path     = "plots",
     scale    = 1L,
-    width    = 6L,
-    height   = NA,
+    width    = 8.15,
+    height   = 3.69,
     units    = "in",
     dpi      = "print"
   )
@@ -392,7 +392,7 @@ df_smp_binned %>%
   scale_y_continuous(
     name     = "Sum of traffic",
     breaks   = seq(0L, 10^10, 5L * 10^8),
-    labels   = label_number_si(accuracy = 0.1)
+    labels   = label_number(scale_cut = cut_short_scale())
   ) +
   theme_light() +
   theme(panel.grid.minor = element_blank())) %>%
@@ -470,26 +470,14 @@ df_kgc$kgc <- as.factor(df_kgc$kgc)
 df_kgc %>%
   group_by(group = substr(kgc, 1L, 1L)) %>%
   dplyr::summarize(
-    pop.airports = sum(pop.airports),
-    pop.airports.per = percent(
-      sum(pop.airports) / sum(df_kgc$pop.airports),
-      accuracy = .01
-    ),
-    pop.traffic = sum(pop.traffic),
-    pop.traffic.per = percent(
-      sum(pop.traffic) / sum(df_kgc$pop.traffic),
-      accuracy = .01
-    ),
-    smp.airports = sum(smp.airports),
-    smp.airports.per = percent(
-      sum(smp.airports) / sum(df_kgc$smp.airports),
-      accuracy = .01
-    ),
-    smp.traffic = sum(smp.traffic),
-    smp.traffic.per = percent(
-      sum(smp.traffic) / sum(df_kgc$smp.traffic),
-      accuracy = .01
-    )
+    pop.airports     = sum(pop.airports),
+    pop.airports.per = sum(pop.airports) / sum(df_kgc$pop.airports),
+    pop.traffic      = sum(pop.traffic),
+    pop.traffic.per  = sum(pop.traffic) / sum(df_kgc$pop.traffic),
+    smp.airports     = sum(smp.airports),
+    smp.airports.per = sum(smp.airports) / sum(df_kgc$smp.airports),
+    smp.traffic      = sum(smp.traffic),
+    smp.traffic.per  = sum(smp.traffic) / sum(df_kgc$smp.traffic)
   ) %>%
   print()
 
@@ -526,21 +514,21 @@ df_kgc %>%
 # Plot the traffic distribution across climate zones
 (ggplot(data = df_kgc) +
   geom_bar(
-    mapping = aes(x = kgc, weight = pop.traffic),
-    fill    = "black",
-    alpha   = 0.5,
-    width   = 1L
+    mapping  = aes(x = kgc, weight = pop.traffic),
+    fill     = "black",
+    alpha    = 0.5,
+    width    = 1L
   ) +
   geom_bar(
-    mapping = aes(x = kgc, weight = smp.traffic),
-    fill    = "black",
-    alpha   = 0.5,
-    width   = 1L
+    mapping  = aes(x = kgc, weight = smp.traffic),
+    fill     = "black",
+    alpha    = 0.5,
+    width    = 1L
   ) +
   scale_x_discrete(guide = guide_axis(n.dodge = 2L)) +
   scale_y_continuous(
-    breaks = seq(from = 0L, to = 10^10, by = 5L * 10^8),
-    labels = label_number_si(accuracy = 0.1)
+    breaks   = seq(from = 0L, to = 10^10, by = 5L * 10^8),
+    labels   = label_number(scale_cut = cut_short_scale())
   ) +
   labs(x = "Köppen-Geiger climate zones", y = "Sum of traffic") +
   theme_light() +

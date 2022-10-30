@@ -1,9 +1,10 @@
 # ==============================================================================
 #    NAME: scripts/9_analyze.R
-#   INPUT: Climate and takeoff performance data processed by earlier scripts
-# ACTIONS: Create summary tables in MySQL and plots based on them
-#  OUTPUT: Plot files saved to disk
-# RUNTIME: N/A
+#   INPUT: Climate and takeoff data output by earlier scripts
+# ACTIONS: Create summary tables in MySQL and associated plots
+#  OUTPUT: Plot and summary data files saved to disk
+# RUNTIME: ~160 minutes if the summary tables do not yet exist in the database.
+#          < 30 seconds otherwise.
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -24,6 +25,7 @@
 library(data.table)
 library(DBI)
 library(ggplot2)
+library(scales)
 
 # Import the common settings
 source("scripts/0_common.R")
@@ -35,439 +37,795 @@ start_time <- Sys.time()
 cat("\014")
 
 # ==============================================================================
-# 1. Research question #1: How much change to near-surface air temperature,
-# air density, and headwind will airports experience in the 21st century?
+# 1. Climate change summary
 # ==============================================================================
 
 # ==============================================================================
-# 1.1 Climate change globally
+# 1.1 Create, fetch, and cleanse the data. Variables:
+# avg_tas  = Mean air temperature in °C
+# avg_hurs = Mean relative humidity in %
+# avg_ps   = Mean air pressure in Pa
+# avg_rho  = Mean air density in kg/m³
+# avg_hdw  = Mean headwind in m/s
+# max_tas  = Maximum air temperature in °C
+# min_rho  = Minimum air density in kg/m³
 # ==============================================================================
 
-# Summarize the climate data (runtime: ~12 minutes)
+# Create the summary table (runtime: ~13 minutes)
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
-    tolower(tmp$q11),
-    "AS SELECT
-    exp AS exp,
-    year AS year,
-    AVG(tas) AS avg_tas,
-    MAX(tas) AS max_tas,
-    AVG(rho) AS avg_rho,
-    MIN(rho) AS min_rho,
-    AVG(hdw) AS avg_hdw
-    FROM", tolower(dat$cli),
-    "GROUP BY exp, year;",
+    tolower(dat$an1),
+    "(
+      year     YEAR,
+      exp      CHAR(6),
+      zone     CHAR(11),
+      icao     CHAR(4),
+      avg_tas  FLOAT,
+      avg_hurs FLOAT,
+      avg_ps   FLOAT,
+      avg_rho  FLOAT,
+      avg_hdw  FLOAT,
+      max_tas  FLOAT,
+      min_rho  FLOAT
+    )
+    AS SELECT
+      year,
+      exp,
+      zone,
+      icao,
+      AVG(tas)  AS avg_tas,
+      AVG(hurs) AS avg_hurs,
+      AVG(ps)   AS avg_ps,
+      AVG(rho)  AS avg_rho,
+      AVG(hdw)  AS avg_hdw,
+      MAX(tas)  AS max_tas,
+      MIN(rho)  AS min_rho
+    FROM",
+    tolower(dat$cli),
+    "GROUP BY
+      year,
+      exp,
+      icao
+    ;",
     sep = " "
   )
 )
 
 # Fetch the data
-dt_q11 <- fn_sql_qry(
+dt_an1 <- fn_sql_qry(
   statement = paste(
-    "SELECT * FROM",
-    tolower(tmp$q11),
-    "ORDER BY exp ASC, year ASC;",
+    "SELECT
+      *
+    FROM",
+    tolower(dat$an1),
+    ";",
     sep = " "
   )
 )
 
-# Convert the shared socioeconomic pathway (SSP) to a factor
-set(x = dt_q11, j = "exp",  value = as.factor(dt_q11[, exp]))
+# Recast column types
+set(x = dt_an1, j = "year", value = as.integer(dt_an1[, year]))
+set(x = dt_an1, j = "zone", value = as.factor(dt_an1[, zone]))
+set(x = dt_an1, j = "exp",  value = as.factor(dt_an1[, exp]))
+set(x = dt_an1, j = "icao", value = as.factor(dt_an1[, icao]))
 
-# Convert the year to an interval variable for continuous scaling
-set(x = dt_q11, j = "year", value = as.integer(dt_q11[, year]))
+# ==============================================================================
+# 1.2 Treat output variables of interest
+# ==============================================================================
 
-# Count the observations by SSP
-obs_q11 <- dt_q11[, .N, by = exp]
+# Convert near-surface air temperature from °K to °C
+dt_an1[, avg_tas := avg_tas - sim$k_to_c]
+dt_an1[, max_tas := max_tas - sim$k_to_c]
 
-# Define the variables of interest
-cols_q11 <- c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw")
+# Convert near-surface air pressure from Pa to hPa
+dt_an1[, avg_ps := avg_ps / 100L]
 
-# Define their labels
-labs_q11 <- c(
-  "Relative Change in the Global Mean Near-Surface Air Temperature in °C",
-  "Relative Change in the Global Maximum Near-Surface Temperature in °C",
-  "Relative Change in the Global Mean Near-Surface Air Density in kg/m³",
-  "Relative Change in the Global Minimum Near-Surface Air Density in kg/m³",
-  "Relative Change in the Global Mean Near-Surface Headwind Speed in m/s"
+# ==============================================================================
+# 1.3 Summarize the data
+# ==============================================================================
+
+# Declare output variables for averaging
+cols_mean <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
+
+# Declare input variables for grouping
+grp <- c("year", "exp", "zone")
+
+# Summarize the data and combine them by group
+dt_an1 <- rbind(
+  # Zonal summary by group
+  cbind(
+    dt_an1[, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = cols_mean
+    ],
+    dt_an1[, lapply(X = .SD, FUN = max),
+      by = grp,
+      .SDcols = c("max_tas")
+    ][, "max_tas"],
+    dt_an1[, lapply(X = .SD, FUN = min),
+      by = grp,
+      .SDcols = c("min_rho")
+    ][, "min_rho"]
+  ),
+  # Global summary by group
+  cbind(
+    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = cols_mean
+    ],
+    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = max),
+      by = grp,
+      .SDcols = c("max_tas")
+    ][, "max_tas"],
+    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = min),
+      by = grp,
+      .SDcols = c("min_rho")
+    ][, "min_rho"]
+  )
 )
 
-# Build a data table of the first year values by SSP for each variable
-ini_q11 <- dt_q11[, .SD[1:1], by = exp][rep(1:.N, times = obs_q11$N)]
+# ==============================================================================
+# 1.4 Add local polynomial regression fitting (LOESS) to the output variables
+# ==============================================================================
 
-# Subtract the starting value (first year) from each variable and observation
-dt_q11[, (cols_q11) := dt_q11[, cols_q11, with = FALSE] -
-  ini_q11[, cols_q11, with = FALSE]]
+# Declare output variables for regression fitting
+cols <- c(
+  "avg_tas",
+  "avg_hurs",
+  "avg_ps",
+  "avg_rho",
+  "avg_hdw",
+  "max_tas",
+  "min_rho"
+)
 
-# Define a function to generate plots
-fn_plot_q11 <- function(var1, var2) {
+# Declare input variables for grouping
+grp <- c("exp", "zone")
+
+# Perform regression fitting by group
+dt_an1[,
+  paste(cols, "loess", sep = "_") := lapply(
+    X = .SD,
+    FUN = function(x) {
+      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+    }
+  ),
+  by = grp,
+  .SDcols = cols
+]
+
+# ==============================================================================
+# 1.5 Save the data to disk
+# ==============================================================================
+
+fwrite(
+  x    = dt_an1,
+  file = paste(dir$res, "dt_an1.csv", sep = "/")
+)
+
+# ==============================================================================
+# 1.6 Plot the results
+# ==============================================================================
+
+# Create a function to plot results
+fn_plot <- function(cols) {
   (
     ggplot(
-      data    = dt_q11,
-      mapping = aes(x = year, y = dt_q11[[var1]])
+      data = dt_an1,
+      mapping = aes(
+        x     = year,
+        y     = dt_an1[[as.character(cols)]]
+      )
     ) +
       geom_line(size = .2) +
       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-      scale_x_continuous("Year") +
-      scale_y_continuous(var2) +
-      facet_wrap(~toupper(exp), ncol = 2) +
+      # Starting value labels
+      geom_label(
+        data = dt_an1[, .SD[which.min(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an1[, .SD[which.min(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = round(
+            x = dt_an1[, .SD[which.min(year)], by = grp]
+            [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = 4L,
+        size       = 2L
+      ) +
+      # Ending value labels
+      geom_label(
+        data = dt_an1[, .SD[which.max(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an1[, .SD[which.max(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = round(
+            x = dt_an1[, .SD[which.max(year)], by = grp]
+            [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = -4L,
+        size       = 2L
+      ) +
+      scale_x_continuous(name = "Year", n.breaks = 5L) +
+      scale_y_continuous(name = "Value", labels = label_comma(accuracy = .01)) +
+      facet_grid(zone ~ toupper(exp), scales = "free_y") +
       theme_light() +
-      theme(axis.title.y = element_blank()) # Hide y axis title
+      theme(
+        axis.title.y = element_blank(),
+        text = element_text(size = 8)
+      )
   ) |>
     ggsave(
-      filename = paste("9_q11_", as.name(var1), ".png", sep = ""),
+      filename = tolower(paste("9_", cols, ".png", sep = "")),
       device   = "png",
       path     = "plots",
-      scale    = 1,
-      width    = 6,
+      scale    = 1L,
+      width    = 6L,
       height   = NA,
       units    = "in",
       dpi      = "print"
     )
 }
 
-# Generate the plots for every variable
+# Generate the plots
 mapply(
-  FUN  = fn_plot_q11,
-  var1 = cols_q11,
-  var2 = labs_q11
+  FUN  = fn_plot,
+  cols = cols
 )
 
-# Return the local polynomial regression fitting values to smooth the volatility
-dt_q11[, paste("loess_", (cols_q11), sep = "") := lapply(
-    X = .SD,
-    FUN = function(x) {
-      predict(loess(formula = x ~ year, span = .75, model = TRUE))
-    }
-  ),
-  by = "exp",
-  .SDcols = cols_q11
-]
-
-# Save the data for later reference
-fwrite(
-  x = dt_q11,
-  file = paste(dir$res, "dt_q11.csv", sep = "/")
-)
-
-# Display a summary table of the values for the final year
-dt_q11[dt_q11[, .I[year == max(year)], by = "exp"]$V1]
-
 # ==============================================================================
-# 1.2 Climate change by zone
+# 2. Takeoff outcomes summary
 # ==============================================================================
 
-# Summarize the climate data (runtime: ~12 minutes)
+# ==============================================================================
+# 2.1 Create, fetch, and cleanse the data. Variables:
+# itr_avg              = Average count of iterations per takeoff
+# itr_sum              = Count of all iterations performed
+# tko_ok_thr_min       = Count of takeoffs performed using 75% TOGA
+# tko_ok_thr_mid       = Count of takeoffs performed using ]75%-100%[ TOGA
+# tko_ok_thr_max_no_rm = Count of takeoffs performed using 100% TOGA and no
+#                         payload removal
+# tko_ok_thr_max_rm    = Count of takeoffs performed using 100% TOGA and
+#                         payload removal not exceeding the BELF
+# tko_ok_thr_max       = Count of all takeoffs performed using 100% TOGA
+#                         (with or without payload removal)
+# tko_ok               = Count of all successful takeoffs
+#                         (regardless of thrust and payload removal)
+# tko_ok               = Count of all unsuccessful takeoffs
+#                         (despite 100% TOGA and payload removal down to BELF)
+# tko                  = Count of all takeoffs (whether successful or not)
+# ==============================================================================
+
+# Create the summary table (runtime: ~90 minutes)
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
-    tolower(tmp$q12),
-    "AS SELECT
-    zone AS zone,
-    exp AS exp,
-    year AS year,
-    AVG(tas) AS avg_tas,
-    MAX(tas) AS max_tas,
-    AVG(rho) AS avg_rho,
-    MIN(rho) AS min_rho,
-    AVG(hdw) AS avg_hdw
-    FROM", tolower(dat$cli),
-    "GROUP BY zone, exp, year;",
+    tolower(dat$an2),
+    "(
+      year                 YEAR,
+      exp                  CHAR(6),
+      zone                 CHAR(11),
+      icao                 CHAR(4),
+      type                 CHAR(4),
+      itr_avg              FLOAT,
+      itr_sum              INT,
+      tko_ok_thr_min       MEDIUMINT,
+      tko_ok_thr_mid       MEDIUMINT,
+      tko_ok_thr_max_no_rm MEDIUMINT,
+      tko_ok_thr_max_rm    MEDIUMINT,
+      tko_ok_thr_max       MEDIUMINT,
+      tko_ok               MEDIUMINT,
+      tko_ko               MEDIUMINT,
+      tko                  MEDIUMINT
+    )
+    AS SELECT
+      year,
+      exp,
+      zone,
+      icao,
+      type,
+      AVG(itr)                                          AS itr_avg,
+      SUM(itr)                                          AS itr_sum,
+      SUM(thr_red =", sim$thr_ini, ")                   AS tko_ok_thr_min,
+      SUM(thr_red BETWEEN 1 AND", sim$thr_ini - 1L, ")  AS tko_ok_thr_mid,
+      SUM(thr_red = 0 AND todr <= toda AND tom_red = 0) AS tko_ok_thr_max_no_rm,
+      SUM(thr_red = 0 AND todr <= toda AND tom_red > 0) AS tko_ok_thr_max_rm,
+      SUM(thr_red = 0 AND todr <= toda)                 AS tko_ok_thr_max,
+      SUM(todr <= toda)                                 AS tko_ok,
+      SUM(todr > toda)                                  AS tko_ko,
+      COUNT(*)                                          AS tko
+    FROM",
+    tolower(dat$tko),
+    "GROUP BY
+      year,
+      exp,
+      icao,
+      type
+    ;",
     sep = " "
   )
 )
 
 # Fetch the data
-dt_q12 <- fn_sql_qry(
+dt_an2 <- fn_sql_qry(
   statement = paste(
-    "SELECT * FROM",
-    tolower(tmp$q12),
-    "ORDER BY zone ASC, exp ASC, year ASC;",
+    "SELECT
+      *
+    FROM",
+    tolower(dat$an2),
+    ";",
     sep = " "
   )
 )
 
-# Convert the climatic zone to a factor
-set(x = dt_q12, j = "zone",  value = as.factor(dt_q12[, zone]))
+# Recast column types
+set(x = dt_an2, j = "year",    value = as.integer(dt_an2[, year]))
+set(x = dt_an2, j = "zone",    value = as.factor(dt_an2[, zone]))
+set(x = dt_an2, j = "exp",     value = as.factor(dt_an2[, exp]))
+set(x = dt_an2, j = "icao",    value = as.factor(dt_an2[, icao]))
+set(x = dt_an2, j = "type",    value = as.factor(dt_an2[, type]))
+set(x = dt_an2, j = "itr_sum", value = as.numeric(dt_an2[, itr_sum]))
 
-# Convert the SSP to a factor
-set(x = dt_q12, j = "exp",  value = as.factor(dt_q12[, exp]))
+# Combine the aircraft types to narrow/widebody
+levels(dt_an2$type) <- bod
 
-# Convert the year to an interval variable for continuous scaling
-set(x = dt_q12, j = "year", value = as.integer(dt_q12[, year]))
+# ==============================================================================
+# 2.2 Treat output variables of interest
+# ==============================================================================
 
-# # Count the observations by zone and SSP
-obs_q12 <- dt_q12[, .N, by = c("zone", "exp")]
-
-# Define the variables of interest
-cols_q12 <- c("avg_tas", "max_tas", "avg_rho", "min_rho", "avg_hdw")
-
-# Define their labels
-labs_q12 <- c(
-  "Relative Change in the Zonal Mean Near-Surface Temperature in °C",
-  "Relative Change in the Zonal Maximum Near-Surface Temperature in °C",
-  "Relative Change in the Zonal Mean Near-Surface Air Density in kg/m³",
-  "Relative Change in the Zonal Minimum Near-Surface Air Density in kg/m³",
-  "Relative Change in the Zonal Mean Near-Surface Headwind Speed in m/s"
+# Declare output variables for conversion from absolute to relative
+cols <- c(
+  "tko_ok_thr_min",
+  "tko_ok_thr_mid",
+  "tko_ok_thr_max_no_rm",
+  "tko_ok_thr_max_rm",
+  "tko_ok_thr_max",
+  "tko_ok",
+  "tko_ko",
+  "tko"
 )
 
-# Build a data table of the first year values by zone and SSP for each variable
-ini_q12 <- dt_q12[, .SD[1:1], by = c("zone", "exp")][rep(
-  1:.N,
-  times = obs_q12$N
-)]
+# Express output variables as a percentage of all takeoffs
+lapply(
+  X = cols,
+  FUN = function(x) {
+    dt_an2[, paste(x, "rel", sep = "_") := get(x) / tko]
+  }
+)
 
-# Subtract the starting value (first year) from each variable and observation
-dt_q12[, (cols_q12) := dt_q12[, cols_q12, with = FALSE] -
-  ini_q12[, cols_q12, with = FALSE]]
+# ==============================================================================
+# 2.3 Summarize the data
+# ==============================================================================
 
-# Define a function to generate plots
-fn_plot_q12 <- function(var1, var2) {
-  (
-    ggplot(
-      data    = dt_q12,
-      mapping = aes(x = year, y = dt_q12[[var1]], color = zone)
-    ) +
-      geom_line(size = .2) +
-      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-      scale_x_continuous("Year") +
-      scale_y_continuous(var2) +
-      facet_wrap(~toupper(exp), ncol = 2) +
-      labs(color = "Climate zone") +
-      theme_light() +
-      theme(axis.title.y = element_blank()) # Hide y axis title
-  ) |>
-  ggsave(
-    filename = paste("9_q12_", as.name(var1), ".png", sep = ""),
-    device   = "png",
-    path     = "plots",
-    scale    = 1,
-    width    = 6,
-    height   = NA,
-    units    = "in",
-    dpi      = "print"
+# Declare output variables for summation
+cols_sum <- c(
+  "itr_sum",
+  "tko_ok_thr_min",
+  "tko_ok_thr_mid",
+  "tko_ok_thr_max_no_rm",
+  "tko_ok_thr_max_rm",
+  "tko_ok_thr_max",
+  "tko_ok",
+  "tko_ko",
+  "tko"
+)
+
+# Declare output variables for averaging
+cols_mean <- c(
+  "itr_avg",
+  "tko_ok_thr_min_rel",
+  "tko_ok_thr_mid_rel",
+  "tko_ok_thr_max_no_rm_rel",
+  "tko_ok_thr_max_rm_rel",
+  "tko_ok_thr_max_rel",
+  "tko_ok_rel",
+  "tko_ko_rel",
+  "tko_rel"
+)
+
+# Declare input variables for grouping
+grp <- c("year", "exp", "zone", "type")
+
+# Summarize the data and combine them by group
+dt_an2 <- rbind(
+  # Zonal summary by group
+  cbind(
+    dt_an2[, lapply(X = .SD, FUN = sum),
+      by = grp,
+      .SDcols = cols_sum
+    ],
+    dt_an2[, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = cols_mean
+    ][, ..cols_mean]
+  ),
+  # Global summary by group
+  cbind(
+    dt_an2[, zone := "Global"][, lapply(X = .SD, FUN = sum),
+      by = grp,
+      .SDcols = cols_sum
+    ],
+    dt_an2[, zone := "Global"][, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = cols_mean
+    ][, ..cols_mean]
   )
-}
-
-# Generate the plots for every variable
-mapply(
-  FUN  = fn_plot_q12,
-  var1 = cols_q12,
-  var2 = labs_q12
 )
 
-# Return the local polynomial regression fitting values to smooth the volatility
-dt_q12[, paste("loess_", (cols_q12), sep = "") := lapply(
+# ==============================================================================
+# 2.4 Add local polynomial regression fitting (LOESS) to the output variables
+# ==============================================================================
+
+# Declare output variables for regression fitting
+cols <- c(
+  "tko_ok_thr_min_rel",
+  "tko_ok_thr_mid_rel",
+  "tko_ok_thr_max_no_rm_rel",
+  "tko_ok_thr_max_rm_rel",
+  "tko_ok_thr_max_rel",
+  "tko_ok_rel",
+  "tko_ko_rel",
+  "tko_rel"
+)
+
+# Declare input variables for grouping
+grp <- c("exp", "zone", "type")
+
+# Perform regression fitting by group
+dt_an2[,
+  paste(cols, "loess", sep = "_") := lapply(
     X = .SD,
     FUN = function(x) {
       predict(loess(formula = x ~ year, span = .75, model = TRUE))
     }
   ),
-  by = c("zone", "exp"),
-  .SDcols = cols_q12
+  by = grp,
+  .SDcols = cols
 ]
 
-# Save the data for later reference
+# ==============================================================================
+# 2.5 Save the data to disk
+# ==============================================================================
+
 fwrite(
-  x = dt_q12,
-  file = paste(dir$res, "dt_q12.csv", sep = "/")
+  x    = dt_an2,
+  file = paste(dir$res, "dt_an2.csv", sep = "/")
 )
 
-# Save a summary table of the values for the final year
-dt_q12[dt_q12[, .I[year == max(year)], by = c("zone", "exp")]$V1]
-
 # ==============================================================================
-# 2. Research question #2: How much thrust increase and payload removal
-# will be needed?
+# 2.6 Plot the results
 # ==============================================================================
 
-# ==============================================================================
-# 2.1 Unique takeoffs
-# Takes 4.7 minutes
-# ==============================================================================
+# Update output variables for plotting
+cols <- c(
+  "tko_ok_thr_min_rel",
+  "tko_ko_rel"
+)
+
+# Update input variables for grouping
+grp <- c("exp", "zone")
+
+# Create a function to plot results
+fn_plot <- function(body, cols) {
+  (
+    ggplot(
+      data = dt_an2[type == body],
+      mapping = aes(
+        x     = year,
+        y     = dt_an2[type == body][[as.character(cols)]]
+      )
+    ) +
+      geom_line(size = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      # Starting value labels
+      geom_label(
+        data = dt_an2[type == body][, .SD[which.min(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an2[type == body][, .SD[which.min(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = sprintf(fmt = "%1.1f%%", dt_an2[type == body]
+          [, .SD[which.min(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]] * 100L)
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = 4L,
+        size       = 2L
+      ) +
+      # Ending value labels
+      geom_label(
+        data = dt_an2[type == body][, .SD[which.max(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an2[type == body][, .SD[which.max(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = sprintf(fmt = "%1.1f%%", dt_an2[type == body]
+          [, .SD[which.max(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]] * 100L)
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = -4L,
+        size       = 2L
+      ) +
+      scale_x_continuous(name = "Year", n.breaks = 3L) +
+      scale_y_continuous(name = "Value", labels = scales::percent) +
+      facet_grid(zone ~ toupper(exp), scales = "free_y") +
+      theme_light() +
+      theme(
+        axis.title.y = element_blank(),
+        text = element_text(size = 8)
+      )
+  ) |>
+    ggsave(
+      filename = tolower(paste("9_", body, "_", cols, ".png", sep = "")),
+      device   = "png",
+      path     = "plots",
+      scale    = 1L,
+      width    = 6L,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
+}
+
+# Combine the aircraft bodies and output variables to be plotted
+mix <- expand.grid(
+  body = names(bod),
+  cols = cols
+)
+
+# Generate the plots
+mapply(
+  FUN  = fn_plot,
+  body = mix$body,
+  cols = mix$cols
+)
 
 # ==============================================================================
-# 1.1 Summarize the climate data in the data in the database
-# Runtime: ~21 minutes
+# 3. Research questions summary
 # ==============================================================================
 
-# # Create the visualization table
-# fn_sql_qry(
-#   statement = paste(
-#     "CREATE TABLE IF NOT EXISTS",
-#     tolower(vis$tko_cnt),
-#     "AS SELECT
-#     COUNT(*) AS count,
-#     SUM(itr) AS sum,
-#     AVG(itr) AS avg
-#     FROM", tolower(dat$tko),
-#     ";",
-#     sep = " "
-#   )
-# )
-
-
-
-# # Fetch the data
-# dt_uni <- fn_sql_sel(
-#   select = "COUNT(*) AS count",
-#   from   = dat$tko,
-#   where  = NULL,
-#   group  = NULL,
-#   order  = NULL
-# )
-# 
-# # Output results to the console
-# print(paste("Count of unique takeoffs:", format(dt_uni, big.mark = ",")))
-
 # ==============================================================================
-# 2.2 Takeoff iterations
+# 3.1 Create, fetch, and cleanse the data. Variables:
+# avg_todr    = Mean takeoff distance required in m
+# avg_thr_red = Mean thrust reduction in percentage points of TOGA
+# avg_tom_red = Mean takeoff mass reduction in kg
 # ==============================================================================
 
-# # Fetch the data
-# dt_itr <- fn_sql_sel(
-#   select = "SUM(itr) AS sum, AVG(itr) AS avg",
-#   from   = dat$tst,
-#   where  = NULL,
-#   group  = NULL,
-#   order  = NULL
-# )
-# 
-# # Output results to the console
-# print(paste("Count of iterations:", format(dt_itr[, sum], big.mark = ",")))
-# print(paste("Average iterations:", format(dt_itr[, avg], big.mark = ",")))
+# Create the summary table (runtime: ~60 minutes)
+fn_sql_qry(
+  statement = paste(
+    "CREATE TABLE IF NOT EXISTS",
+    tolower(dat$an3),
+    "(
+      year        YEAR,
+      exp         CHAR(6),
+      zone        CHAR(11),
+      icao        CHAR(4),
+      type        CHAR(4),
+      avg_todr    FLOAT,
+      avg_thr_red FLOAT,
+      avg_tom_red FLOAT
+    )
+    AS SELECT
+      year,
+      exp,
+      zone,
+      icao,
+      type,
+      AVG(todr)    AS avg_todr,
+      AVG(thr_red) AS avg_thr_red,
+      AVG(tom_red) AS avg_tom_red
+    FROM",
+    tolower(dat$tko),
+    "WHERE
+      todr <= toda
+    GROUP BY
+      year,
+      exp,
+      icao,
+      type
+    ;",
+    sep = " "
+  )
+)
+
+# Fetch the data
+dt_an3 <- fn_sql_qry(
+  statement = paste(
+    "SELECT
+      *
+    FROM",
+    tolower(dat$an3),
+    ";",
+    sep = " "
+  )
+)
+
+# Recast column types
+set(x = dt_an3, j = "year", value = as.integer(dt_an3[, year]))
+set(x = dt_an3, j = "zone", value = as.factor(dt_an3[, zone]))
+set(x = dt_an3, j = "exp",  value = as.factor(dt_an3[, exp]))
+set(x = dt_an3, j = "icao", value = as.factor(dt_an3[, icao]))
+set(x = dt_an3, j = "type", value = as.factor(dt_an3[, type]))
+
+# Combine the aircraft types to narrow/widebody
+levels(dt_an3$type) <- bod
 
 # ==============================================================================
-# 2.3 Takeoff outcomes
+# 3.2 Treat output variables of interest
 # ==============================================================================
 
-# # Fetch the data
-# dt_uns <- fn_sql_sel(
-#   select = "YEAR(obs) AS year, exp AS exp, COUNT(*) AS count",
-#   from   = dat$tst,
-#   where  = "todr > toda",
-#   group  = "year, exp",
-#   order  = NULL
-# )
-# 
-# # Output results to the console
-# # Unsuccessful takeoffs are those where TODR > TODA even after increasing the
-# #  thrust to 100% and decreasing the mass to BELF mass.
-# print(paste("Unsuccessful (n):", format(length(dt_uns), big.mark = ",")))
-# print(paste("Successful (n):", format(dt_uni - length(dt_uns), big.mark = ",")))
-# print(paste("Successful (%):", format((dt_uni - length(dt_uns)) / dt_uni, nsmall = "2")))
-# 
-# # Set y-axis limits
-# lim <- c(1130E3, 1195E3)
-# 
-# # Create and save the plot
-# (ggplot(data = dt_uns) +
-#     geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
-#     scale_x_continuous(name = "Year") +
-#     scale_y_continuous(name = "Count", labels = scales::comma, limits = lim) +
-#     facet_wrap(~toupper(exp), ncol = 2) +
-#     theme_light()) %>%
-#   ggsave(
-#     filename = "9_line_uns_to_cnt.png",
-#     device = "png",
-#     path = "plots",
-#     scale = 1,
-#     width = 6,
-#     height = NA,
-#     units = "in",
-#     dpi = "print"
-#   )
-#
-# # Add a column for percentage
-# set(x = dt_uns, j = "per", value = dt_uns[, count] / dt_uni * 100)
-# 
-# # Create and save the plot
-# (ggplot(data = dt_uns) +
-#     geom_line(mapping = aes(x = year, y = per), color = "black", size = 1) +
-#     scale_x_continuous(name = "Year") +
-#     scale_y_continuous(name = "Count", labels = scales::percent) +
-#     facet_wrap(~toupper(exp), ncol = 2) +
-#     theme_light()) %>%
-#   ggsave(
-#     filename = "9_line_uns_to_per.png",
-#     device = "png",
-#     path = "plots",
-#     scale = 1,
-#     width = 6,
-#     height = NA,
-#     units = "in",
-#     dpi = "print"
-#   )
+# Convert thrust reduction below TOGA to thrust as a percentage of TOGA
+dt_an3[, avg_thr := (100L - avg_thr_red) / 100L][, avg_thr_red := NULL]
+
+# Convert payload removal in kg to passengers based on standard assumptions
+dt_an3[, avg_pax_rem := avg_tom_red / sim$pax_avg][, avg_tom_red := NULL]
 
 # ==============================================================================
-# 2.4 Takeoff thrust reduction
+# 3.3 Summarize the data
 # ==============================================================================
 
-# # Fetch the data
-# dt_thr <- fn_sql_sel(
-#   select = "YEAR(obs) AS year, exp AS exp, AVG(thr_red) AS avg",
-#   from   = dat$tst,
-#   where  = NULL,
-#   group  = "year, exp",
-#   order  = NULL
-# )
-# 
-# # Output results to the console
-# print(paste("Thrust reduction:", format(dt_thr[, avg], big.mark = ",")))
-# 
-# # Create and save the plot
-# (ggplot(data = dt_uns) +
-#     geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
-#     scale_x_continuous(name = "Year") +
-#     scale_y_continuous(name = "Percent", labels = scales::percent) +
-#     facet_wrap(~toupper(exp), ncol = 2) +
-#     theme_light()) %>%
-#   ggsave(
-#     filename = "9_line_thr_red.png",
-#     device = "png",
-#     path = "plots",
-#     scale = 1,
-#     width = 6,
-#     height = NA,
-#     units = "in",
-#     dpi = "print"
-#   )
+# Declare output variables for averaging
+cols <- c("avg_todr", "avg_thr", "avg_pax_rem")
+
+# Declare input variables for grouping
+grp <- c("year", "exp", "zone", "type")
+
+# Summarize the data and combine them by group
+dt_an3 <- rbind(
+  # Zonal summary by group
+  dt_an3[, lapply(X = .SD, FUN = mean),
+    by = grp,
+    .SDcols = cols
+  ],
+  # Global summary by group
+  dt_an3[, zone := "Global"][, lapply(X = .SD, FUN = mean),
+    by = grp,
+    .SDcols = cols
+  ]
+)
 
 # ==============================================================================
-# 2.5 Takeoff payload removal
+# 3.4 Add local polynomial regression fitting (LOESS) to the output variables
 # ==============================================================================
 
-# # Fetch the data
-# dt_pax <- fn_sql_sel(
-#   select = "YEAR(obs) AS year, exp AS exp, SUM(tom_red) AS sum, AVG(tom_red) AS avg",
-#   from   = dat$tst,
-#   where  = NULL,
-#   group  = "year, exp",
-#   order  = NULL
-# )
-# 
-# # Output results to the console
-# print(paste("Sum of payload removal:", format(dt_pax[, sum], big.mark = ",")))
-# print(paste("Average payload removal:", format(dt_pax[, avg], big.mark = ",")))
-# 
-# # Create and save the plot
-# (ggplot(data = dt_uns) +
-#     geom_line(mapping = aes(x = year, y = count), color = "black", size = 1) +
-#     scale_x_continuous(name = "Year") +
-#     scale_y_continuous(name = "Count", labels = scales::percent) +
-#     facet_wrap(~toupper(exp), ncol = 2) +
-#     theme_light()) %>%
-#   ggsave(
-#     filename = "9_line_tom_red.png",
-#     device = "png",
-#     path = "plots",
-#     scale = 1,
-#     width = 6,
-#     height = NA,
-#     units = "in",
-#     dpi = "print"
-#   )
+# Declare input variables for grouping
+grp <- c("exp", "zone", "type")
+
+# Perform regression fitting by group
+dt_an3[,
+  paste(cols, "loess", sep = "_") := lapply(
+    X = .SD,
+    FUN = function(x) {
+      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+    }
+  ),
+  by = grp,
+  .SDcols = cols
+]
+
+# ==============================================================================
+# 3.5 # Save the data to disk
+# ==============================================================================
+
+fwrite(
+  x    = dt_an3,
+  file = paste(dir$res, "dt_an3.csv", sep = "/")
+)
+
+# ==============================================================================
+# 3.6 Plot the results
+# ==============================================================================
+
+# Declare input variables for grouping
+grp <- c("exp", "zone")
+
+# Create a function to plot results
+fn_plot <- function(body, cols) {
+  (
+    ggplot(
+      data = dt_an3[type == body],
+      mapping = aes(
+        x     = year,
+        y     = dt_an3[type == body][[as.character(cols)]]
+      )
+    ) +
+      geom_line(size = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      # Starting value labels
+      geom_label(
+        data = dt_an3[type == body][, .SD[which.min(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an3[type == body][, .SD[which.min(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = round(
+            x = dt_an3[type == body]
+            [, .SD[which.min(year)], by = grp]
+            [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = 6L,
+        size       = 2L
+      ) +
+      # Ending value labels
+      geom_label(
+        data = dt_an3[type == body][, .SD[which.max(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an3[type == body][, .SD[which.max(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = round(
+            x = dt_an3[type == body]
+            [, .SD[which.max(year)], by = grp]
+            [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = -6L,
+        size       = 2L
+      ) +
+      facet_grid(zone ~ toupper(exp), scales = "free_y") +
+      theme_light() +
+      theme(
+        axis.title.y = element_blank(),
+        text = element_text(size = 8)
+      )
+  ) |>
+    ggsave(
+      filename = tolower(paste("9_", body, "_", cols, ".png", sep = "")),
+      device   = "png",
+      path     = "plots",
+      scale    = 1L,
+      width    = 6L,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
+}
+
+# Combine the aircraft bodies and output variables to be plotted
+mix <- expand.grid(
+  body = names(bod),
+  cols = cols
+)
+
+# Generate the plots
+mapply(
+  FUN  = fn_plot,
+  body = mix$body,
+  cols = mix$cols
+)
 
 # ==============================================================================
 # 6 Housekeeping

@@ -3,7 +3,7 @@
 #   INPUT: OEM takeoff performance data under ISA conditions in dir$cal
 # ACTIONS: Optimize lift and drag coefficients in 6_model.R to fit the OEM data
 #  OUTPUT: 28,627 rows of takeoff calibration data written to the dat$cal table
-# RUNTIME: ~50 minutes (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~50 minutes
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================

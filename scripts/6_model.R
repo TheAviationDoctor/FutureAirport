@@ -156,8 +156,8 @@ fn_dis_gnd <- function(DT) {
   acc <- (sim$g / w) * (frto - (sim$rwy_frc * w) - (cd - sim$rwy_frc * cllof) *
     q * s - (w * sin(sim$rwy_slp)))
 
-  # Check for negative accelerations (extreme cases of elevated temperature, low
-  # air density, low air pressure, max takeoff mass, and max reduced thrust).
+  # Check for negative accelerations (extreme cases of elevated temperature,
+  # low air density, low air pressure, max takeoff mass, and min thrust).
   acc_neg <- sum(acc < 0L)
 
   # Zero out negative accelerations in extreme cases environmental cases

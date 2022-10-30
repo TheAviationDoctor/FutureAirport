@@ -3,7 +3,7 @@
 #   INPUT: 2,213,829,660 rows of climate data read from the dat$imp table
 # ACTIONS: Pivot the data; calculate air density, wind vector, and active runway
 #  OUTPUT: 442,765,932 rows of takeoff conditions written to the dat$cli table
-# RUNTIME: ~9.5 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~9.5 hours
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -212,8 +212,18 @@ fn_transform <- function(apt) {
 
   # Select which columns to write to the database and in which order
   cols <- c(
-    "year", "obs", "icao", "zone", "exp", "hurs", "ps", "tas", "rho", "hdw",
-    "rwy", "toda"
+    "year",
+    "obs",
+    "icao",
+    "zone",
+    "exp",
+    "hurs",
+    "ps",
+    "tas",
+    "rho",
+    "hdw",
+    "rwy",
+    "toda"
   )
 
   # Connect the worker to the database

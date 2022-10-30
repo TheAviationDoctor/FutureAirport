@@ -6,7 +6,7 @@
 #          Write the resulting takeoff distance required to the database
 #          Index the database table
 #  OUTPUT: 442,769,456 rows of takeoff data written to the database
-# RUNTIME: N/A
+# RUNTIME: ~72-96 hours depending on how many cores are used
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -112,24 +112,24 @@ fn_sql_qry(
     "CREATE TABLE IF NOT EXISTS",
     tolower(dat$tko),
     "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    year YEAR NOT NULL,
-    obs DATETIME NOT NULL,
-    icao CHAR(4) NOT NULL,
-    zone CHAR(11) NOT NULL,
-    exp CHAR(6) NOT NULL,
-    type CHAR(4) NOT NULL,
-    hurs FLOAT NOT NULL,
-    ps FLOAT NOT NULL,
-    tas FLOAT NOT NULL,
-    rho FLOAT NOT NULL,
-    hdw FLOAT NOT NULL,
-    rwy CHAR(5) NOT NULL,
-    toda SMALLINT NOT NULL,
-    todr SMALLINT NOT NULL,
-    vlof SMALLINT NOT NULL,
+    year    YEAR NOT NULL,
+    obs     DATETIME NOT NULL,
+    icao    CHAR(4) NOT NULL,
+    zone    CHAR(11) NOT NULL,
+    exp     CHAR(6) NOT NULL,
+    type    CHAR(4) NOT NULL,
+    hurs    FLOAT NOT NULL,
+    ps      FLOAT NOT NULL,
+    tas     FLOAT NOT NULL,
+    rho     FLOAT NOT NULL,
+    hdw     FLOAT NOT NULL,
+    rwy     CHAR(5) NOT NULL,
+    toda    SMALLINT NOT NULL,
+    todr    SMALLINT NOT NULL,
+    vlof    SMALLINT NOT NULL,
     thr_red SMALLINT NOT NULL,
     tom_red SMALLINT NOT NULL,
-    itr SMALLINT UNSIGNED NOT NULL,
+    itr     SMALLINT UNSIGNED NOT NULL,
     PRIMARY KEY (id));",
     sep = " "
   )
@@ -395,8 +395,24 @@ fn_simulate <- function(icao) {
 
   # Select which columns to write to the database and in which order
   cols <- c(
-    "year", "obs", "icao", "zone", "exp", "type", "hurs", "ps", "tas", "rho",
-    "hdw", "rwy", "toda", "todr", "vlof", "thr_red", "tom_red", "itr"
+    "year",
+    "obs",
+    "icao",
+    "zone",
+    "exp",
+    "type",
+    "hurs",
+    "ps",
+    "tas",
+    "rho",
+    "hdw",
+    "rwy",
+    "toda",
+    "todr",
+    "vlof",
+    "thr_red",
+    "tom_red",
+    "itr"
   )
 
   # Connect the worker to the database

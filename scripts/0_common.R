@@ -122,7 +122,7 @@ geo <- list(
 # ==============================================================================
 
 # ==============================================================================
-# 5.1 Function to distribute a computational task across cores
+# 5.1 Function to distribute a computational task across cores. Parameters:
 # crs = number of cores to use in the cluster
 # lib = libraries required by each core
 # lst = list to be distributed across cores
@@ -160,7 +160,7 @@ fn_par_lapply <- function(crs, pkg, lst, fun) {
 }
 
 # ==============================================================================
-# 5.2 Function to execute a SQL query and retrieve the results
+# 5.2 Function to execute a SQL query and retrieve the results. Parameters:
 # statement = the SQL statement to pass to the database
 # ==============================================================================
 

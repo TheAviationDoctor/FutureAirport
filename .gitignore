@@ -4,5 +4,7 @@
 .RDataTmp
 .Ruserdata
 runways.csv
+*.cnf
+*.log
 *.nc
 *.sh
