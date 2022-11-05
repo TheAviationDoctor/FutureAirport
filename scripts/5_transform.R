@@ -68,20 +68,22 @@ fn_sql_qry(
   statement = paste(
     "CREATE TABLE",
     tolower(dat$cli),
-    "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    "(
+    id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
     year YEAR NOT NULL,
-    obs DATETIME NOT NULL,
+    obs  DATETIME NOT NULL,
     icao CHAR(4) NOT NULL,
     zone CHAR(11) NOT NULL,
-    exp CHAR(6) NOT NULL,
+    exp  CHAR(6) NOT NULL,
     hurs FLOAT NOT NULL,
-    ps FLOAT NOT NULL,
-    tas FLOAT NOT NULL,
-    rho FLOAT NOT NULL,
-    hdw FLOAT NOT NULL,
-    rwy CHAR(5) NOT NULL,
+    ps   FLOAT NOT NULL,
+    tas  FLOAT NOT NULL,
+    rho  FLOAT NOT NULL,
+    hdw  FLOAT NOT NULL,
+    rwy  CHAR(5) NOT NULL,
     toda SMALLINT NOT NULL,
-    PRIMARY KEY (id));",
+    PRIMARY KEY (id)
+    );",
     sep = " "
   )
 )

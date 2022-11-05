@@ -31,7 +31,7 @@ cat("\014")
 crs <- 16L
 
 # ==============================================================================
-# 1 Set up the database table to store the script outputs
+# 1 Set up the database table
 # ==============================================================================
 
 # Drop the table if it exists
@@ -43,14 +43,18 @@ fn_sql_qry(
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE", tolower(dat$imp),
-    "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    obs DATETIME NOT NULL,
+    "(
+    id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    obs  DATETIME NOT NULL,
     icao CHAR(4) NOT NULL,
+    lat  FLOAT NOT NULL,
+    lon  FLOAT NOT NULL,
     zone CHAR(11) NOT NULL,
-    exp CHAR(6) NOT NULL,
-    var CHAR(4) NOT NULL,
-    val FLOAT NOT NULL,
-    PRIMARY KEY (id));",
+    ssp  CHAR(6) NOT NULL,
+    var  CHAR(4) NOT NULL,
+    val  FLOAT NOT NULL,
+    PRIMARY KEY (id)
+    );",
     sep = " "
   )
 )
@@ -62,7 +66,8 @@ fn_sql_qry(
 # Fetch the list of unique airports in the sample
 dt_smp <- fn_sql_qry(
   statement = paste(
-    "SELECT icao, lat, lon, zone FROM", dat$pop,
+    "SELECT icao, lat, lon, zone",
+    "FROM", dat$pop,
     "WHERE traffic >", sim$pop_thr,
     "GROUP BY icao;",
     sep = " "
@@ -123,14 +128,18 @@ fn_import <- function(nc_file) {
   nc_var <- nc_att$variable_id
 
   # Read the file's experiment variable (SSP)
-  nc_exp <- nc_att$experiment_id
+  nc_ssp <- nc_att$experiment_id
 
   # Read the latitude vector
   nc_lat <- ncdf4::ncvar_get(nc = nc, varid = "lat")
 
-  # Read the longitude vector. Subtract 180 because the NetCDF convention is
-  #  from 0° to 360°, but the airports' longitudes are coded from -180° to 180°.
-  nc_lon <- ncdf4::ncvar_get(nc = nc, varid = "lon") - 180L
+  # Read the longitude vector
+  nc_lon <- ncdf4::ncvar_get(nc = nc, varid = "lon")
+
+  # Recode the longitude vector from 0°-360° to -180°-180°
+  nc_lon <- ((nc_lon + 180) %% 360) - 180
+
+  # CONSIDER INSERTING WORLD MAP OF GRIDDED CELLS
 
   # Read the time vector in PCICt (POSIXct-like) format
   nc_obs <- ncdf4.helpers::nc.get.time.series(
@@ -172,8 +181,10 @@ fn_import <- function(nc_file) {
         format = "%Y-%m-%d %H:%M:%S"
       ),
       icao = as.factor(dt_smp[i, icao]), # Airport's ICAO code
+      lat  = dt_smp[i, lat],             # Airport's latitude
+      lon  = dt_smp[i, lon],             # Airport's longitude
       zone = as.factor(dt_smp[i, zone]), # Airport's climate zone
-      exp  = as.factor(nc_exp),          # Experiment (SSP)
+      ssp  = as.factor(nc_ssp),          # Experiment (SSP)
       var  = as.factor(nc_var),          # Climatic variable name
       val  = as.vector(nc_val)           # Climatic variable value
     )
@@ -289,7 +300,10 @@ fn_par_lapply(
 
 fn_sql_qry(
   statement = paste(
-    "CREATE INDEX idx ON", tolower(dat$imp), "(icao);", sep = " "
+    "CREATE INDEX idx ON",
+    tolower(dat$imp),
+    "(icao);",
+    sep = " "
   )
 )
 
