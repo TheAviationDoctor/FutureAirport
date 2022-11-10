@@ -1,12 +1,12 @@
 # ==============================================================================
 #    NAME: scripts/8_simulate.R
-#   INPUT: 442,769,456 rows of climatic observations from the database
+#   INPUT: 442,765,932 climatic observations read from the dat$cli table
 # ACTIONS: Assemble the aircraft, calibration, and climate data
 #          Perform simulated takeoffs for each aircraft type and climate obs.
 #          Write the resulting takeoff distance required to the database
 #          Index the database table
-#  OUTPUT: 442,769,456 rows of takeoff data written to the database
-# RUNTIME: ~72-96 hours depending on how many cores are used
+#  OUTPUT: 1,771,063,728 takeoff observations written to the dat$tko table
+# RUNTIME: ~66 hours
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -34,7 +34,7 @@ start_time <- Sys.time()
 cat("\014")
 
 # Set the number of CPU cores for parallel processing
-crs <- 18L
+crs <- 20L
 
 # ==============================================================================
 # 1 Import the simulation data
@@ -115,8 +115,10 @@ fn_sql_qry(
     year    YEAR NOT NULL,
     obs     DATETIME NOT NULL,
     icao    CHAR(4) NOT NULL,
+    lat     FLOAT NOT NULL,
+    lon     FLOAT NOT NULL,
     zone    CHAR(11) NOT NULL,
-    exp     CHAR(6) NOT NULL,
+    ssp     CHAR(6) NOT NULL,
     type    CHAR(4) NOT NULL,
     hurs    FLOAT NOT NULL,
     ps      FLOAT NOT NULL,
@@ -128,7 +130,7 @@ fn_sql_qry(
     todr    SMALLINT NOT NULL,
     vlof    SMALLINT NOT NULL,
     thr_red SMALLINT NOT NULL,
-    tom_red SMALLINT NOT NULL,
+    tom_rem SMALLINT NOT NULL,
     itr     SMALLINT UNSIGNED NOT NULL,
     PRIMARY KEY (id));",
     sep = " "
@@ -154,6 +156,9 @@ dt_apt <- dt_apt[!dt_exc]
 
 fn_simulate <- function(icao) {
 
+  # Offset the start of each worker by a random duration to spread disk I/O load
+  Sys.sleep(time = sample(x = 1L:(crs * 10L), size = 1L))
+
   # Inform the log file
   print(
     paste(
@@ -172,7 +177,21 @@ fn_simulate <- function(icao) {
   # Fetch the takeoff conditions at the airport
   dt_cli <- fn_sql_qry(
     statement = paste(
-      "SELECT year, obs, icao, zone, exp, hurs, ps, tas, rho, hdw, rwy, toda",
+      "SELECT
+        year,
+        obs,
+        icao,
+        lat,
+        lon,
+        zone,
+        ssp,
+        hurs,
+        ps,
+        tas,
+        rho,
+        hdw,
+        rwy,
+        toda",
       " FROM ", tolower(dat$cli),
       " WHERE icao = '", icao, "';",
       sep = ""
@@ -182,12 +201,12 @@ fn_simulate <- function(icao) {
   # Create a key on the data table
   setkey(x = dt_cli, "toda")
 
-  # Coerce columns into their correct class
+  # Recast column types
   set(x = dt_cli, j = "obs",  value = as.POSIXct(dt_cli[, obs]))
   set(x = dt_cli, j = "icao", value = as.factor(dt_cli[, icao]))
   set(x = dt_cli, j = "year", value = as.factor(dt_cli[, year]))
   set(x = dt_cli, j = "zone", value = as.factor(dt_cli[, zone]))
-  set(x = dt_cli, j = "exp",  value = as.factor(dt_cli[, exp]))
+  set(x = dt_cli, j = "ssp",  value = as.factor(dt_cli[, ssp]))
   set(x = dt_cli, j = "rwy",  value = as.factor(dt_cli[, rwy]))
 
   # ============================================================================
@@ -227,7 +246,7 @@ fn_simulate <- function(icao) {
   )
 
   # Initialize a column to track how much takeoff mass was removed
-  set(x = dt_tko, j = "tom_red", value = 0L)
+  set(x = dt_tko, j = "tom_rem", value = 0L)
 
   # Initialize the starting TODR to a value greater than the max TODA
   set(x = dt_tko, j = "todr", value = dt_tko[, toda] + 1L)
@@ -259,7 +278,7 @@ fn_simulate <- function(icao) {
       # Save the iteration
       set(x = dt_tko, i = i, j = "itr", value = dt_tko[i, itr] + 1L)
 
-      # If thrust is already at TOGA, then decrease the mass by the standard
+      # If thrust is already at TOGA, then decrease the mass by one passenger
       set(
         x = dt_tko,
         i = i,
@@ -275,11 +294,11 @@ fn_simulate <- function(icao) {
       set(
         x = dt_tko,
         i = i,
-        j = "tom_red",
+        j = "tom_rem",
         value = ifelse(
           dt_tko[i, thr_red] == 0L,
-          dt_tko[i, tom_red] + sim$pax_avg,
-          dt_tko[i, tom_red]
+          dt_tko[i, tom_rem] + sim$pax_avg,
+          dt_tko[i, tom_rem]
         )
       )
 
@@ -398,8 +417,10 @@ fn_simulate <- function(icao) {
     "year",
     "obs",
     "icao",
+    "lat",
+    "lon",
     "zone",
-    "exp",
+    "ssp",
     "type",
     "hurs",
     "ps",
@@ -411,7 +432,7 @@ fn_simulate <- function(icao) {
     "todr",
     "vlof",
     "thr_red",
-    "tom_red",
+    "tom_rem",
     "itr"
   )
 
@@ -468,7 +489,7 @@ fn_sql_qry(
   statement = paste(
     "CREATE INDEX idx ON",
     tolower(dat$tko),
-    "(exp, zone, year, icao);",
+    "(ssp, zone, year, icao);",
     sep = " "
   )
 )

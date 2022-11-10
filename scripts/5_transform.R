@@ -1,9 +1,10 @@
 # ==============================================================================
 #    NAME: scripts/5_transform.R
-#   INPUT: 2,213,829,660 rows of climate data read from the dat$imp table
-# ACTIONS: Pivot the data; calculate air density, wind vector, and active runway
-#  OUTPUT: 442,765,932 rows of takeoff conditions written to the dat$cli table
-# RUNTIME: ~9.5 hours
+#   INPUT: 2,213,829,660 long climate observations read from the dat$imp table
+# ACTIONS: Pivot the data
+#          Calculate the air density, wind vector, and active runway
+#  OUTPUT: 442,765,932 wide climate observations written to the dat$cli table
+# RUNTIME: ~10 hours
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -37,11 +38,25 @@ crs <- 12L
 # Fetch the list of airports and runways in the sample
 dt_smp <- fn_sql_qry(
   statement = paste(
-    "SELECT icao, rwy, toda, zone FROM ", tolower(dat$pop),
-    " WHERE traffic > ", sim$pop_thr, ";",
-    sep = ""
+    "SELECT
+      icao,
+      lat,
+      lon,
+      zone,
+      rwy,
+      toda
+    FROM ",
+    tolower(dat$pop),
+    "WHERE traffic >",
+    sim$pop_thr,
+    ";",
+    sep = " "
   )
 )
+
+# Recast column types
+set(x = dt_smp, j = "icao", value = as.factor(dt_smp[, icao]))
+set(x = dt_smp, j = "zone", value = as.factor(dt_smp[, zone]))
 
 # Convert the runway's name (e.g., RW26R) to its magnetic heading in degrees
 # (e.g., 260) for later headwind calculation
@@ -68,13 +83,14 @@ fn_sql_qry(
   statement = paste(
     "CREATE TABLE",
     tolower(dat$cli),
-    "(
-    id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    "(id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
     year YEAR NOT NULL,
     obs  DATETIME NOT NULL,
     icao CHAR(4) NOT NULL,
+    lat  FLOAT NOT NULL,
+    lon  FLOAT NOT NULL,
     zone CHAR(11) NOT NULL,
-    exp  CHAR(6) NOT NULL,
+    ssp  CHAR(6) NOT NULL,
     hurs FLOAT NOT NULL,
     ps   FLOAT NOT NULL,
     tas  FLOAT NOT NULL,
@@ -82,8 +98,7 @@ fn_sql_qry(
     hdw  FLOAT NOT NULL,
     rwy  CHAR(5) NOT NULL,
     toda SMALLINT NOT NULL,
-    PRIMARY KEY (id)
-    );",
+    PRIMARY KEY (id));",
     sep = " "
   )
 )
@@ -95,22 +110,22 @@ fn_sql_qry(
 fn_transform <- function(apt) {
 
   # Offset the start of each worker by a random duration to spread disk I/O load
-  Sys.sleep(time = sample(1:(crs * 10), 1L))
+  Sys.sleep(time = sample(x = 1L:(crs * 10L), size = 1L))
 
   # Inform the log file
   print(
     paste(
       Sys.time(),
-      " pid ",
+      "pid",
       stringr::str_pad(
         Sys.getpid(),
         width = 5L,
         side  = "left",
         pad   = " "
       ),
-      " Parsing airport ", apt,
-      "...",
-      sep = ""
+      apt,
+      "(1/6) Fetching climate observations...",
+      sep = " "
     )
   )
 
@@ -121,21 +136,76 @@ fn_transform <- function(apt) {
   # Fetch the climate data for the current airport
   dt_nc <- fn_sql_qry(
     statement = paste(
-      "SELECT obs, icao, zone, exp, var, val FROM ", tolower(dat$imp),
-      " WHERE icao = '", apt, "';",
+      "SELECT
+        obs,
+        icao,
+        ssp,
+        var,
+        val
+      FROM ",
+      tolower(dat$imp),
+      " WHERE
+        icao = '",
+        apt,
+      "';",
+      # "' LIMIT 100000;",
       sep = ""
     )
   )
-  
-  # Create keys on the data table
-  setkey(x = dt_nc, obs, exp)
 
+  # Recast column types
+  set(x = dt_nc, j = "icao", value = as.factor(dt_nc[, icao]))
+  set(x = dt_nc, j = "ssp",  value = as.factor(dt_nc[, ssp]))
+  set(x = dt_nc, j = "var",  value = as.factor(dt_nc[, var]))
+
+  # Inform the log file
+  print(
+    paste(
+      Sys.time(),
+      "pid",
+      stringr::str_pad(
+        Sys.getpid(),
+        width = 5L,
+        side  = "left",
+        pad   = " "
+      ),
+      apt,
+      "(2/6) Pivoting",
+      format(x = nrow(dt_nc), big.mark = ","),
+      "observations...",
+      sep = " "
+    )
+  )
+  
   # Pivot the dataset from long to wide format
-  dt_nc <- dcast.data.table(dt_nc, obs + icao + exp ~ var, value.var = "val")
+  dt_nc <- dcast.data.table(
+    data      = dt_nc,
+    formula   = obs + icao + ssp ~ var,
+    value.var = "val"
+  )
 
   # ============================================================================
   # 3.2 Calculate the air density of moist air at the current airport
   # ============================================================================
+
+  # Inform the log file
+  print(
+    paste(
+      Sys.time(),
+      "pid",
+      stringr::str_pad(
+        Sys.getpid(),
+        width = 5L,
+        side  = "left",
+        pad   = " "
+      ),
+      apt,
+      "(3/6) Calculating air density for",
+      format(x = nrow(dt_nc), big.mark = ","),
+      "observations...",
+      sep = " "
+    )
+  )
 
   # Polynomial approximation for the saturation vapor pressure at 0°C in mbar
   # Based on the ESW(T) function at https://icoads.noaa.gov/software/other/profs
@@ -175,6 +245,25 @@ fn_transform <- function(apt) {
   # Return the Cartesian product of observations times runway headings
   dt_nc <- merge(x = dt_nc, y = dt_rwys, by = "icao", allow.cartesian = TRUE)
 
+  # Inform the log file
+  print(
+    paste(
+      Sys.time(),
+      "pid",
+      stringr::str_pad(
+        Sys.getpid(),
+        width = 5L,
+        side  = "left",
+        pad   = " "
+      ),
+      apt,
+      "(4/6) Calculating headwinds for",
+      format(x = nrow(dt_nc), big.mark = ","),
+      "observations...",
+      sep = " "
+    )
+  )
+
   # ============================================================================
   # 3.4 Calculate the wind vector for each runway
   # ============================================================================
@@ -198,12 +287,31 @@ fn_transform <- function(apt) {
   )
 
   # Keep only the runway with the maximum headwind speed (presumed to be
-  #  the active runway) for each observation and experiment
-  dt_nc <- dt_nc[, .SD[which.max(hdw)], by = .(obs, exp)]
+  #  the active runway) for each observation and experiment (SSP)
+  dt_nc <- dt_nc[, .SD[which.max(hdw)], by = .(obs, ssp)]
 
   # ============================================================================
-  # 3.4 Write the data in tidy format to the database
+  # 3.4 Write the data in wide format to the database
   # ============================================================================
+
+  # Inform the log file
+  print(
+    paste(
+      Sys.time(),
+      "pid",
+      stringr::str_pad(
+        Sys.getpid(),
+        width = 5L,
+        side  = "left",
+        pad   = " "
+      ),
+      apt,
+      "(5/6) Writing",
+      format(x = nrow(dt_nc), big.mark = ","),
+      "observations to the database...",
+      sep = " "
+    )
+  )
 
   # Create the year column
   set(
@@ -217,8 +325,10 @@ fn_transform <- function(apt) {
     "year",
     "obs",
     "icao",
+    "lat",
+    "lon",
     "zone",
-    "exp",
+    "ssp",
     "hurs",
     "ps",
     "tas",
@@ -242,7 +352,26 @@ fn_transform <- function(apt) {
 
   # Disconnect the worker from the database
   dbDisconnect(conn)
-  
+
+  # Inform the log file
+  print(
+    paste(
+      Sys.time(),
+      "pid",
+      stringr::str_pad(
+        Sys.getpid(),
+        width = 5L,
+        side  = "left",
+        pad   = " "
+      ),
+      apt,
+      "(6/6) Written",
+      format(x = nrow(dt_nc), big.mark = ","),
+      "observations to the database.",
+      sep = " "
+    )
+  )
+
 } # End of the fn_transform function
 
 # ==============================================================================
@@ -266,7 +395,7 @@ fn_sql_qry(
   statement = paste(
     "CREATE INDEX idx ON",
     tolower(dat$cli),
-    "(year, icao, zone, exp);", sep = " "
+    "(year, icao, zone, ssp);", sep = " "
   )
 )
 

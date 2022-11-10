@@ -58,7 +58,7 @@ fn_sql_qry(
     tolower(dat$an1),
     "(
       year     YEAR,
-      exp      CHAR(6),
+      ssp      CHAR(6),
       zone     CHAR(11),
       icao     CHAR(4),
       avg_tas  FLOAT,
@@ -71,7 +71,7 @@ fn_sql_qry(
     )
     AS SELECT
       year,
-      exp,
+      ssp,
       zone,
       icao,
       AVG(tas)  AS avg_tas,
@@ -85,7 +85,7 @@ fn_sql_qry(
     tolower(dat$cli),
     "GROUP BY
       year,
-      exp,
+      ssp,
       icao
     ;",
     sep = " "
@@ -107,7 +107,7 @@ dt_an1 <- fn_sql_qry(
 # Recast column types
 set(x = dt_an1, j = "year", value = as.integer(dt_an1[, year]))
 set(x = dt_an1, j = "zone", value = as.factor(dt_an1[, zone]))
-set(x = dt_an1, j = "exp",  value = as.factor(dt_an1[, exp]))
+set(x = dt_an1, j = "ssp",  value = as.factor(dt_an1[, ssp]))
 set(x = dt_an1, j = "icao", value = as.factor(dt_an1[, icao]))
 
 # ==============================================================================
@@ -129,7 +129,7 @@ dt_an1[, avg_ps := avg_ps / 100L]
 cols_mean <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
 
 # Declare input variables for grouping
-grp <- c("year", "exp", "zone")
+grp <- c("year", "ssp", "zone")
 
 # Summarize the data and combine them by group
 dt_an1 <- rbind(
@@ -181,7 +181,7 @@ cols <- c(
 )
 
 # Declare input variables for grouping
-grp <- c("exp", "zone")
+grp <- c("ssp", "zone")
 
 # Perform regression fitting by group
 dt_an1[,
@@ -262,7 +262,7 @@ fn_plot <- function(cols) {
       ) +
       scale_x_continuous(name = "Year", n.breaks = 5L) +
       scale_y_continuous(name = "Value", labels = label_comma(accuracy = .01)) +
-      facet_grid(zone ~ toupper(exp), scales = "free_y") +
+      facet_grid(zone ~ toupper(ssp), scales = "free_y") +
       theme_light() +
       theme(
         axis.title.y = element_blank(),
@@ -317,7 +317,7 @@ fn_sql_qry(
     tolower(dat$an2),
     "(
       year                 YEAR,
-      exp                  CHAR(6),
+      ssp                  CHAR(6),
       zone                 CHAR(11),
       icao                 CHAR(4),
       type                 CHAR(4),
@@ -334,7 +334,7 @@ fn_sql_qry(
     )
     AS SELECT
       year,
-      exp,
+      ssp,
       zone,
       icao,
       type,
@@ -342,8 +342,8 @@ fn_sql_qry(
       SUM(itr)                                          AS itr_sum,
       SUM(thr_red =", sim$thr_ini, ")                   AS tko_ok_thr_min,
       SUM(thr_red BETWEEN 1 AND", sim$thr_ini - 1L, ")  AS tko_ok_thr_mid,
-      SUM(thr_red = 0 AND todr <= toda AND tom_red = 0) AS tko_ok_thr_max_no_rm,
-      SUM(thr_red = 0 AND todr <= toda AND tom_red > 0) AS tko_ok_thr_max_rm,
+      SUM(thr_red = 0 AND todr <= toda AND tom_rem = 0) AS tko_ok_thr_max_no_rm,
+      SUM(thr_red = 0 AND todr <= toda AND tom_rem > 0) AS tko_ok_thr_max_rm,
       SUM(thr_red = 0 AND todr <= toda)                 AS tko_ok_thr_max,
       SUM(todr <= toda)                                 AS tko_ok,
       SUM(todr > toda)                                  AS tko_ko,
@@ -352,7 +352,7 @@ fn_sql_qry(
     tolower(dat$tko),
     "GROUP BY
       year,
-      exp,
+      ssp,
       icao,
       type
     ;",
@@ -375,7 +375,7 @@ dt_an2 <- fn_sql_qry(
 # Recast column types
 set(x = dt_an2, j = "year",    value = as.integer(dt_an2[, year]))
 set(x = dt_an2, j = "zone",    value = as.factor(dt_an2[, zone]))
-set(x = dt_an2, j = "exp",     value = as.factor(dt_an2[, exp]))
+set(x = dt_an2, j = "ssp",     value = as.factor(dt_an2[, ssp]))
 set(x = dt_an2, j = "icao",    value = as.factor(dt_an2[, icao]))
 set(x = dt_an2, j = "type",    value = as.factor(dt_an2[, type]))
 set(x = dt_an2, j = "itr_sum", value = as.numeric(dt_an2[, itr_sum]))
@@ -438,7 +438,7 @@ cols_mean <- c(
 )
 
 # Declare input variables for grouping
-grp <- c("year", "exp", "zone", "type")
+grp <- c("year", "ssp", "zone", "type")
 
 # Summarize the data and combine them by group
 dt_an2 <- rbind(
@@ -483,7 +483,7 @@ cols <- c(
 )
 
 # Declare input variables for grouping
-grp <- c("exp", "zone", "type")
+grp <- c("ssp", "zone", "type")
 
 # Perform regression fitting by group
 dt_an2[,
@@ -517,7 +517,7 @@ cols <- c(
 )
 
 # Update input variables for grouping
-grp <- c("exp", "zone")
+grp <- c("ssp", "zone")
 
 # Create a function to plot results
 fn_plot <- function(body, cols) {
@@ -569,7 +569,7 @@ fn_plot <- function(body, cols) {
       ) +
       scale_x_continuous(name = "Year", n.breaks = 3L) +
       scale_y_continuous(name = "Value", labels = scales::percent) +
-      facet_grid(zone ~ toupper(exp), scales = "free_y") +
+      facet_grid(zone ~ toupper(ssp), scales = "free_y") +
       theme_light() +
       theme(
         axis.title.y = element_blank(),
@@ -609,7 +609,7 @@ mapply(
 # 3.1 Create, fetch, and cleanse the data. Variables:
 # avg_todr    = Mean takeoff distance required in m
 # avg_thr_red = Mean thrust reduction in percentage points of TOGA
-# avg_tom_red = Mean takeoff mass reduction in kg
+# avg_tom_rem = Mean takeoff mass reduction in kg
 # ==============================================================================
 
 # Create the summary table (runtime: ~60 minutes)
@@ -619,30 +619,30 @@ fn_sql_qry(
     tolower(dat$an3),
     "(
       year        YEAR,
-      exp         CHAR(6),
+      ssp         CHAR(6),
       zone        CHAR(11),
       icao        CHAR(4),
       type        CHAR(4),
       avg_todr    FLOAT,
       avg_thr_red FLOAT,
-      avg_tom_red FLOAT
+      avg_tom_rem FLOAT
     )
     AS SELECT
       year,
-      exp,
+      ssp,
       zone,
       icao,
       type,
       AVG(todr)    AS avg_todr,
       AVG(thr_red) AS avg_thr_red,
-      AVG(tom_red) AS avg_tom_red
+      AVG(tom_rem) AS avg_tom_rem
     FROM",
     tolower(dat$tko),
     "WHERE
       todr <= toda
     GROUP BY
       year,
-      exp,
+      ssp,
       icao,
       type
     ;",
@@ -665,7 +665,7 @@ dt_an3 <- fn_sql_qry(
 # Recast column types
 set(x = dt_an3, j = "year", value = as.integer(dt_an3[, year]))
 set(x = dt_an3, j = "zone", value = as.factor(dt_an3[, zone]))
-set(x = dt_an3, j = "exp",  value = as.factor(dt_an3[, exp]))
+set(x = dt_an3, j = "ssp",  value = as.factor(dt_an3[, ssp]))
 set(x = dt_an3, j = "icao", value = as.factor(dt_an3[, icao]))
 set(x = dt_an3, j = "type", value = as.factor(dt_an3[, type]))
 
@@ -680,7 +680,7 @@ levels(dt_an3$type) <- bod
 dt_an3[, avg_thr := (100L - avg_thr_red) / 100L][, avg_thr_red := NULL]
 
 # Convert payload removal in kg to passengers based on standard assumptions
-dt_an3[, avg_pax_rem := avg_tom_red / sim$pax_avg][, avg_tom_red := NULL]
+dt_an3[, avg_pax_rem := avg_tom_rem / sim$pax_avg][, avg_tom_rem := NULL]
 
 # ==============================================================================
 # 3.3 Summarize the data
@@ -690,7 +690,7 @@ dt_an3[, avg_pax_rem := avg_tom_red / sim$pax_avg][, avg_tom_red := NULL]
 cols <- c("avg_todr", "avg_thr", "avg_pax_rem")
 
 # Declare input variables for grouping
-grp <- c("year", "exp", "zone", "type")
+grp <- c("year", "ssp", "zone", "type")
 
 # Summarize the data and combine them by group
 dt_an3 <- rbind(
@@ -711,7 +711,7 @@ dt_an3 <- rbind(
 # ==============================================================================
 
 # Declare input variables for grouping
-grp <- c("exp", "zone", "type")
+grp <- c("ssp", "zone", "type")
 
 # Perform regression fitting by group
 dt_an3[,
@@ -739,7 +739,7 @@ fwrite(
 # ==============================================================================
 
 # Declare input variables for grouping
-grp <- c("exp", "zone")
+grp <- c("ssp", "zone")
 
 # Create a function to plot results
 fn_plot <- function(body, cols) {
@@ -795,7 +795,7 @@ fn_plot <- function(body, cols) {
         nudge_x    = -6L,
         size       = 2L
       ) +
-      facet_grid(zone ~ toupper(exp), scales = "free_y") +
+      facet_grid(zone ~ toupper(ssp), scales = "free_y") +
       theme_light() +
       theme(
         axis.title.y = element_blank(),
