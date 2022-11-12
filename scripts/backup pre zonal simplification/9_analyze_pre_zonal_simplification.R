@@ -4,7 +4,7 @@
 # ACTIONS: Create summary tables in MySQL and associated plots
 #  OUTPUT: Plot and summary data files saved to disk
 # RUNTIME: ~160 minutes if the summary tables do not yet exist in the database.
-#          < 30 seconds otherwise. (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+#          < 30 seconds otherwise.
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -26,7 +26,6 @@ library(data.table)
 library(DBI)
 library(ggplot2)
 library(scales)
-library(viridis)
 
 # Import the common settings
 source("scripts/0_common.R")
@@ -126,49 +125,49 @@ dt_an1[, max_tas := max_tas - sim$k_to_c]
 # Convert near-surface air pressure from Pa to hPa
 dt_an1[, avg_ps := avg_ps / 100L]
 
-# # ==============================================================================
-# # 1.3 Summarize the data
-# # ==============================================================================
-# 
-# # Declare output variables for averaging
-# cols_mean <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
-# 
-# # Declare input variables for grouping
-# grp <- c("year", "ssp", "zone")
-# 
-# # Summarize the data and combine them by group
-# dt_an1a <- rbind(
-#   # Zonal summary by group
-#   cbind(
-#     dt_an1[, lapply(X = .SD, FUN = mean),
-#       by = grp,
-#       .SDcols = cols_mean
-#     ],
-#     dt_an1[, lapply(X = .SD, FUN = max),
-#       by = grp,
-#       .SDcols = c("max_tas")
-#     ][, "max_tas"],
-#     dt_an1[, lapply(X = .SD, FUN = min),
-#       by = grp,
-#       .SDcols = c("min_rho")
-#     ][, "min_rho"]
-#   ),
-#   # Global summary by group
-#   cbind(
-#     dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = mean),
-#       by = grp,
-#       .SDcols = cols_mean
-#     ],
-#     dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = max),
-#       by = grp,
-#       .SDcols = c("max_tas")
-#     ][, "max_tas"],
-#     dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = min),
-#       by = grp,
-#       .SDcols = c("min_rho")
-#     ][, "min_rho"]
-#   )
-# )
+# ==============================================================================
+# 1.3 Summarize the data
+# ==============================================================================
+
+# Declare output variables for averaging
+cols_mean <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
+
+# Declare input variables for grouping
+grp <- c("year", "ssp", "zone")
+
+# Summarize the data and combine them by group
+dt_an1 <- rbind(
+  # Zonal summary by group
+  cbind(
+    dt_an1[, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = cols_mean
+    ],
+    dt_an1[, lapply(X = .SD, FUN = max),
+      by = grp,
+      .SDcols = c("max_tas")
+    ][, "max_tas"],
+    dt_an1[, lapply(X = .SD, FUN = min),
+      by = grp,
+      .SDcols = c("min_rho")
+    ][, "min_rho"]
+  ),
+  # Global summary by group
+  cbind(
+    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = cols_mean
+    ],
+    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = max),
+      by = grp,
+      .SDcols = c("max_tas")
+    ][, "max_tas"],
+    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = min),
+      by = grp,
+      .SDcols = c("min_rho")
+    ][, "min_rho"]
+  )
+)
 
 # ==============================================================================
 # 1.4 Add local polynomial regression fitting (LOESS) to the output variables
@@ -185,227 +184,112 @@ cols <- c(
   "min_rho"
 )
 
-# # Declare input variables for grouping
-# grp <- c("ssp", "zone")
-# 
-# # Perform regression fitting by group
-# dt_an1a[,
-#   paste(cols, "loess", sep = "_") := lapply(
-#     X = .SD,
-#     FUN = function(x) {
-#       predict(loess(formula = x ~ year, span = .75, model = TRUE))
-#     }
-#   ),
-#   by = grp,
-#   .SDcols = cols
-# ]
-# 
-# # ==============================================================================
-# # 1.5 Save the data to disk
-# # ==============================================================================
-# 
-# fwrite(
-#   x    = dt_an1a,
-#   file = paste(dir$res, "dt_an1a.csv", sep = "/")
-# )
-# 
-# # ==============================================================================
-# # 1.6 Plot the results
-# # ==============================================================================
-# 
-# # Create a function to plot results
-# fn_plot <- function(cols) {
-#   (
-#     ggplot(
-#       data = dt_an1a,
-#       mapping = aes(
-#         x     = year,
-#         y     = dt_an1a[[as.character(cols)]]
-#       )
-#     ) +
-#       geom_line(size = .2) +
-#       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
-#       # Starting value labels
-#       geom_label(
-#         data = dt_an1a[, .SD[which.min(year)], by = grp],
-#         aes(
-#           x = year,
-#           y = dt_an1a[, .SD[which.min(year)], by = grp]
-#           [[paste(as.character(cols), "loess", sep = "_")]],
-#           label = round(
-#             x = dt_an1a[, .SD[which.min(year)], by = grp]
-#             [[paste(as.character(cols), "loess", sep = "_")]],
-#             digits = 2L
-#           )
-#         ),
-#         alpha      = .5,
-#         fill       = "white",
-#         label.r    = unit(0L, "lines"),
-#         label.size = 0L,
-#         nudge_x    = 4L,
-#         size       = 2L
-#       ) +
-#       # Ending value labels
-#       geom_label(
-#         data = dt_an1a[, .SD[which.max(year)], by = grp],
-#         aes(
-#           x = year,
-#           y = dt_an1a[, .SD[which.max(year)], by = grp]
-#           [[paste(as.character(cols), "loess", sep = "_")]],
-#           label = round(
-#             x = dt_an1a[, .SD[which.max(year)], by = grp]
-#             [[paste(as.character(cols), "loess", sep = "_")]],
-#             digits = 2L
-#           )
-#         ),
-#         alpha      = .5,
-#         fill       = "white",
-#         label.r    = unit(0L, "lines"),
-#         label.size = 0L,
-#         nudge_x    = -4L,
-#         size       = 2L
-#       ) +
-#       scale_x_continuous(name = "Year", n.breaks = 5L) +
-#       scale_y_continuous(name = "Value", labels = label_comma(accuracy = .01)) +
-#       facet_grid(zone ~ toupper(ssp), scales = "free_y") +
-#       theme_light() +
-#       theme(
-#         axis.title.y = element_blank(),
-#         text = element_text(size = 8)
-#       )
-#   ) |>
-#     ggsave(
-#       filename = tolower(paste("9_", cols, ".png", sep = "")),
-#       device   = "png",
-#       path     = "plots",
-#       scale    = 1L,
-#       width    = 6L,
-#       height   = NA,
-#       units    = "in",
-#       dpi      = "print"
-#     )
-# }
-# 
-# # Generate the plots
-# mapply(
-#   FUN  = fn_plot,
-#   cols = cols
-# )
+# Declare input variables for grouping
+grp <- c("ssp", "zone")
 
+# Perform regression fitting by group
+dt_an1[,
+  paste(cols, "loess", sep = "_") := lapply(
+    X = .SD,
+    FUN = function(x) {
+      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+    }
+  ),
+  by = grp,
+  .SDcols = cols
+]
 
+# ==============================================================================
+# 1.5 Save the data to disk
+# ==============================================================================
 
-dt_an1b <- dt_an1[year %in% c(2015, 2100)]
-
-# Pivot the dataset from long to wide format
-dt_an1b <- dcast.data.table(
-  data      = dt_an1b,
-  formula   = icao + zone + ssp ~ year,
-  value.var = cols
+fwrite(
+  x    = dt_an1,
+  file = paste(dir$res, "dt_an1.csv", sep = "/")
 )
 
-# Express output variables as a percentage of all takeoffs
-lapply(
-  X = cols,
-  FUN = function(x) {
-    dt_an1b[, paste(x) := get(paste(x, "2100", sep = "_")) - get(paste(x, "2015", sep = "_"))]
-  }
-)
+# ==============================================================================
+# 1.6 Plot the results
+# ==============================================================================
 
-View(dt_an1b)
-stop()
-
-# Define the world object from the Natural Earth package
-world <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf")
-
-# Build a world map and plot the airports
-(ggplot() +
-    geom_sf(data = world, color = NA, fill = "gray", alpha = .5) +
-    scale_y_continuous(breaks = unique(unlist(geo, use.names = FALSE))) +
-    coord_sf(expand = FALSE) +
-    scale_color_viridis() +
-    geom_point(
-      data     = dt_an1b[!duplicated(dt_an1b$icao), ],
-      mapping  = aes(x = lon, y = lat, color = avg_rho),
-      # color    = "black",
-      shape    = 20L,
-      size     = 1.5
+# Create a function to plot results
+fn_plot <- function(cols) {
+  (
+    ggplot(
+      data = dt_an1,
+      mapping = aes(
+        x     = year,
+        y     = dt_an1[[as.character(cols)]]
+      )
     ) +
-    # geom_hline(
-    #   aes(yintercept = dt_pop$lat[which.max(dt_pop$lat)]),
-    #   color    = "black"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = df_smp$lat[which.max(df_smp$lat)]),
-    #   color    = "purple"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = dt_pop$lat[which.min(dt_pop$lat)]),
-    #   color    = "black"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = df_smp$lat[which.min(df_smp$lat)]),
-    #   color    = "purple"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = mean(dt_pop[!duplicated(dt_pop$icao), ]$lat)),
-    #   color    = "black"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = mean(df_smp[!duplicated(df_smp$icao), ]$lat)),
-    #   color    = "purple"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = median(dt_pop[!duplicated(dt_pop$icao), ]$lat)),
-    #   color    = "black"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = median(df_smp[!duplicated(df_smp$icao), ]$lat)),
-    #   color    = "purple"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = 66.5635),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = 30),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = 23.4365),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = -23.4365),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = -30),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = -66.5635),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    theme_light() +
-    theme(axis.title = element_blank(), axis.text.x = element_blank())) |>
-  ggsave(
-    filename = "9_world.png",
-    device   = "png",
-    path     = "plots",
-    scale    = 1L,
-    width    = 8.15,
-    height   = 3.69,
-    units    = "in",
-    dpi      = "print"
-  )
+      geom_line(size = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      # Starting value labels
+      geom_label(
+        data = dt_an1[, .SD[which.min(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an1[, .SD[which.min(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = round(
+            x = dt_an1[, .SD[which.min(year)], by = grp]
+            [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = 4L,
+        size       = 2L
+      ) +
+      # Ending value labels
+      geom_label(
+        data = dt_an1[, .SD[which.max(year)], by = grp],
+        aes(
+          x = year,
+          y = dt_an1[, .SD[which.max(year)], by = grp]
+          [[paste(as.character(cols), "loess", sep = "_")]],
+          label = round(
+            x = dt_an1[, .SD[which.max(year)], by = grp]
+            [[paste(as.character(cols), "loess", sep = "_")]],
+            digits = 2L
+          )
+        ),
+        alpha      = .5,
+        fill       = "white",
+        label.r    = unit(0L, "lines"),
+        label.size = 0L,
+        nudge_x    = -4L,
+        size       = 2L
+      ) +
+      scale_x_continuous(name = "Year", n.breaks = 5L) +
+      scale_y_continuous(name = "Value", labels = label_comma(accuracy = .01)) +
+      facet_grid(zone ~ toupper(ssp), scales = "free_y") +
+      theme_light() +
+      theme(
+        axis.title.y = element_blank(),
+        text = element_text(size = 8)
+      )
+  ) |>
+    ggsave(
+      filename = tolower(paste("9_", cols, ".png", sep = "")),
+      device   = "png",
+      path     = "plots",
+      scale    = 1L,
+      width    = 6L,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
+}
 
-stop()
+# Generate the plots
+mapply(
+  FUN  = fn_plot,
+  cols = cols
+)
 
 # ==============================================================================
 # 2. Takeoff outcomes summary

@@ -107,15 +107,16 @@ df_geo <- subset(
 # Count the remaining observations
 nrow(df_geo)
 
-# Assign each airport to a climate zone based on its latitude
-df_geo$zone <- names(
-  # x = geo[findInterval(x = df_geo$lat, vec = unname(obj = unlist(x = geo)))]
-  x = geo[
-    findInterval(
-      x   = df_geo$lat,
-      vec = unique(unlist(x = geo, use.names = FALSE))
-    )
-  ]
+# Add climatic zones based on absolute latitude
+df_geo$zone <- case_when(
+  abs(df_geo$lat) >= lat$tro$lower & abs(df_geo$lat) <= lat$tro$upper ~
+    lat$tro$name,
+  abs(df_geo$lat) >= lat$sub$lower & abs(df_geo$lat) <= lat$sub$upper ~
+    lat$sub$name,
+  abs(df_geo$lat) >= lat$tem$lower & abs(df_geo$lat) <= lat$tem$upper ~
+    lat$tem$name,
+  abs(df_geo$lat) >= lat$fri$lower & abs(df_geo$lat) <= lat$fri$upper ~
+    lat$fri$name
 )
 
 # ==============================================================================
@@ -236,7 +237,7 @@ sum(df_pop$traffic[!rev(duplicated(rev(df_pop$icao)))])
 
 # Create column to identify unique runways (i.e. reciprocal headings
 # sharing the same physical surface and same TODA at a given airport).
-df_pop_unique <- df_pop |>
+df_pop_unique <- df_pop %>%
   mutate(rwy.recip = if_else(
     parse_number(rwy) <= 18L,
     paste("RW",
@@ -257,16 +258,16 @@ df_pop_unique <- df_pop |>
       ),
       sep = ""
     )
-  )) |>
+  )) %>%
   mutate(rwy.concat = pmap_chr(list(rwy, rwy.recip), ~ paste(
     sort(c(...)),
     collapse = "-"
-  ))) |>
+  ))) %>%
   unite("rwy.unique", c("icao", "rwy.concat", "toda"),
     sep = "-",
     remove = FALSE
-  ) |>
-  arrange(desc(traffic), rwy.unique) |>
+  ) %>%
+  arrange(desc(traffic), rwy.unique) %>%
   select(rwy.unique)
 
 # Count unique runways
@@ -323,7 +324,7 @@ labels <- c(
 )
 
 # Bin the airports by passenger traffic
-df_bin <- df_plt |>
+df_bin <- df_plt %>%
   mutate(
     bin = cut(
       x              = df_plt$traffic,
@@ -332,19 +333,19 @@ df_bin <- df_plt |>
       include.lowest = TRUE,
       right          = FALSE
     )
-  ) |>
-  group_by(bin) |>
+  ) %>%
+  group_by(bin) %>%
   dplyr::summarize(
     airports = n(),
     traffic  = sum(traffic)
-  ) |>
-  arrange(-row_number()) |>
+  ) %>%
+  arrange(-row_number()) %>%
   mutate(
     airports_cum = cumsum(airports),
     airports_per = cumsum(airports) / sum(airports),
     traffic_cum  = cumsum(traffic),
     traffic_per  = cumsum(traffic) / sum(traffic)
-  ) |>
+  ) %>%
   relocate(
     bin, airports, airports_cum, airports_per,
     traffic, traffic_cum, traffic_per
@@ -357,74 +358,71 @@ df_bin
 coeff <- max(df_bin$traffic_per) / max(df_bin$airports)
 
 # Plot the Pareto chart of passenger traffic by airport bin
-ggplot(data = df_bin) +
+(ggplot(data = df_bin) +
     geom_col(mapping = aes(x = bin, y = airports)) +
     geom_text(
-      mapping   = aes(
-        x       = bin,
-        y       = airports,
-        label   = scales::comma(airports, accuracy = 1L)
+      mapping  = aes(
+        x      = bin,
+        y      = airports,
+        label  = scales::comma(airports, accuracy = 1L)
       ),
-      hjust     = ifelse(df_bin$airports < 10L, -.5, .5),
-      vjust     = ifelse(df_bin$airports < 50L, -.5, 1.5),
-      color     = ifelse(df_bin$airports < 50L, "black", "white"),
-      size      = 3.5
+      hjust    = ifelse(df_bin$airports < 10L, -.5, .5),
+      vjust    = ifelse(df_bin$airports < 50L, -.5, 1.5),
+      color    = ifelse(df_bin$airports < 50L, "black", "white"),
+      size     = 3.5
     ) +
     geom_point(
-      mapping   = aes(x = bin, y = traffic_per / coeff),
-      size      = 1L
+      mapping  = aes(x = bin, y = traffic_per / coeff),
+      size     = 1L
     ) +
     geom_text(
-      mapping   = aes(
-        x       = bin,
-        y       = traffic_per / coeff,
-        label   = scales::percent(traffic_per, accuracy = 0.1)
+      mapping  = aes(
+        x      = bin,
+        y      = traffic_per / coeff,
+        label  = scales::percent(traffic_per, accuracy = 0.1)
       ),
-      nudge_x   = -.275,
-      nudge_y   = 50L,
-      color     = "black",
-      size      = 3.5
+      nudge_x  = -.275,
+      nudge_y  = 50L,
+      color    = "black",
+      size     = 3.5
     ) +
     geom_path(
-      mapping   = aes(x = bin, y = traffic_per / coeff, group = 1L),
-      lty       = 1L,
-      linewidth = 0.5
+      mapping  = aes(x = bin, y = traffic_per / coeff, group = 1L),
+      lty      = 1L,
+      size     = 0.5
     ) +
     scale_x_discrete(
-      name      = "Traffic bins (2019)",
-      limits    = rev,
-      guide     = guide_axis(n.dodge = 2L)
+      name     = "Traffic bins (2019)",
+      limits   = rev,
+      guide    = guide_axis(n.dodge = 2L)
     ) +
     scale_y_continuous(
-      name      = "Count of airports (bars)",
-      labels    = scales::comma,
-      breaks    = seq(from = 0L, to = 1200L, by = 300L),
-      sec.axis  = sec_axis(~ . * coeff,
-        name    = "Cumulative percentage of passenger traffic (line)",
-        labels  = percent
+      name     = "Count of airports (bars)",
+      labels   = scales::comma,
+      breaks   = seq(from = 0L, to = 1200L, by = 300L),
+      sec.axis = sec_axis(~ . * coeff,
+        name   = "Cumulative percentage of passenger traffic (line)",
+        labels = percent
       )
     ) +
     theme_light() +
     theme(
       panel.grid.minor.x = element_blank(),
       panel.grid.minor.y = element_blank()
-    )
-
-# Save the plot
-ggsave(
-  filename = "1_traffic_bins.png",
-  plot     = last_plot(),
-  device   = "png",
-  path     = dir$plt,
-  scale    = 1L,
-  width    = 6L,
-  height   = 7L,
-  units    = "in",
-  dpi      = "print"
-)
+    )) %>%
+  ggsave(
+    filename = "1_traffic_bins.png",
+    device   = "png",
+    path     = dir$plt,
+    scale    = 1L,
+    width    = 6L,
+    height   = 7L,
+    units    = "in",
+    dpi      = "print"
+  )
 
 # Plot the density of traffic by airport size
-ggplot(data = df_plt, mapping = aes(x = traffic)) +
+(ggplot(data = df_plt, mapping = aes(x = traffic)) +
     geom_density(alpha = .75, fill = "lightgray") +
     geom_vline(xintercept = mean(df_plt$traffic), color = "black") +
     geom_vline(
@@ -442,20 +440,17 @@ ggplot(data = df_plt, mapping = aes(x = traffic)) +
     theme(
       panel.grid.minor.x = element_blank(),
       panel.grid.minor.y = element_blank()
-    )
-
-# Save the plot
-ggsave(
-  filename = "1_traffic_density.png",
-  plot     = last_plot(),
-  device   = "png",
-  path     = dir$plt,
-  scale    = 1L,
-  width    = 6L,
-  height   = NA,
-  units    = "in",
-  dpi      = "print"
-)
+    )) %>%
+  ggsave(
+    filename = "1_traffic_density.png",
+    device   = "png",
+    path     = dir$plt,
+    scale    = 1L,
+    width    = 6L,
+    height   = NA,
+    units    = "in",
+    dpi      = "print"
+  )
 
 # ==============================================================================
 # 7 Save the population to a database
@@ -471,19 +466,17 @@ fn_sql_qry(
   statement = paste(
     "CREATE TABLE ",
     tolower(dat$pop),
-    "(
-    id      SMALLINT NOT NULL AUTO_INCREMENT,
-    icao    CHAR(4) NOT NULL,
-    iata    CHAR(3) NOT NULL,
+    "(id SMALLINT NOT NULL AUTO_INCREMENT,
+    icao CHAR(4) NOT NULL,
+    iata CHAR(3) NOT NULL,
     traffic INT NOT NULL,
-    name    CHAR(", max(nchar(df_pop$name)), ") NOT NULL,
-    lat     FLOAT NOT NULL,
-    lon     FLOAT NOT NULL,
-    zone    CHAR(11) NOT NULL,
-    rwy     CHAR(5) NOT NULL,
-    toda    SMALLINT NOT NULL,
-    PRIMARY KEY (id)
-    );",
+    name CHAR(", max(nchar(df_pop$name)), ") NOT NULL,
+    lat FLOAT NOT NULL,
+    lon FLOAT NOT NULL,
+    zone CHAR(11) NOT NULL,
+    rwy CHAR(5) NOT NULL,
+    toda SMALLINT NOT NULL,
+    PRIMARY KEY (id));",
     sep = ""
   )
 )
@@ -510,7 +503,7 @@ dbDisconnect(conn)
 # Create a composite index
 fn_sql_qry(
   statement = paste(
-    "CREATE INDEX idx ON", tolower(dat$pop), "(icao, zone, traffic, lat, lon);",
+    "CREATE INDEX idx ON", tolower(dat$pop), "(icao, traffic, lat, lon);",
     sep = " "
   )
 )

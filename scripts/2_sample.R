@@ -3,7 +3,7 @@
 #   INPUT: 8,982 rows read from the dat$pop table
 # ACTIONS: Subset the airport sample and plot its characteristics
 #  OUTPUT: Five plots saved to disk
-# RUNTIME: ~12 seconds (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~18 seconds (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -13,6 +13,7 @@
 # ==============================================================================
 
 # Load the required libraries
+library(data.table)
 library(DBI)
 library(geosphere)
 library(kgc)
@@ -21,6 +22,7 @@ library(rgeos)
 library(rnaturalearth)
 library(scales)
 library(tidyverse)
+library(viridis)
 
 # Import the common settings
 source("scripts/0_common.R")
@@ -38,54 +40,73 @@ cat("\014")
 # Fetch the population data
 dt_pop <- fn_sql_qry(
   statement = paste(
-    "SELECT * FROM ", dat$pop, ";", sep = ""
+    "SELECT
+      icao,
+      iata,
+      traffic,
+      name,
+      lat,
+      lon,
+      zone,
+      rwy,
+      toda
+    FROM",
+      dat$pop,
+    ";",
+    sep = " "
   )
 )
 
-# Describe the population
-str(dt_pop)
+# Recast column types
+set(x = dt_pop, j = "zone", value = as.factor(dt_pop[, zone]))
+
+# Describe the population airports
 summary(dt_pop)
 
 # ==============================================================================
 # 2 Subset the sample from the population based on a minimum traffic threshold
 # ==============================================================================
 
-# Sample airports above the minimum traffic threshold in passengers
-df_smp <- subset(dt_pop, traffic >= sim$pop_thr)
+# Select only airports above the minimum traffic threshold in passengers
+dt_smp <- subset(dt_pop, traffic >= sim$pop_thr)
 
-# Describe the sample
-str(df_smp)
-summary(df_smp)
+# Describe the sample airports
+summary(dt_smp)
 
 # ==============================================================================
 # 3 Test that the sample is representative of the population's traffic
 # ==============================================================================
 
-# Absolute count of airports in the sample
-length(unique(df_smp$icao))
-
-# Absolute count of runways in the sample
-nrow(df_smp)
-
-# Absolute count of passengers in the sample
-sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))])
-
-# Relative count of airports in the sample
-length(unique(df_smp$icao)) / length(unique(dt_pop$icao)) * 100L
-
-# Relative count of runways in the sample
-nrow(df_smp) / nrow(dt_pop) * 100L
-
-# Relative count of passengers in the sample
-sum(df_smp$traffic[!rev(duplicated(rev(df_smp$icao)))]) /
-  sum(dt_pop$traffic[!rev(duplicated(rev(dt_pop$icao)))]) * 100L
+# Describe the population vs. sample traffic
+list(
+  "Airport count (population, sample, percentage)" =
+    c(
+      length(unique(dt_pop$icao)),
+      length(unique(dt_smp$icao)),
+      length(unique(dt_smp$icao)) / length(unique(dt_pop$icao))
+    ),
+  "Runway count (population, sample, percentage)" =
+    c(
+      nrow(dt_pop),
+      nrow(dt_smp),
+      nrow(dt_smp) / nrow(dt_pop)
+    ),
+  "Passengers count (population, sample, percentage)" =
+    c(
+      sum(dt_pop$traffic[!rev(duplicated(rev(dt_pop$icao)))]),
+      sum(dt_smp$traffic[!rev(duplicated(rev(dt_smp$icao)))]),
+      sum(dt_smp$traffic[!rev(duplicated(rev(dt_smp$icao)))]) /
+        sum(dt_pop$traffic[!rev(duplicated(rev(dt_pop$icao)))])
+    )
+)
 
 # ==============================================================================
 # 4 Test that the sample is representative of the population's latitudes
 # ==============================================================================
 
-# Define the world object from the Natural Earth package
-world <- ne_countries(scale = "small", returnclass = "sf")
+# ==============================================================================
+# 4.1 Summarize the results
+# ==============================================================================
 
 # Define the traffic bins (logarithmic sequence)
 breaks <- c(1L %o% 10^(0:9))
@@ -103,67 +124,66 @@ labels <- c(
   "[100M–1B)"
 )
 
-# Describe the population's latitude variable
-length(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])
+# Describe the population's latitude variable (in °)
 summary(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])
 
-# Describe the sample's latitude variable
-length(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])
-summary(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])
+# Describe the sample's latitude variable (in °)
+summary(dt_smp$lat[!rev(duplicated(rev(dt_smp$icao)))])
 
-# Calculate the distance from the equator to the population's median
-distm(
-  c(0L, median(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])),
-  c(0L, 0L),
-  fun = distHaversine
-) / 1000L
-
-# Calculate the distance from the equator to the population's mean
-distm(
-  c(0L, mean(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])),
-  c(0L, 0L),
-  fun = distHaversine
-) / 1000L
-
-# Calculate the distance from the equator to the sample's median
-distm(
-  c(0L, median(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
-  c(0L, 0L),
-  fun = distHaversine
-) / 1000L
-
-# Calculate the distance from the equator to the sample's mean
-distm(
-  c(0L, mean(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
-  c(0L, 0L),
-  fun = distHaversine
-) / 1000L
-
-# Calculate the distance from the median to the population's mean
-distm(
-  c(0L, median(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])),
-  c(0L, mean(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])),
-  fun = distHaversine
-) / 1000L
-
-# Calculate the distance from the median to the sample's mean
-distm(
-  c(0L, median(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
-  c(0L, mean(df_smp$lat[!rev(duplicated(rev(df_smp$icao)))])),
-  fun = distHaversine
-) / 1000L
+# Describe the population vs. sample latitudes (in km)
+list(
+  "Distance from the median latitude to the equator (population, sample)" =
+    c(
+      distm(
+        c(0L, median(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])),
+        c(0L, 0L),
+        fun = distHaversine
+      ) / 1000L,
+      distm(
+        c(0L, median(dt_smp$lat[!rev(duplicated(rev(dt_smp$icao)))])),
+        c(0L, 0L),
+        fun = distHaversine
+      ) / 1000L
+    ),
+  "Distance from the mean latitude to the equator (population, sample)" =
+    c(
+      distm(
+        c(0L, mean(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])),
+        c(0L, 0L),
+        fun = distHaversine
+      ) / 1000L,
+      distm(
+        c(0L, mean(dt_smp$lat[!rev(duplicated(rev(dt_smp$icao)))])),
+        c(0L, 0L),
+        fun = distHaversine
+      ) / 1000L
+    ),
+  "Distance from the median latitude to the mean (population, sample)" =
+    c(
+      distm(
+        c(0L, median(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])),
+        c(0L, mean(dt_pop$lat[!rev(duplicated(rev(dt_pop$icao)))])),
+        fun = distHaversine
+      ) / 1000L,
+      distm(
+        c(0L, median(dt_smp$lat[!rev(duplicated(rev(dt_smp$icao)))])),
+        c(0L, mean(dt_smp$lat[!rev(duplicated(rev(dt_smp$icao)))])),
+        fun = distHaversine
+      ) / 1000L
+    )
+)
 
 # Find the population's northernmost airport
-dt_pop[which.max(dt_pop$lat), c(4L, 5L)]
-
-# Find the population's southernmost airport
-dt_pop[which.min(dt_pop$lat), c(4L, 5L)]
+dt_pop[which.max(dt_pop$lat), c(1L, 4L, 5L)]
 
 # Find the sample's northernmost airport
-df_smp[which.max(df_smp$lat), c(4L, 5L)]
+dt_smp[which.max(dt_smp$lat), c(1L, 4L, 5L)]
+
+# Find the population's southernmost airport
+dt_pop[which.min(dt_pop$lat), c(1L, 4L, 5L)]
 
 # Find the sample's southernmost airport
-df_smp[which.min(df_smp$lat), c(4L, 5L)]
+dt_smp[which.min(dt_smp$lat), c(1L, 4L, 5L)]
 
 # Bin the population airports (not runways) by passenger traffic and geo. zones
 dt_pop_binned <- dt_pop[!duplicated(dt_pop$icao), ] %>%
@@ -179,7 +199,7 @@ dt_pop_binned <- dt_pop[!duplicated(dt_pop$icao), ] %>%
   mutate(
     geo = cut(
       x              = lat,
-      breaks         = unique(unlist(geo, use.names = FALSE)),
+      breaks         = unique(unlist(x = geo, use.names = FALSE)),
       labels         = names(geo),
       include.lowest = TRUE,
       right          = FALSE
@@ -187,7 +207,7 @@ dt_pop_binned <- dt_pop[!duplicated(dt_pop$icao), ] %>%
   )
 
 # Bin the sample airports (not runways) by passenger traffic and geo. zones
-df_smp_binned <- df_smp[!duplicated(df_smp$icao), ] %>%
+dt_smp_binned <- dt_smp[!duplicated(dt_smp$icao), ] %>%
   mutate(
     bin = cut(
       x              = traffic,
@@ -200,7 +220,7 @@ df_smp_binned <- df_smp[!duplicated(df_smp$icao), ] %>%
   mutate(
     geo = cut(
       x              = lat,
-      breaks         = unique(unlist(geo, use.names = FALSE)),
+      breaks         = unique(unlist(x = geo, use.names = FALSE)),
       labels         = names(geo),
       include.lowest = TRUE,
       right          = FALSE
@@ -212,132 +232,469 @@ dt_pop_binned %>%
   group_by(geo) %>%
   dplyr::summarize(n = n()) %>%
   mutate(per = n / nrow(dt_pop_binned) * 100L) %>%
-  # bind_rows(summarize_all(., ~if(is.numeric(.)) sum(.) else "Total")) %>%
-  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total"))) %>%
-  View(x = ., title = "Population airports")
+  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total")))
 
 # Count the sample airports by geographical zone
-df_smp_binned %>%
+dt_smp_binned %>%
   group_by(geo) %>%
   dplyr::summarize(n = n()) %>%
-  mutate(per = n / nrow(df_smp_binned) * 100L) %>%
-  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total"))) %>%
-  View(x = ., title = "Sample airports")
+  mutate(per = n / nrow(dt_smp_binned) * 100L) %>%
+  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total")))
 
 # Sum the population traffic by geographical zone
 dt_pop_binned %>%
   group_by(geo) %>%
-  summarize(n = sum(traffic) / 10^6) %>%
+  dplyr::summarize(n = sum(traffic) / 10^6) %>%
   mutate(per = n / sum(dt_pop[!duplicated(dt_pop$icao), ]$traffic) * 10^8) %>%
-  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total"))) %>%
-  View(x = ., title = "Population traffic")
+  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total")))
 
 # Sum the sample traffic by geographical zone
-df_smp_binned %>%
+dt_smp_binned %>%
   group_by(geo) %>%
-  summarize(n = sum(traffic) / 10^6) %>% # Sum
-  mutate(per = n / sum(df_smp[!duplicated(df_smp$icao), ]$traffic) * 10^8) %>%
-  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total"))) %>%
-  View(x = ., title = "Sample traffic")
+  dplyr::summarize(n = sum(traffic) / 10^6) %>%
+  mutate(per = n / sum(dt_smp[!duplicated(dt_smp$icao), ]$traffic) * 10^8) %>%
+  bind_rows(summarize_all(., ~ifelse(is.numeric(.), sum(.), "Total")))
 
-# Build a world map and plot the airports
-(ggplot() +
-  geom_sf(data = world, color = NA, fill = "gray", alpha = .5) +
-  scale_y_continuous(breaks = unique(unlist(geo, use.names = FALSE))) +
+# ==============================================================================
+# 4.2 Plot the results
+# ==============================================================================
+
+# Define the world object from the Natural Earth package
+world <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf")
+
+# Plot the population airports onto a world map
+ggplot() +
+  geom_sf(data = world, fill = "gray") +
   coord_sf(expand = FALSE) +
+  # Define the scales
+  scale_y_continuous(
+    breaks = unique(unlist(x = geo, use.names = FALSE)),
+    limits = c(-90L, 90L)
+  ) +
+  scale_color_viridis(
+    breaks    = breaks,
+    direction = -1L,
+    labels    = trans_format(trans = "log10", format = math_format(10^.x)),
+    limits    = c(
+      dt_pop$traffic[which.min(dt_pop$traffic)],
+      dt_pop$traffic[which.max(dt_pop$traffic)]
+    ),
+    name      = "PPA",
+    trans     = "log"
+  ) +
+  scale_size_continuous(name = "traffic", guide = "none") +
+  # Add the airports
   geom_point(
-    data     = dt_pop[!duplicated(dt_pop$icao), ],
-    mapping  = aes(x = lon, y = lat),
-    color    = "black",
-    shape    = 20L,
-    size     = 1.5
+    data    = dt_pop[!duplicated(dt_pop$icao), ],
+    mapping = aes(x = lon, y = lat, color = traffic, size = traffic),
+    shape   = 20L,
   ) +
-  geom_point(
-    data     = df_smp[!duplicated(df_smp$icao), ],
-    mapping  = aes(x = lon, y = lat),
-    color    = "purple",
-    shape    = 20L,
-    size     = 1.5
-  ) +
+  # Add horizontal lines
   geom_hline(
-    aes(yintercept = dt_pop$lat[which.max(dt_pop$lat)]),
-    color    = "black"
+    color      = "black",
+    linewidth  = .25,
+    yintercept = c(
+      dt_pop$lat[which.max(dt_pop$lat)],             # Max airport latitude
+      dt_pop$lat[which.min(dt_pop$lat)],             # Min airport latitude
+      mean(dt_pop[!duplicated(dt_pop$icao), ]$lat),  # Mean airport latitude
+      median(dt_pop[!duplicated(dt_pop$icao), ]$lat) # Median airport latitude
+    )
   ) +
-  geom_hline(
-    aes(yintercept = df_smp$lat[which.max(df_smp$lat)]),
-    color    = "purple"
+  # Add horizontal line labels
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = "Max. airport latitude",
+    size  = 1.5,
+    x     = 179L,
+    y     = dt_pop$lat[which.max(dt_pop$lat)] + 2L
   ) +
-  geom_hline(
-    aes(yintercept = dt_pop$lat[which.min(dt_pop$lat)]),
-    color    = "black"
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = "Min. airport latitude",
+    size  = 1.5,
+    x     = 179L,
+    y     = dt_pop$lat[which.min(dt_pop$lat)] + 2L
   ) +
-  geom_hline(
-    aes(yintercept = df_smp$lat[which.min(df_smp$lat)]),
-    color    = "purple"
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = "Mean airport latitude",
+    size  = 1.5,
+    x     = 179L,
+    y     = mean(dt_pop[!duplicated(dt_pop$icao), ]$lat) + 2L
   ) +
-  geom_hline(
-    aes(yintercept = mean(dt_pop[!duplicated(dt_pop$icao), ]$lat)),
-    color    = "black"
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = "Median airport latitude",
+    size  = 1.5,
+    x     = 179L,
+    y     = median(dt_pop[!duplicated(dt_pop$icao), ]$lat) + 2L
   ) +
-  geom_hline(
-    aes(yintercept = mean(df_smp[!duplicated(df_smp$icao), ]$lat)),
-    color    = "purple"
+  geom_text(
+    data  = world,
+    color = "gray",
+    hjust = 0L,
+    label = "Arctic circle",
+    size  = 1.5,
+    x     = -179L,
+    y     = unique(unlist(x = geo, use.names = FALSE))[5] - 2L
   ) +
-  geom_hline(
-    aes(yintercept = median(dt_pop[!duplicated(dt_pop$icao), ]$lat)),
-    color    = "black"
+  geom_text(
+    data  = world,
+    color = "gray",
+    hjust = 0L,
+    label = "Tropic of Cancer",
+    size  = 1.5,
+    x     = -179L,
+    y     = unique(unlist(x = geo, use.names = FALSE))[4] - 2L
   ) +
-  geom_hline(
-    aes(yintercept = median(df_smp[!duplicated(df_smp$icao), ]$lat)),
-    color    = "purple"
+  geom_text(
+    data  = world,
+    color = "gray",
+    hjust = 0L,
+    label = "Tropic of Capricorn",
+    size  = 1.5,
+    x     = -179L,
+    y     = unique(unlist(x = geo, use.names = FALSE))[3] - 2L
   ) +
-  geom_hline(
-    aes(yintercept = 66.5635),
-    color    = "gray",
-    linetype = "dashed"
+  geom_text(
+    data  = world,
+    color = "gray",
+    hjust = 0L,
+    label = "Antarctic circle",
+    size  = 1.5,
+    x     = -179L,
+    y     = unique(unlist(x = geo, use.names = FALSE))[2] - 2L
   ) +
-  geom_hline(
-    aes(yintercept = 23.4365),
-    color    = "gray",
-    linetype = "dashed"
+  # Add zonal labels
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[1],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[1],
+        unique(unlist(x = geo, use.names = FALSE))[2]
+      )
+    )
   ) +
-  geom_hline(
-    aes(yintercept = -23.4365),
-    color    = "gray",
-    linetype = "dashed"
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[2],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[2],
+        unique(unlist(x = geo, use.names = FALSE))[3]
+      )
+    )
   ) +
-  geom_hline(
-    aes(yintercept = -66.5635),
-    color    = "gray",
-    linetype = "dashed"
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[3],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[3],
+        unique(unlist(x = geo, use.names = FALSE))[4]
+      )
+    )
+  ) +
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[2],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[4],
+        unique(unlist(x = geo, use.names = FALSE))[5]
+      )
+    )
+  ) +
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[1],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[5],
+        unique(unlist(x = geo, use.names = FALSE))[6]
+      )
+    )
   ) +
   theme_light() +
-  # theme(plot.margin = grid::unit(c(0, 0, 0, 0), "mm")) +
-  theme(axis.title = element_blank(), axis.text.x = element_blank())) %>%
-  ggsave(
-    filename = "2_world.png",
-    device   = "png",
-    path     = "plots",
-    scale    = 1L,
-    width    = 8.15,
-    height   = 3.69,
-    units    = "in",
-    dpi      = "print"
+  theme(
+    axis.title      = element_blank(),
+    axis.text.x     = element_blank(),
+    axis.text.y     = element_blank(),
+    legend.key.size = unit(.2, "in"),
+    legend.title    = element_text(size = 5L),
+    legend.text     = element_text(size = 3L)
   )
 
-# Build a histogram of the airport count by latitude
-(ggplot() +
+# Save the plot
+ggsave(
+  filename = "2_map_population.png",
+  plot     = last_plot(),
+  device   = "png",
+  path     = "plots",
+  scale    = 1L,
+  width    = 8.15,
+  height   = 3.69,
+  units    = "in",
+  dpi      = "print"
+)
+
+# Plot the sample airports onto a world map
+ggplot() +
+  geom_sf(data = world, fill = "gray") +
+  coord_sf(expand = FALSE) +
+  # Define the scales
+  scale_y_continuous(
+    breaks = unique(unlist(x = geo, use.names = FALSE)),
+    limits = c(-90L, 90L)
+  ) +
+  scale_color_viridis(
+    breaks    = breaks,
+    direction = -1L,
+    labels    = trans_format(trans = "log10", format = math_format(10^.x)),
+    limits    = c(
+      dt_pop$traffic[which.min(dt_pop$traffic)],
+      dt_pop$traffic[which.max(dt_pop$traffic)]
+    ),
+    name      = "PPA",
+    trans     = "log"
+  ) +
+  scale_size_continuous(name = "traffic", guide = "none") +
+  # Add the airports
+  geom_point(
+    data    = dt_smp[!duplicated(dt_smp$icao), ],
+    mapping = aes(x = lon, y = lat, color = traffic, size = traffic),
+    shape   = 20L,
+  ) +
+  # Add horizontal lines
+  geom_hline(
+    color      = "black",
+    linewidth  = .25,
+    yintercept = c(
+      dt_smp$lat[which.max(dt_smp$lat)],             # Max airport latitude
+      dt_smp$lat[which.min(dt_smp$lat)],             # Min airport latitude
+      mean(dt_smp[!duplicated(dt_smp$icao), ]$lat),  # Mean airport latitude
+      median(dt_smp[!duplicated(dt_smp$icao), ]$lat) # Median airport latitude
+    )
+  ) +
+  # Add horizontal line labels
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = "Max. airport latitude",
+    size  = 1.5,
+    x     = 179L,
+    y     = dt_smp$lat[which.max(dt_smp$lat)] + 2L
+  ) +
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = "Min. airport latitude",
+    size  = 1.5,
+    x     = 179L,
+    y     = dt_smp$lat[which.min(dt_smp$lat)] + 2L
+  ) +
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = "Mean airport latitude",
+    size  = 1.5,
+    x     = 179L,
+    y     = mean(dt_smp[!duplicated(dt_smp$icao), ]$lat) + 2L
+  ) +
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = "Median airport latitude",
+    size  = 1.5,
+    x     = 179L,
+    y     = median(dt_smp[!duplicated(dt_smp$icao), ]$lat) + 2L
+  ) +
+  geom_text(
+    data  = world,
+    color = "gray",
+    hjust = 0L,
+    label = "Arctic circle",
+    size  = 1.5,
+    x     = -179L,
+    y     = unique(unlist(x = geo, use.names = FALSE))[5] - 2L
+  ) +
+  geom_text(
+    data  = world,
+    color = "gray",
+    hjust = 0L,
+    label = "Tropic of Cancer",
+    size  = 1.5,
+    x     = -179L,
+    y     = unique(unlist(x = geo, use.names = FALSE))[4] - 2L
+  ) +
+  geom_text(
+    data  = world,
+    color = "gray",
+    hjust = 0L,
+    label = "Tropic of Capricorn",
+    size  = 1.5,
+    x     = -179L,
+    y     = unique(unlist(x = geo, use.names = FALSE))[3] - 2L
+  ) +
+  geom_text(
+    data  = world,
+    color = "gray",
+    hjust = 0L,
+    label = "Antarctic circle",
+    size  = 1.5,
+    x     = -179L,
+    y     = unique(unlist(x = geo, use.names = FALSE))[2] - 2L
+  ) +
+  # Add zonal labels
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[1],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[1],
+        unique(unlist(x = geo, use.names = FALSE))[2]
+      )
+    )
+  ) +
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[2],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[2],
+        unique(unlist(x = geo, use.names = FALSE))[3]
+      )
+    )
+  ) +
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[3],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[3],
+        unique(unlist(x = geo, use.names = FALSE))[4]
+      )
+    )
+  ) +
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[2],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[4],
+        unique(unlist(x = geo, use.names = FALSE))[5]
+      )
+    )
+  ) +
+  geom_text(
+    angle = 90L,
+    data  = world,
+    color = "gray",
+    hjust = .5,
+    label = unique(names(geo))[1],
+    size  = 2.5,
+    x     = -175L,
+    y     = mean(
+      c(
+        unique(unlist(x = geo, use.names = FALSE))[5],
+        unique(unlist(x = geo, use.names = FALSE))[6]
+      )
+    )
+  ) +
+  theme_light() +
+  theme(
+    axis.title      = element_blank(),
+    axis.text.x     = element_blank(),
+    axis.text.y     = element_blank(),
+    legend.key.size = unit(.2, "in"),
+    legend.title    = element_text(size = 5L),
+    legend.text     = element_text(size = 3L)
+  )
+
+# Save the plot
+ggsave(
+  filename = "2_map_sample.png",
+  plot     = last_plot(),
+  device   = "png",
+  path     = "plots",
+  scale    = 1L,
+  width    = 8.15,
+  height   = 3.69,
+  units    = "in",
+  dpi      = "print"
+)
+
+# Build a histogram of airports by latitude
+ggplot() +
   geom_histogram(
     mapping  = aes(x = dt_pop[!duplicated(dt_pop$icao), ]$lat),
     fill     = "black",
-    alpha    = 0.5,
+    alpha    = .5,
     binwidth = 10L,
     na.rm    = TRUE
   ) +
   geom_histogram(
-    mapping  = aes(x = df_smp[!duplicated(df_smp$icao), ]$lat),
+    mapping  = aes(x = dt_smp[!duplicated(dt_smp$icao), ]$lat),
     fill     = "black",
-    alpha    = 0.5,
+    alpha    = .5,
     binwidth = 10L,
     na.rm    = TRUE
   ) +
@@ -350,39 +707,42 @@ df_smp_binned %>%
     name = "Count of airports"
   ) +
   theme_light() +
-  theme(panel.grid.minor = element_blank())) %>%
-  ggsave(
-    filename = "2_hist_apt_cnt.png",
-    device   = "png",
-    path     = "plots",
-    scale    = 1L,
-    width    = 6L,
-    height   = NA,
-    units    = "in",
-    dpi      = "print"
-  )
+  theme(panel.grid.minor = element_blank())
 
-# Build a histogram of the airport traffic by latitude
-(ggplot() +
+# Save the plot
+ggsave(
+  filename = "2_histogram_of_airports_by_latitude.png",
+  plot     = last_plot(),
+  device   = "png",
+  path     = "plots",
+  scale    = 1L,
+  width    = 6L,
+  height   = NA,
+  units    = "in",
+  dpi      = "print"
+)
+
+# Build a histogram of traffic by latitude
+ggplot() +
   geom_histogram(
-    mapping = aes(
+    mapping  = aes(
       x      = dt_pop[!duplicated(dt_pop$icao), ]$lat,
       weight = dt_pop[!duplicated(dt_pop$icao), ]$traffic
     ),
-    fill = "black",
-    alpha = 0.5,
+    fill     = "black",
+    alpha    = 0.5,
     binwidth = 10L,
-    na.rm = TRUE
+    na.rm    = TRUE
   ) +
   geom_histogram(
-    mapping = aes(
-      x      = df_smp[!duplicated(df_smp$icao), ]$lat,
-      weight = df_smp[!duplicated(df_smp$icao), ]$traffic
+    mapping  = aes(
+      x      = dt_smp[!duplicated(dt_smp$icao), ]$lat,
+      weight = dt_smp[!duplicated(dt_smp$icao), ]$traffic
     ),
-    fill = "black",
-    alpha = 0.5,
+    fill     = "black",
+    alpha    = 0.5,
     binwidth = 10L,
-    na.rm = TRUE
+    na.rm    = TRUE
   ) +
   scale_x_continuous(
     name     = "Latitude",
@@ -395,17 +755,20 @@ df_smp_binned %>%
     labels   = label_number(scale_cut = cut_short_scale())
   ) +
   theme_light() +
-  theme(panel.grid.minor = element_blank())) %>%
-  ggsave(
-    filename = "2_hist_apt_tra.png",
-    device   = "png",
-    path     = "plots",
-    scale    = 1L,
-    width    = 6L,
-    height   = NA,
-    units    = "in",
-    dpi      = "print"
-  )
+  theme(panel.grid.minor = element_blank())
+
+# Save the plot
+ggsave(
+  filename = "2_histogram_of_traffic_by_latitude.png",
+  plot     = last_plot(),
+  device   = "png",
+  path     = "plots",
+  scale    = 1L,
+  width    = 6L,
+  height   = NA,
+  units    = "in",
+  dpi      = "print"
+)
 
 # ==============================================================================
 # 5 Calculate the Köppen-Geiger climate zones for population & sample airports
@@ -423,30 +786,31 @@ df_kgc_pop <- dt_pop[
   mutate(rndCoord.lon = RoundCoordinates(lon, res = res, latlong = "lon")) %>%
   mutate(rndCoord.lat = RoundCoordinates(lat, res = res, latlong = "lat"))
 
-# Compute the climate zone for the population data
-df_kgc_pop <- data.frame(df_kgc_pop,
+# Compute the Köppen-Geiger climate zone for the population data
+df_kgc_pop <- data.frame(
+  df_kgc_pop,
   kgc = LookupCZ(df_kgc_pop, res = res, rc = FALSE)
 )
 
-# Summarize the climate distribution for the population data
+# Summarize the Köppen-Geiger climate zonal distribution for the population data
 df_kgc_pop <- df_kgc_pop %>%
   group_by(kgc) %>%
   dplyr::summarize(pop.airports = n(), pop.traffic = sum(traffic))
 
 # Prepare the sample data
-df_kgc_smp <- df_smp[
-  !duplicated(df_smp$icao),
+df_kgc_smp <- dt_smp[
+  !duplicated(dt_smp$icao),
   c("icao", "lon", "lat", "traffic")
 ] %>%
   mutate(rndCoord.lon = RoundCoordinates(lon, res = res, latlong = "lon")) %>%
   mutate(rndCoord.lat = RoundCoordinates(lat, res = res, latlong = "lat"))
 
-# Compute the climate zone for the sample data
+# Compute the Köppen-Geiger climate zone for the sample data
 df_kgc_smp <- data.frame(df_kgc_smp,
   kgc = LookupCZ(df_kgc_smp, res = res, rc = FALSE)
 )
 
-# Summarize the climate distribution for the sample data
+# Summarize the Köppen-Geiger climate zonal distribution for the sample data
 df_kgc_smp <- df_kgc_smp %>%
   group_by(kgc) %>%
   dplyr::summarize(smp.airports = n(), smp.traffic = sum(traffic))
@@ -460,69 +824,71 @@ df_kgc[is.na(df_kgc)] <- 0L
 # De-factorize
 df_kgc$kgc <- as.character(df_kgc$kgc)
 
-# Recode missing climate zones with Z
+# Recode missing Köppen-Geiger climate zones with Z
 df_kgc$kgc[df_kgc$kgc == "Climate Zone info missing"] <- "Z"
 
 # Re-factorize
 df_kgc$kgc <- as.factor(df_kgc$kgc)
 
-# View the summarized table of main climate groups
+# Summarize the airport and traffic distribution by Köppen-Geiger climate zone
 df_kgc %>%
   group_by(group = substr(kgc, 1L, 1L)) %>%
   dplyr::summarize(
     pop.airports     = sum(pop.airports),
     pop.airports.per = sum(pop.airports) / sum(df_kgc$pop.airports),
     pop.traffic      = sum(pop.traffic),
-    pop.traffic.per  = sum(pop.traffic) / sum(df_kgc$pop.traffic),
+    pop.traffic.per  = sum(pop.traffic)  / sum(df_kgc$pop.traffic),
     smp.airports     = sum(smp.airports),
     smp.airports.per = sum(smp.airports) / sum(df_kgc$smp.airports),
     smp.traffic      = sum(smp.traffic),
-    smp.traffic.per  = sum(smp.traffic) / sum(df_kgc$smp.traffic)
-  ) %>%
-  print()
+    smp.traffic.per  = sum(smp.traffic)  / sum(df_kgc$smp.traffic)
+  )
 
-# Plot the airport distribution across climate zones
-(ggplot(data = df_kgc) +
+# Plot the airport distribution by Köppen-Geiger climate zone
+ggplot(data = df_kgc) +
   geom_bar(
     mapping = aes(x = kgc, weight = pop.airports),
     fill    = "black",
-    alpha   = 0.5,
+    alpha   = .5,
     width   = 1L
   ) +
   geom_bar(
     mapping = aes(x = kgc, weight = smp.airports),
     fill    = "black",
-    alpha   = 0.5,
+    alpha   = .5,
     width   = 1L
   ) +
   scale_x_discrete(guide = guide_axis(n.dodge = 2L)) +
   scale_y_continuous(trans = "log1p", breaks = c(2^(0:8))) +
   labs(x = "Köppen-Geiger climate zones", y = "Airport count") +
   theme_light() +
-  theme(panel.grid.minor = element_blank())) %>%
-  ggsave(
-    filename = "2_apt_dist_cz.png",
-    device   = "png",
-    path     = "plots",
-    scale    = 1L,
-    width    = 6L,
-    height   = NA,
-    units    = "in",
-    dpi      = "print"
-  )
+  theme(panel.grid.minor = element_blank())
 
-# Plot the traffic distribution across climate zones
-(ggplot(data = df_kgc) +
+# Save the plot
+ggsave(
+  filename = "2_airport_distribution_by_koppen_geiger_zone.png",
+  plot     = last_plot(),
+  device   = "png",
+  path     = "plots",
+  scale    = 1L,
+  width    = 6L,
+  height   = NA,
+  units    = "in",
+  dpi      = "print"
+)
+
+# Plot the traffic distribution by Köppen-Geiger climate zone
+ggplot(data = df_kgc) +
   geom_bar(
     mapping  = aes(x = kgc, weight = pop.traffic),
     fill     = "black",
-    alpha    = 0.5,
+    alpha    = .5,
     width    = 1L
   ) +
   geom_bar(
     mapping  = aes(x = kgc, weight = smp.traffic),
     fill     = "black",
-    alpha    = 0.5,
+    alpha    = .5,
     width    = 1L
   ) +
   scale_x_discrete(guide = guide_axis(n.dodge = 2L)) +
@@ -532,17 +898,20 @@ df_kgc %>%
   ) +
   labs(x = "Köppen-Geiger climate zones", y = "Sum of traffic") +
   theme_light() +
-  theme(panel.grid.minor = element_blank())) %>%
-  ggsave(
-    filename = "2_tra_dist_cz.png",
-    device   = "png",
-    path     = "plots",
-    scale    = 1L,
-    width    = 6L,
-    height   = NA,
-    units    = "in",
-    dpi      = "print"
-  )
+  theme(panel.grid.minor = element_blank())
+
+# Save the plot
+ggsave(
+  filename = "2_traffic_distribution_by_koppen_geiger_zone.png",
+  plot     = last_plot(),
+  device   = "png",
+  path     = "plots",
+  scale    = 1L,
+  width    = 6L,
+  height   = NA,
+  units    = "in",
+  dpi      = "print"
+)
 
 # ==============================================================================
 # 6 Housekeeping

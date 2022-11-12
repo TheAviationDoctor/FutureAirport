@@ -6,7 +6,7 @@
 #          Write the resulting takeoff distance required to the database
 #          Index the database table
 #  OUTPUT: 1,771,063,728 takeoff observations written to the dat$tko table
-# RUNTIME: ~66 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~66 hours
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================

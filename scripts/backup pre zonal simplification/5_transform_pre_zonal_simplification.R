@@ -4,7 +4,7 @@
 # ACTIONS: Pivot the data
 #          Calculate the air density, wind vector, and active runway
 #  OUTPUT: 442,765,932 wide climate observations written to the dat$cli table
-# RUNTIME: ~10 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~10 hours
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -148,6 +148,7 @@ fn_transform <- function(apt) {
         icao = '",
         apt,
       "';",
+      # "' LIMIT 100000;",
       sep = ""
     )
   )

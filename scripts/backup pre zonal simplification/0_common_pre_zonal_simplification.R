@@ -106,13 +106,15 @@ sim <- list(
   "rsp_h2o"     = 461.495      # Spec. gas constant for water vapor in J/(kg·K)
 )
 
-# Lower latitudinal boundaries for the Earth's climate zones
+# Absolute latitudinal boundaries for the Earth's climate zones
 geo <- list(
-  "Frigid"    = c(-90L,     -66.5635), # Antarctic zone
-  "Temperate" = c(-66.5635, -23.4365), # South temperate zone
-  "Tropical"  = c(-23.4365,  23.4365), # Tropical zone
-  "Temperate" = c( 23.4365,  66.5635), # North temperate zone
-  "Frigid"    = c( 66.5635,  90L)      # Arctic zone
+  "Antarctic"              = c(-90L,     -66.5635),
+  "South temperate zone"   = c(-66.5635, -30L),
+  "South subtropical zone" = c(-30L,     -23.4365),
+  "Tropical zone"          = c(-23.4365,  23.4365),
+  "North subtropical zone" = c( 23.4365,  30L),
+  "North temperate zone"   = c( 30L,      66.5635),
+  "Arctic"                 = c( 66.5635,  90L)
 )
 
 # ==============================================================================

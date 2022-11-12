@@ -3,7 +3,7 @@
 #   INPUT: NetCDF files downloaded from the Earth System Grid Federation (ESGF)
 # ACTIONS: Extract time series of climate variables for each airport coordinates
 #  OUTPUT: 2,213,829,660 rows of climate data written to the database
-# RUNTIME: ~7.4 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~7.4 hours
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -16,7 +16,7 @@
 library(data.table)
 library(DBI)
 library(parallel)
-library(tidyverse)
+library(stringr)
 
 # Import the common settings
 source("scripts/0_common.R")
@@ -28,7 +28,7 @@ start_time <- Sys.time()
 cat("\014")
 
 # Set the number of CPU cores for parallel processing
-crs <- 18L
+crs <- 16L
 
 # ==============================================================================
 # 1 Set up the database table
@@ -73,18 +73,6 @@ dt_smp <- fn_sql_qry(
     sep = " "
   )
 )
-
-# Recast column types
-set(x = dt_smp, j = "zone", value = as.factor(dt_smp[, zone]))
-
-# Recode frigid airports to temperate
-dt_smp[zone == "Frigid", zone := "Temperate"]
-
-# Index the data table to speed up subsequent lookups
-setkey(x = dt_smp, cols = icao, verbose = TRUE)
-
-# Describe the sample airports
-summary(dt_smp)
 
 # List the NetCDF files from which to extract the airports' climatic conditions
 nc_files <- list.files(path = dir$cli, pattern = "\\.nc$", full.names = TRUE)
@@ -151,54 +139,7 @@ fn_import <- function(nc_file) {
   # Recode the longitude vector from 0°-360° to -180°-180°
   nc_lon <- ((nc_lon + 180) %% 360) - 180
 
-  # Check if the plot already exists
-  if (file.exists(paste(dir$plt, "4_map_grid_cells.png", sep = "/")) == FALSE) {
-
-    # Define the world object from the Natural Earth package
-    world <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf")
-  
-    # Plot the grid cells of the NetCDF file onto a world map
-    ggplot() +
-      geom_sf(data = world, fill = "gray") +
-      coord_sf(datum = NA, expand = FALSE) +
-      # Define the scales
-      scale_y_continuous(
-        breaks = NULL,
-        limits = c(-90L, 90L)
-      ) +
-      # Add the parallels
-      geom_hline(
-        color      = "blue",
-        linewidth  = .1,
-        yintercept = nc_lat
-      ) +
-      # Add the meridians
-      geom_vline(
-        color      = "blue",
-        linewidth  = .1,
-        xintercept = nc_lon
-      ) +
-      theme_light() +
-      theme(
-        axis.title      = element_blank(),
-        axis.text.x     = element_blank(),
-        axis.text.y     = element_blank()
-      )
-  
-    # Save the plot
-    ggsave(
-      filename = "4_map_grid_cells.png",
-      plot     = last_plot(),
-      device   = "png",
-      path     = "plots",
-      scale    = 1L,
-      width    = 8.15,
-      height   = 3.69,
-      units    = "in",
-      dpi      = "print"
-    )
-
-  } # End plot creation
+  # CONSIDER INSERTING WORLD MAP OF GRIDDED CELLS
 
   # Read the time vector in PCICt (POSIXct-like) format
   nc_obs <- ncdf4.helpers::nc.get.time.series(
@@ -213,72 +154,79 @@ fn_import <- function(nc_file) {
   # Release the NetCDF file from memory
   ncdf4::nc_close(nc = nc)
 
+  # Define a list to consolidate the data after each iteration of the loop
+  nc_lst <- list()
+
   # ============================================================================
   # 3.2 Extract the climatic variables for each sample airport (inner loop)
   # ============================================================================
 
-  dt_nc <- lapply(
-    X   = as.vector(dt_smp$icao),
-    FUN = function(x) {
+  # For each airport in the sample
+  for (i in 1:nrow(dt_smp)) {
 
-      # Find the row index of the latitude nearest to the airport's
-      lat_idx <- which.min(abs(nc_lat - dt_smp[icao == x, lat]))
+    # Find the row index of the latitude nearest to the airport's
+    lat_idx <- which.min(abs(nc_lat - dt_smp[i, lat]))
 
-      # Find the row index of the longitude nearest to the airport's
-      lon_idx <- which.min(abs(nc_lon - dt_smp[icao == x, lon]))
+    # Find the row index of the longitude nearest to the airport's
+    lon_idx <- which.min(abs(nc_lon - dt_smp[i, lon]))
 
-      # Extract the climate variable's time series at those spatial indices
-      nc_val <- nc_arr[lon_idx, lat_idx, ]
+    # Extract the climate variable's time series at those spatial indices
+    nc_val <- nc_arr[lon_idx, lat_idx, ]
 
-      # Assemble the results into a data table
-      dt_apt <- data.table(
-        obs      = PCICt::as.POSIXct.PCICt(
-          x      = nc_obs,
-          tz     = "GMT",
-          format = "%Y-%m-%d %H:%M:%S"
-        ),
-        icao = as.factor(dt_smp[icao == x, icao]), # Airport's ICAO code
-        lat  = dt_smp[icao == x, lat],             # Airport's latitude
-        lon  = dt_smp[icao == x, lon],             # Airport's longitude
-        zone = as.factor(dt_smp[icao == x, zone]), # Airport's climate zone
-        ssp  = as.factor(nc_ssp),                  # Experiment (SSP)
-        var  = as.factor(nc_var),                  # Climatic variable name
-        val  = as.vector(nc_val)                   # Climatic variable value
+    # Assemble the results into a data table
+    dt_apt <- data.table(
+      obs  = PCICt::as.POSIXct.PCICt(
+        x      = nc_obs,
+        tz     = "GMT",
+        format = "%Y-%m-%d %H:%M:%S"
+      ),
+      icao = as.factor(dt_smp[i, icao]), # Airport's ICAO code
+      lat  = dt_smp[i, lat],             # Airport's latitude
+      lon  = dt_smp[i, lon],             # Airport's longitude
+      zone = as.factor(dt_smp[i, zone]), # Airport's climate zone
+      ssp  = as.factor(nc_ssp),          # Experiment (SSP)
+      var  = as.factor(nc_var),          # Climatic variable name
+      val  = as.vector(nc_val)           # Climatic variable value
+    )
+
+    # All climate variables except 'hurs' are 6-hourly mean samples at 06:00
+    #  (i.e. a mean of 03:00-09:00), 12:00 (i.e. a mean of 09:00-15:00), 18:00
+    #  (i.e. a mean of 15:00-21:00), and 00:00 (i.e. a mean of 21:00-03:00).
+    #  'hurs' is instead sampled 6-hourly at a specified time point within the
+    #  time period (03:00, 09:00, 15:00, 21:00). For the observation times to
+    #  line up with those of other variables, hurs must be normalized. To do so,
+    #  the rolling mean of time and value is computed for every row pair of hurs
+    if (nc_var == "hurs") {
+      # Advance the observation time by 3 hours (which is the same as averaging
+      #  the times of the current and next six-hourly observations)
+      set(x = dt_apt, j = "obs", value = dt_apt[, obs] + 3600L * 3L)
+      # Average the current and next observation values
+      set(
+        x = dt_apt,
+        j = "val",
+        value = frollmean(x = dt_apt[, val], n = 2L, align = "left")
       )
+      # The last value of 'hurs' for every NetCDF file and airport (365.25 days
+      #  x 5 years x 4 daily observations = every 7,305th observation) would be
+      #  empty as a result of the left-centered rolling mean, so we impute it by
+      #  carrying the last observation forward ("locf")
+      setnafill(x = dt_apt, type = "locf", cols = "val")
+    }
 
-      # All climate variables except 'hurs' are 6-hourly mean samples at 06:00
-      # (i.e. a mean of 03:00-09:00), 12:00 (i.e. a mean of 09:00-15:00), 18:00
-      # (i.e. a mean of 15:00-21:00), and 00:00 (i.e. a mean of 21:00-03:00).
-      # 'hurs' is instead sampled 6-hourly at a specified time point within the
-      # time period (03:00, 09:00, 15:00, 21:00). For the observation times to
-      # line up with those of other variables, hurs must be normalized. To do so
-      # the rolling mean of time & value is computed for every row pair of hurs
-      if (nc_var == "hurs") {
-        # Advance the observation time by 3 hours (which is the same as
-        # averaging the times of the current and next six-hourly observations)
-        set(x = dt_apt, j = "obs", value = dt_apt[, obs] + 3600L * 3L)
-        # Average the current and next observation values
-        set(
-          x     = dt_apt,
-          j     = "val",
-          value = frollmean(x = dt_apt[, val], n = 2L, align = "left")
-        )
-        # The last value of 'hurs' for every NetCDF file and airport (365.25
-        # days x 5 years x 4 daily observations = every 7,305th observation)
-        # would be empty as a result of the left-centered rolling mean, so we
-        # impute it by carrying the last observation forward ("locf")
-        setnafill(x = dt_apt, type = "locf", cols = "val")
-      }
+    # Append the results to the list initialized earlier
+    nc_lst[[i]] <- dt_apt
 
-    } # End lapply function
-  )
+  } # End of the airport loop
 
   # ============================================================================
   # 3.3 Consolidate the outputs and write them to the database
   # ============================================================================
 
   # Combine the outputs of all airport iterations into a data table
-  dt_nc <- rbindlist(dt_nc)
+  dt_nc <- rbindlist(nc_lst)
+
+  # Index the data table by date for efficient case removal
+  setkey(x = dt_nc, obs)
 
   # Remove cases beyond the time horizon
   dt_nc <- dt_nc[obs < horizon]
@@ -341,16 +289,7 @@ fn_import <- function(nc_file) {
 # Distribute the NetCDF files across the CPU cores
 fn_par_lapply(
   crs = crs,
-  pkg = c(
-    "data.table",
-    "DBI",
-    "ggplot2",
-    "ncdf4",
-    "ncdf4.helpers",
-    "PCICt",
-    "rnaturalearth",
-    "stringr"
-  ),
+  pkg = c("data.table", "DBI", "ncdf4", "ncdf4.helpers", "PCICt", "stringr"),
   lst = nc_files,
   fun = fn_import
 )

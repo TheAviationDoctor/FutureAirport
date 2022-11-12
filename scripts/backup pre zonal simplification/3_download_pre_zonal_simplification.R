@@ -3,7 +3,7 @@
 #   INPUT: Search criteria for the climate models, defined in section 1 below
 # ACTIONS: Query the Earth System Grid Federation (ESGF) for fitting NetCDF data
 #  OUTPUT: CSV file listing the matching NetCDF results
-# RUNTIME: ~4 seconds (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~4 seconds
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
