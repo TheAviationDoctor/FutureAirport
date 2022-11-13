@@ -267,6 +267,7 @@ ggplot() +
   geom_sf(data = world, fill = "gray") +
   coord_sf(expand = FALSE) +
   # Define the scales
+  scale_x_continuous(breaks = c(-180L, 180L)) +
   scale_y_continuous(
     breaks = unique(unlist(x = geo, use.names = FALSE)),
     limits = c(-90L, 90L)
@@ -289,23 +290,38 @@ ggplot() +
     mapping = aes(x = lon, y = lat, color = traffic, size = traffic),
     shape   = 20L,
   ) +
-  # Add horizontal lines
+  # Add parallels
   geom_hline(
     color      = "black",
     linewidth  = .25,
     yintercept = c(
-      dt_pop$lat[which.max(dt_pop$lat)],             # Max airport latitude
-      dt_pop$lat[which.min(dt_pop$lat)],             # Min airport latitude
-      mean(dt_pop[!duplicated(dt_pop$icao), ]$lat),  # Mean airport latitude
-      median(dt_pop[!duplicated(dt_pop$icao), ]$lat) # Median airport latitude
+      dt_pop$lat[which.max(dt_pop$lat)],                 # Max latitude
+      dt_pop$lat[which.min(dt_pop$lat)],                 # Min latitude
+      mean(dt_pop[!duplicated(dt_pop$icao), ]$lat),      # Mean latitude
+      as.numeric(
+        crossprod(
+          dt_pop[!duplicated(dt_pop$icao), ]$traffic,
+          dt_pop[!duplicated(dt_pop$icao), ]$lat
+        ) /
+          sum(dt_pop[!duplicated(dt_pop$icao), ]$traffic)
+      ),                                                 # PPA-weighted latitude
+      median(dt_pop[!duplicated(dt_pop$icao), ]$lat)     # Median latitude
     )
   ) +
-  # Add horizontal line labels
+  # Add parallel labels
   geom_text(
     data  = world,
     color = "black",
     hjust = 1L,
-    label = "Max. airport latitude",
+    label = paste(
+      "Max. latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(x = dt_pop$lat[which.max(dt_pop$lat)], digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
     size  = 1.5,
     x     = 179L,
     y     = dt_pop$lat[which.max(dt_pop$lat)] + 2L
@@ -314,7 +330,15 @@ ggplot() +
     data  = world,
     color = "black",
     hjust = 1L,
-    label = "Min. airport latitude",
+    label = paste(
+      "Min. latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(x = dt_pop$lat[which.min(dt_pop$lat)], digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
     size  = 1.5,
     x     = 179L,
     y     = dt_pop$lat[which.min(dt_pop$lat)] + 2L
@@ -323,16 +347,62 @@ ggplot() +
     data  = world,
     color = "black",
     hjust = 1L,
-    label = "Mean airport latitude",
+    label = paste(
+      "Mean latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(x = mean(dt_pop[!duplicated(dt_pop$icao), ]$lat), digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
     size  = 1.5,
     x     = 179L,
-    y     = mean(dt_pop[!duplicated(dt_pop$icao), ]$lat) + 2L
+    y     = mean(dt_pop[!duplicated(dt_pop$icao), ]$lat) - 1.5
   ) +
   geom_text(
     data  = world,
     color = "black",
     hjust = 1L,
-    label = "Median airport latitude",
+    label = paste(
+      "PPA-weighted mean latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(
+          x      = as.numeric(crossprod(
+            dt_pop[!duplicated(dt_pop$icao), ]$traffic,
+            dt_pop[!duplicated(dt_pop$icao), ]$lat
+            ) /
+            sum(dt_pop[!duplicated(dt_pop$icao), ]$traffic)
+          ),
+          digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
+    size  = 1.5,
+    x     = 179L,
+    y     = as.numeric(
+      crossprod(
+        dt_pop[!duplicated(dt_pop$icao), ]$traffic,
+        dt_pop[!duplicated(dt_pop$icao), ]$lat
+      ) /
+      sum(dt_pop[!duplicated(dt_pop$icao), ]$traffic)
+    ) - 1.5
+  ) +
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = paste(
+      "Median latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(x = median(dt_pop[!duplicated(dt_pop$icao), ]$lat), digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
     size  = 1.5,
     x     = 179L,
     y     = median(dt_pop[!duplicated(dt_pop$icao), ]$lat) + 2L
@@ -452,8 +522,8 @@ ggplot() +
   theme_light() +
   theme(
     axis.title      = element_blank(),
-    axis.text.x     = element_blank(),
-    axis.text.y     = element_blank(),
+    axis.text       = element_blank(),
+    axis.ticks      = element_blank(),
     legend.key.size = unit(.2, "in"),
     legend.title    = element_text(size = 5L),
     legend.text     = element_text(size = 3L)
@@ -477,6 +547,7 @@ ggplot() +
   geom_sf(data = world, fill = "gray") +
   coord_sf(expand = FALSE) +
   # Define the scales
+  scale_x_continuous(breaks = c(-180L, 180L)) +
   scale_y_continuous(
     breaks = unique(unlist(x = geo, use.names = FALSE)),
     limits = c(-90L, 90L)
@@ -499,23 +570,38 @@ ggplot() +
     mapping = aes(x = lon, y = lat, color = traffic, size = traffic),
     shape   = 20L,
   ) +
-  # Add horizontal lines
+  # Add parallels
   geom_hline(
     color      = "black",
     linewidth  = .25,
     yintercept = c(
-      dt_smp$lat[which.max(dt_smp$lat)],             # Max airport latitude
-      dt_smp$lat[which.min(dt_smp$lat)],             # Min airport latitude
-      mean(dt_smp[!duplicated(dt_smp$icao), ]$lat),  # Mean airport latitude
-      median(dt_smp[!duplicated(dt_smp$icao), ]$lat) # Median airport latitude
+      dt_smp$lat[which.max(dt_smp$lat)],                 # Max latitude
+      dt_smp$lat[which.min(dt_smp$lat)],                 # Min latitude
+      mean(dt_smp[!duplicated(dt_smp$icao), ]$lat),      # Mean latitude
+      as.numeric(
+        crossprod(
+          dt_smp[!duplicated(dt_smp$icao), ]$traffic,
+          dt_smp[!duplicated(dt_smp$icao), ]$lat
+        ) /
+          sum(dt_smp[!duplicated(dt_smp$icao), ]$traffic)
+      ),                                                 # PPA-weighted latitude
+      median(dt_smp[!duplicated(dt_smp$icao), ]$lat)     # Median latitude
     )
   ) +
-  # Add horizontal line labels
+  # Add parallel labels
   geom_text(
     data  = world,
     color = "black",
     hjust = 1L,
-    label = "Max. airport latitude",
+    label = paste(
+      "Max. latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(x = dt_smp$lat[which.max(dt_smp$lat)], digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
     size  = 1.5,
     x     = 179L,
     y     = dt_smp$lat[which.max(dt_smp$lat)] + 2L
@@ -524,7 +610,15 @@ ggplot() +
     data  = world,
     color = "black",
     hjust = 1L,
-    label = "Min. airport latitude",
+    label = paste(
+      "Min. latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(x = dt_smp$lat[which.min(dt_smp$lat)], digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
     size  = 1.5,
     x     = 179L,
     y     = dt_smp$lat[which.min(dt_smp$lat)] + 2L
@@ -533,16 +627,62 @@ ggplot() +
     data  = world,
     color = "black",
     hjust = 1L,
-    label = "Mean airport latitude",
+    label = paste(
+      "Mean latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(x = mean(dt_smp[!duplicated(dt_smp$icao), ]$lat), digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
     size  = 1.5,
     x     = 179L,
-    y     = mean(dt_smp[!duplicated(dt_smp$icao), ]$lat) + 2L
+    y     = mean(dt_smp[!duplicated(dt_smp$icao), ]$lat) - 1.5
   ) +
   geom_text(
     data  = world,
     color = "black",
     hjust = 1L,
-    label = "Median airport latitude",
+    label = paste(
+      "PPA-weighted mean latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(
+          x      = as.numeric(crossprod(
+            dt_smp[!duplicated(dt_smp$icao), ]$traffic,
+            dt_smp[!duplicated(dt_smp$icao), ]$lat
+          ) /
+            sum(dt_smp[!duplicated(dt_smp$icao), ]$traffic)
+          ),
+          digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
+    size  = 1.5,
+    x     = 179L,
+    y     = as.numeric(
+      crossprod(
+        dt_smp[!duplicated(dt_smp$icao), ]$traffic,
+        dt_smp[!duplicated(dt_smp$icao), ]$lat
+      ) /
+        sum(dt_smp[!duplicated(dt_smp$icao), ]$traffic)
+    ) - 1.35
+  ) +
+  geom_text(
+    data  = world,
+    color = "black",
+    hjust = 1L,
+    label = paste(
+      "Median latitude ",
+      sprintf(
+        fmt = "%.2f",
+        round(x = median(dt_smp[!duplicated(dt_smp$icao), ]$lat), digits = 2L)
+      ),
+      "°",
+      sep = ""
+    ),
     size  = 1.5,
     x     = 179L,
     y     = median(dt_smp[!duplicated(dt_smp$icao), ]$lat) + 2L
@@ -662,8 +802,8 @@ ggplot() +
   theme_light() +
   theme(
     axis.title      = element_blank(),
-    axis.text.x     = element_blank(),
-    axis.text.y     = element_blank(),
+    axis.text       = element_blank(),
+    axis.ticks      = element_blank(),
     legend.key.size = unit(.2, "in"),
     legend.title    = element_text(size = 5L),
     legend.text     = element_text(size = 3L)
