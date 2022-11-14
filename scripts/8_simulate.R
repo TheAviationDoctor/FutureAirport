@@ -188,7 +188,7 @@ fn_simulate <- function(icao) {
         hurs,
         ps,
         tas,
-        rho,
+        rho2 AS rho,
         hdw,
         rwy,
         toda",
@@ -238,7 +238,7 @@ fn_simulate <- function(icao) {
   set(
     x = dt_tko,
     j = "thr_red",
-    value = ifelse(
+    value = fifelse(
       dt_tko[, toda] <= dt_tko[, todr_cal],
       0L + sim$thr_inc,
       sim$thr_ini + sim$thr_inc
@@ -283,7 +283,7 @@ fn_simulate <- function(icao) {
         x = dt_tko,
         i = i,
         j = "tom",
-        value = ifelse(
+        value = fifelse(
           dt_tko[i, thr_red] == 0L,
           dt_tko[i, tom] - sim$pax_avg,
           dt_tko[i, tom]
@@ -295,7 +295,7 @@ fn_simulate <- function(icao) {
         x = dt_tko,
         i = i,
         j = "tom_rem",
-        value = ifelse(
+        value = fifelse(
           dt_tko[i, thr_red] == 0L,
           dt_tko[i, tom_rem] + sim$pax_avg,
           dt_tko[i, tom_rem]
@@ -307,7 +307,7 @@ fn_simulate <- function(icao) {
         x = dt_tko,
         i = i,
         j = "thr_red",
-        value = ifelse(
+        value = fifelse(
           dt_tko[i, thr_red] > 0L,
           dt_tko[i, thr_red] - sim$thr_inc,
           dt_tko[i, thr_red]
@@ -336,10 +336,10 @@ fn_simulate <- function(icao) {
       set(x = dt_tko, i = i, j = "cllof", value = NA)
 
       # Add the calibration data (cD and cL) again for the new mass
-      dt_tko[dt_cal, cd := ifelse(is.na(cd), i.cd, cd), on = c("type", "tom")]
+      dt_tko[dt_cal, cd := fifelse(is.na(cd), i.cd, cd), on = c("type", "tom")]
       dt_tko[
         dt_cal,
-        cllof := ifelse(
+        cllof := fifelse(
           is.na(cllof),
           i.cllof, cllof
         ),

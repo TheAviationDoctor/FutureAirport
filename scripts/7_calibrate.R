@@ -319,7 +319,7 @@ for (i in seq_len(nrow(dt_tko))) {
   # Run the optimizer to minimize the residual error
   optimize(
     f        = function(clmax) fn_calibrate(clmax, i),
-    interval = sim$opt_rng,
+    interval = sim$opt_cls,
     tol      = sim$opt_tol
   )
 
@@ -366,15 +366,16 @@ fn_sql_qry(
   statement = paste(
     "CREATE TABLE",
     tolower(dat$cal),
-    "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    type CHAR(4) NOT NULL,
-    tom MEDIUMINT NOT NULL,
-    todr_cal SMALLINT NOT NULL,
-    todr_sim SMALLINT NOT NULL,
-    vlof FLOAT NOT NULL,
-    clmax FLOAT NOT NULL,
-    cllof FLOAT NOT NULL,
-    cd FLOAT NOT NULL,
+    "(
+      id       INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      type     CHAR(4) NOT NULL,
+      tom      MEDIUMINT NOT NULL,
+      todr_cal SMALLINT NOT NULL,
+      todr_sim SMALLINT NOT NULL,
+      vlof     FLOAT NOT NULL,
+      clmax    FLOAT NOT NULL,
+      cllof    FLOAT NOT NULL,
+      cd       FLOAT NOT NULL,
     PRIMARY KEY (id));",
     sep = " "
   )
@@ -451,7 +452,7 @@ dt_tko[, as.list(summary(diff)), by = type]
     width    = 6L,
     height   = NA,
     units    = "in",
-    dpi      = "print"
+    dpi      = "retina"
   )
 
 # Box-plot the drag coefficient by aircraft type
@@ -468,7 +469,7 @@ dt_tko[, as.list(summary(diff)), by = type]
     width    = 6L,
     height   = NA,
     units    = "in",
-    dpi      = "print"
+    dpi      = "retina"
   )
 
 # Box-plot the calibration accuracy in m by aircraft type
@@ -488,7 +489,7 @@ dt_tko[, as.list(summary(diff)), by = type]
     width    = 6L,
     height   = NA,
     units    = "in",
-    dpi      = "print"
+    dpi      = "retina"
   )
 
 # Plot the takeoff speed for each aircraft type
@@ -508,7 +509,7 @@ dt_tko[, as.list(summary(diff)), by = type]
     width    = 6L,
     height   = NA,
     units    = "in",
-    dpi      = "print"
+    dpi      = "retina"
   )
 
 # Plot the calibrated vs. simulated mass over TODR for each aircraft type
@@ -527,7 +528,7 @@ dt_tko[, as.list(summary(diff)), by = type]
     width    = 6L,
     height   = NA,
     units    = "in",
-    dpi      = "print"
+    dpi      = "retina"
   )
 
 # ==============================================================================

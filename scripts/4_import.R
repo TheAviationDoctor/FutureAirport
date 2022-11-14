@@ -3,7 +3,7 @@
 #   INPUT: NetCDF files downloaded from the Earth System Grid Federation (ESGF)
 # ACTIONS: Extract time series of climate variables for each airport coordinates
 #  OUTPUT: 2,213,829,660 rows of climate data written to the database
-# RUNTIME: ~7.4 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~7.2 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -17,6 +17,7 @@ library(data.table)
 library(DBI)
 library(parallel)
 library(tidyverse)
+library(tmaptools)
 
 # Import the common settings
 source("scripts/0_common.R")
@@ -28,7 +29,14 @@ start_time <- Sys.time()
 cat("\014")
 
 # Set the number of CPU cores for parallel processing
-crs <- 18L
+crs <- 10L
+
+# Set a time horizon for the climatic data
+horizon <- as.POSIXct(
+  x      = "2101-01-01 00:00:00",
+  tz     = "GMT",
+  format = "%Y-%m-%d %H:%M:%S"
+)
 
 # ==============================================================================
 # 1 Set up the database table
@@ -83,18 +91,12 @@ dt_smp[zone == "Frigid", zone := "Temperate"]
 # Index the data table to speed up subsequent lookups
 setkey(x = dt_smp, cols = icao, verbose = TRUE)
 
-# Describe the sample airports
-summary(dt_smp)
-
 # List the NetCDF files from which to extract the airports' climatic conditions
 nc_files <- list.files(path = dir$cli, pattern = "\\.nc$", full.names = TRUE)
 
-# Set a time horizon for the climatic data
-horizon <- as.POSIXct(
-  x      = "2101-01-01 00:00:00",
-  tz     = "GMT",
-  format = "%Y-%m-%d %H:%M:%S"
-)
+# FOR TESTING ONLY
+# dt_smp <- head(dt_smp, 11)
+# nc_files <- head(nc_files, 1)
 
 # ==============================================================================
 # 3 Parse the NetCDF files
@@ -107,7 +109,7 @@ fn_import <- function(nc_file) {
   # ============================================================================
 
   # Offset the start of each worker by a random duration to spread disk I/O load
-  Sys.sleep(time = sample(1:(crs * 10), 1L))
+  Sys.sleep(time = sample(1:(crs * 10L), 1L))
 
   # Inform the log file
   print(
@@ -120,7 +122,7 @@ fn_import <- function(nc_file) {
         side  = "left",
         pad   = " "
       ),
-      " is parsing ", basename(nc_file),
+      " is processing ", basename(nc_file),
       "...",
       sep = ""
     )
@@ -149,56 +151,7 @@ fn_import <- function(nc_file) {
   nc_lon <- ncdf4::ncvar_get(nc = nc, varid = "lon")
 
   # Recode the longitude vector from 0°-360° to -180°-180°
-  nc_lon <- ((nc_lon + 180) %% 360) - 180
-
-  # Check if the plot already exists
-  if (file.exists(paste(dir$plt, "4_map_grid_cells.png", sep = "/")) == FALSE) {
-
-    # Define the world object from the Natural Earth package
-    world <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf")
-  
-    # Plot the grid cells of the NetCDF file onto a world map
-    ggplot() +
-      geom_sf(data = world, fill = "gray") +
-      coord_sf(datum = NA, expand = FALSE) +
-      # Define the scales
-      scale_y_continuous(
-        breaks = NULL,
-        limits = c(-90L, 90L)
-      ) +
-      # Add the parallels
-      geom_hline(
-        color      = "blue",
-        linewidth  = .1,
-        yintercept = nc_lat
-      ) +
-      # Add the meridians
-      geom_vline(
-        color      = "blue",
-        linewidth  = .1,
-        xintercept = nc_lon
-      ) +
-      theme_light() +
-      theme(
-        axis.title      = element_blank(),
-        axis.text.x     = element_blank(),
-        axis.text.y     = element_blank()
-      )
-  
-    # Save the plot
-    ggsave(
-      filename = "4_map_grid_cells.png",
-      plot     = last_plot(),
-      device   = "png",
-      path     = "plots",
-      scale    = 1L,
-      width    = 8.15,
-      height   = 3.69,
-      units    = "in",
-      dpi      = "print"
-    )
-
-  } # End plot creation
+  nc_lon <- ((nc_lon + 180L) %% 360L) - 180L
 
   # Read the time vector in PCICt (POSIXct-like) format
   nc_obs <- ncdf4.helpers::nc.get.time.series(
@@ -214,11 +167,108 @@ fn_import <- function(nc_file) {
   ncdf4::nc_close(nc = nc)
 
   # ============================================================================
+  # 3.2 Plot the climate model's spatial grid cell
+  # ============================================================================
+
+  # Check if the plot already exists
+  if (
+    file.exists(
+      paste(dir$plt, "4_map_of_climate_model_spatial_grid.png", sep = "/")
+    ) == FALSE
+  ) {
+
+    # Find the grid cells occupied by sample airports
+    grid  <- expand.grid(lat = nc_lat, lon = nc_lon)
+    match <- lapply(
+      X   = as.vector(dt_smp$icao),
+      FUN = function(x) {
+        which.min(
+          abs(grid$lat - dt_smp[icao == x, lat]) +
+            abs(grid$lon - dt_smp[icao == x, lon])
+        )
+      }
+    )
+    match <- unique(unlist(match))
+
+    # Find the mean distance between two grid cell latitudes
+    off_lat <- mean(abs(diff(as.vector(nc_lat))))
+
+    # Find the mean distance between two grid cell latitudes
+    off_lon <- mean(abs(diff(abs(as.vector(nc_lon)))))
+
+    # Define the world object from the Natural Earth package
+    world <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf")
+
+    # Plot the grid cells of the NetCDF file onto a world map
+    ggplot() +
+      geom_sf(data = world, fill = "white") +
+      coord_sf(datum = NA, expand = FALSE) +
+      # Add the airports
+      geom_rect(
+        color   = NA,
+        fill    = "blue",
+        linewidth = 0L,
+        data    = data.frame(
+          xmin  = grid[match, "lon"] - off_lon / 2L,
+          xmax  = grid[match, "lon"] + off_lon / 2L,
+          ymin  = grid[match, "lat"] - off_lat / 2L,
+          ymax  = grid[match, "lat"] + off_lat / 2L
+        ),
+        mapping = aes(
+          xmin  = xmin,
+          xmax  = xmax,
+          ymin  = ymin,
+          ymax  = ymax
+        )
+      ) +
+      # Add the parallels
+      geom_hline(
+        color      = "blue",
+        linewidth  = .05,
+        yintercept = nc_lat - off_lat / 2L
+      ) +
+      # Add the meridians
+      geom_vline(
+        color      = "blue",
+        linewidth  = .05,
+        xintercept = nc_lon - off_lon / 2L
+      ) +
+      theme_light() +
+      theme(
+        axis.title  = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        plot.margin = margin(-.8, 0L, -.8, 0L, "in")
+      )
+
+    # Find the aspect ratio of the map
+    ar <- tmaptools::get_asp_ratio(world)
+
+    # Save the plot
+    ggsave(
+      filename = "4_map_of_climate_model_spatial_grid.png",
+      plot     = last_plot(),
+      device   = "png",
+      path     = "plots",
+      scale    = 1L,
+      height   = 9L / ar,
+      width    = 9L,
+      units    = "in",
+      dpi      = "retina"
+    )
+
+  } # End plot creation
+
+  # ============================================================================
   # 3.2 Extract the climatic variables for each sample airport (inner loop)
   # ============================================================================
 
   dt_nc <- lapply(
+
+    # For each airport (passed as a vector so lapply treats them one by one)
     X   = as.vector(dt_smp$icao),
+
+    # Fetch the climate data corresponding to the airport's spatial grid cell
     FUN = function(x) {
 
       # Find the row index of the latitude nearest to the airport's
@@ -270,35 +320,19 @@ fn_import <- function(nc_file) {
         setnafill(x = dt_apt, type = "locf", cols = "val")
       }
 
+      # Remove cases beyond the time horizon
+      return(subset(x = dt_apt, subset = obs < horizon))
+
     } # End lapply function
-  )
+
+  ) # End lapply
 
   # ============================================================================
   # 3.3 Consolidate the outputs and write them to the database
   # ============================================================================
 
-  # Combine the outputs of all airport iterations into a data table
-  dt_nc <- rbindlist(dt_nc)
-
-  # Remove cases beyond the time horizon
-  dt_nc <- dt_nc[obs < horizon]
-
-  # Inform the log file
-  print(
-    paste(
-      Sys.time(),
-      " pid ",
-      stringr::str_pad(
-        Sys.getpid(),
-        width = 5L,
-        side  = "left",
-        pad   = " "
-      ),
-      " is writing ", basename(nc_file),
-      "...",
-      sep = ""
-    )
-  )
+  # Consolidate the data tables
+  dt_nc <- rbindlist(l = dt_nc, use.names = FALSE)
 
   # Connect the worker to the database
   conn <- dbConnect(RMySQL::MySQL(), default.file = dat$cnf, group = dat$grp)
@@ -314,23 +348,6 @@ fn_import <- function(nc_file) {
 
   # Disconnect the worker from the database
   dbDisconnect(conn)
-
-  # Inform the log file
-  print(
-    paste(
-      Sys.time(),
-      " pid ",
-      stringr::str_pad(
-        Sys.getpid(),
-        width = 5L,
-        side  = "left",
-        pad   = " "
-      ),
-      " has written ", basename(nc_file),
-      ".",
-      sep = ""
-    )
-  )
 
 } # End of the fn_import function
 
@@ -349,7 +366,8 @@ fn_par_lapply(
     "ncdf4.helpers",
     "PCICt",
     "rnaturalearth",
-    "stringr"
+    "stringr",
+    "tmaptools"
   ),
   lst = nc_files,
   fun = fn_import

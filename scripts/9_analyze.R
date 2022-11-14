@@ -82,10 +82,10 @@ fn_sql_qry(
       AVG(tas)  AS avg_tas,
       AVG(hurs) AS avg_hurs,
       AVG(ps)   AS avg_ps,
-      AVG(rho)  AS avg_rho,
+      AVG(rho2) AS avg_rho,
       AVG(hdw)  AS avg_hdw,
       MAX(tas)  AS max_tas,
-      MIN(rho)  AS min_rho
+      MIN(rho2) AS min_rho
     FROM",
     tolower(dat$cli),
     "GROUP BY
@@ -126,49 +126,49 @@ dt_an1[, max_tas := max_tas - sim$k_to_c]
 # Convert near-surface air pressure from Pa to hPa
 dt_an1[, avg_ps := avg_ps / 100L]
 
-# # ==============================================================================
-# # 1.3 Summarize the data
-# # ==============================================================================
-# 
-# # Declare output variables for averaging
-# cols_mean <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
-# 
-# # Declare input variables for grouping
-# grp <- c("year", "ssp", "zone")
-# 
-# # Summarize the data and combine them by group
-# dt_an1a <- rbind(
-#   # Zonal summary by group
-#   cbind(
-#     dt_an1[, lapply(X = .SD, FUN = mean),
-#       by = grp,
-#       .SDcols = cols_mean
-#     ],
-#     dt_an1[, lapply(X = .SD, FUN = max),
-#       by = grp,
-#       .SDcols = c("max_tas")
-#     ][, "max_tas"],
-#     dt_an1[, lapply(X = .SD, FUN = min),
-#       by = grp,
-#       .SDcols = c("min_rho")
-#     ][, "min_rho"]
-#   ),
-#   # Global summary by group
-#   cbind(
-#     dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = mean),
-#       by = grp,
-#       .SDcols = cols_mean
-#     ],
-#     dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = max),
-#       by = grp,
-#       .SDcols = c("max_tas")
-#     ][, "max_tas"],
-#     dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = min),
-#       by = grp,
-#       .SDcols = c("min_rho")
-#     ][, "min_rho"]
-#   )
-# )
+# ==============================================================================
+# 1.3 Summarize the data
+# ==============================================================================
+
+# Declare output variables for averaging
+cols_mean <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
+
+# Declare input variables for grouping
+grp <- c("year", "ssp", "zone")
+
+# Summarize the data and combine them by group
+dt_an1a <- rbind(
+  # Zonal summary by group
+  cbind(
+    dt_an1[, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = cols_mean
+    ],
+    dt_an1[, lapply(X = .SD, FUN = max),
+      by = grp,
+      .SDcols = c("max_tas")
+    ][, "max_tas"],
+    dt_an1[, lapply(X = .SD, FUN = min),
+      by = grp,
+      .SDcols = c("min_rho")
+    ][, "min_rho"]
+  ),
+  # Global summary by group
+  cbind(
+    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = mean),
+      by = grp,
+      .SDcols = cols_mean
+    ],
+    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = max),
+      by = grp,
+      .SDcols = c("max_tas")
+    ][, "max_tas"],
+    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = min),
+      by = grp,
+      .SDcols = c("min_rho")
+    ][, "min_rho"]
+  )
+)
 
 # ==============================================================================
 # 1.4 Add local polynomial regression fitting (LOESS) to the output variables
@@ -185,30 +185,30 @@ cols <- c(
   "min_rho"
 )
 
-# # Declare input variables for grouping
-# grp <- c("ssp", "zone")
-# 
-# # Perform regression fitting by group
-# dt_an1a[,
-#   paste(cols, "loess", sep = "_") := lapply(
-#     X = .SD,
-#     FUN = function(x) {
-#       predict(loess(formula = x ~ year, span = .75, model = TRUE))
-#     }
-#   ),
-#   by = grp,
-#   .SDcols = cols
-# ]
-# 
-# # ==============================================================================
-# # 1.5 Save the data to disk
-# # ==============================================================================
-# 
-# fwrite(
-#   x    = dt_an1a,
-#   file = paste(dir$res, "dt_an1a.csv", sep = "/")
-# )
-# 
+# Declare input variables for grouping
+grp <- c("ssp", "zone")
+
+# Perform regression fitting by group
+dt_an1a[,
+  paste(cols, "loess", sep = "_") := lapply(
+    X = .SD,
+    FUN = function(x) {
+      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+    }
+  ),
+  by = grp,
+  .SDcols = cols
+]
+
+# ==============================================================================
+# 1.5 Save the data to disk
+# ==============================================================================
+
+fwrite(
+  x    = dt_an1a,
+  file = paste(dir$res, "dt_an1a.csv", sep = "/")
+)
+
 # # ==============================================================================
 # # 1.6 Plot the results
 # # ==============================================================================

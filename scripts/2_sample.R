@@ -22,6 +22,7 @@ library(rgeos)
 library(rnaturalearth)
 library(scales)
 library(tidyverse)
+library(tmaptools)
 library(viridis)
 
 # Import the common settings
@@ -526,20 +527,24 @@ ggplot() +
     axis.ticks      = element_blank(),
     legend.key.size = unit(.2, "in"),
     legend.title    = element_text(size = 5L),
-    legend.text     = element_text(size = 3L)
+    legend.text     = element_text(size = 5L),
+    plot.margin     = margin(-.8, 0L, -.8, 0L, "in")
   )
+
+# Find the aspect ratio of the map
+ar <- tmaptools::get_asp_ratio(world)
 
 # Save the plot
 ggsave(
-  filename = "2_map_population.png",
+  filename = "2_map_of_population_airports.png",
   plot     = last_plot(),
   device   = "png",
   path     = "plots",
   scale    = 1L,
-  width    = 8.15,
-  height   = 3.69,
+  height   = 9L / ar,
+  width    = 9L,
   units    = "in",
-  dpi      = "print"
+  dpi      = "retina"
 )
 
 # Plot the sample airports onto a world map
@@ -806,20 +811,21 @@ ggplot() +
     axis.ticks      = element_blank(),
     legend.key.size = unit(.2, "in"),
     legend.title    = element_text(size = 5L),
-    legend.text     = element_text(size = 3L)
+    legend.text     = element_text(size = 5L),
+    plot.margin     = margin(-.8, 0L, -.8, 0L, "in")
   )
 
 # Save the plot
 ggsave(
-  filename = "2_map_sample.png",
+  filename = "2_map_of_sample_airports.png",
   plot     = last_plot(),
   device   = "png",
   path     = "plots",
   scale    = 1L,
-  width    = 8.15,
-  height   = 3.69,
+  height   = 9L / ar,
+  width    = 9L,
   units    = "in",
-  dpi      = "print"
+  dpi      = "retina"
 )
 
 # Build a histogram of airports by latitude
@@ -856,10 +862,10 @@ ggsave(
   device   = "png",
   path     = "plots",
   scale    = 1L,
-  width    = 6L,
-  height   = NA,
+  width    = 4L,
+  height   = 4L,
   units    = "in",
-  dpi      = "print"
+  dpi      = "retina"
 )
 
 # Build a histogram of traffic by latitude
@@ -904,10 +910,10 @@ ggsave(
   device   = "png",
   path     = "plots",
   scale    = 1L,
-  width    = 6L,
-  height   = NA,
+  width    = 4L,
+  height   = 4L,
   units    = "in",
-  dpi      = "print"
+  dpi      = "retina"
 )
 
 # ==============================================================================
@@ -1006,15 +1012,15 @@ ggplot(data = df_kgc) +
 
 # Save the plot
 ggsave(
-  filename = "2_airport_distribution_by_koppen_geiger_zone.png",
+  filename = "2_histogram_of_airports_by_koppen_geiger_zone.png",
   plot     = last_plot(),
   device   = "png",
   path     = "plots",
   scale    = 1L,
-  width    = 6L,
-  height   = NA,
+  width    = 4.4,
+  height   = 4.4,
   units    = "in",
-  dpi      = "print"
+  dpi      = "retina"
 )
 
 # Plot the traffic distribution by Köppen-Geiger climate zone
@@ -1042,15 +1048,15 @@ ggplot(data = df_kgc) +
 
 # Save the plot
 ggsave(
-  filename = "2_traffic_distribution_by_koppen_geiger_zone.png",
+  filename = "2_histogram_of_traffic_by_koppen_geiger_zone.png",
   plot     = last_plot(),
   device   = "png",
   path     = "plots",
   scale    = 1L,
-  width    = 6L,
-  height   = NA,
+  width    = 4.4,
+  height   = 4.4,
   units    = "in",
-  dpi      = "print"
+  dpi      = "retina"
 )
 
 # ==============================================================================

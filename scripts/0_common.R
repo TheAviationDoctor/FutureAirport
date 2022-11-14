@@ -76,7 +76,7 @@ sim <- list(
   "clb_ang"     = 7.7,         # Average climb angle to screen height
   "flp_ang"     = 10L,         # Takeoff flap deflection angle in degrees
   "max_lof"     = 1.2,         # Ratio from CLmax to CLlof (Roskam, 2018, p 95)
-  "opt_rng"     = c(1.6, 2.2), # Range of cL inputs passed to the optimizer
+  "opt_cls"     = c(1.6, 2.2), # Range of cL inputs passed to the optimizer
   "opt_tol"     = 10^-3,       # Optimizer tolerance
   "rwy_frc"     = .02,         # Friction coefficient for dry concrete/asphalt
   "rwy_slp"     = 0L,          # Runway slope in °
@@ -92,6 +92,7 @@ sim <- list(
   "thr_ini"     = 25L,         # Thrust reduction for simulation in %
   # Natural constants
   "adb_idx"     = 1.4,         # Adiabatic index for dry air at ISA temperature
+  "co2_ppm"     = 441.10e-06,  # Molar fraction of carbon dioxide in the air
   "ft_to_m"     = .3048,       # Number of m in one ft
   "g"           = 9.806665,    # Gravitational acceleration constant in m/s²
   "isa_hdw"     = 0L,          # ISA near-surface headwind in m/s
@@ -106,7 +107,7 @@ sim <- list(
   "rsp_h2o"     = 461.495      # Spec. gas constant for water vapor in J/(kg·K)
 )
 
-# Lower latitudinal boundaries for the Earth's climate zones
+# Latitudinal boundaries of the Earth's climate zones
 geo <- list(
   "Frigid"    = c(-90L,     -66.5635), # Antarctic zone
   "Temperate" = c(-66.5635, -23.4365), # South temperate zone

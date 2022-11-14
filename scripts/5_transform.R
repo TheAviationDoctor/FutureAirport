@@ -16,6 +16,7 @@
 # Load the required libraries
 library(data.table)
 library(DBI)
+library(masscor)
 library(parallel)
 library(stringr)
 
@@ -29,7 +30,7 @@ start_time <- Sys.time()
 cat("\014")
 
 # Set the number of CPU cores for parallel processing
-crs <- 12L
+crs <- 16L
 
 # ==============================================================================
 # 1 Fetch the data that we need
@@ -83,22 +84,27 @@ fn_sql_qry(
   statement = paste(
     "CREATE TABLE",
     tolower(dat$cli),
-    "(id   INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    year YEAR NOT NULL,
-    obs  DATETIME NOT NULL,
-    icao CHAR(4) NOT NULL,
-    lat  FLOAT NOT NULL,
-    lon  FLOAT NOT NULL,
-    zone CHAR(11) NOT NULL,
-    ssp  CHAR(6) NOT NULL,
-    hurs FLOAT NOT NULL,
-    ps   FLOAT NOT NULL,
-    tas  FLOAT NOT NULL,
-    rho  FLOAT NOT NULL,
-    hdw  FLOAT NOT NULL,
-    rwy  CHAR(5) NOT NULL,
-    toda SMALLINT NOT NULL,
-    PRIMARY KEY (id));",
+    "(
+      id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      year          YEAR NOT NULL,
+      obs           DATETIME NOT NULL,
+      icao          CHAR(4) NOT NULL,
+      lat           FLOAT NOT NULL,
+      lon           FLOAT NOT NULL,
+      zone          CHAR(11) NOT NULL,
+      ssp           CHAR(6) NOT NULL,
+      hurs          FLOAT NOT NULL,
+      hurs_cap      FLOAT NOT NULL,
+      ps            FLOAT NOT NULL,
+      tas           FLOAT NOT NULL,
+      rho1          FLOAT NOT NULL,
+      rho2          FLOAT NOT NULL,
+      rho3          FLOAT NOT NULL,
+      hdw           FLOAT NOT NULL,
+      rwy           CHAR(5) NOT NULL,
+      toda          SMALLINT NOT NULL,
+      PRIMARY KEY (id)
+    );",
     sep = " "
   )
 )
@@ -219,6 +225,10 @@ fn_transform <- function(apt) {
                   (dt_nc[, tas] - sim$k_to_c) * (0.11112018E-16 +
                     (dt_nc[, tas] - sim$k_to_c) * (-0.30994571E-19)))))))))
 
+  # ============================================================================
+  # 3.2.1 Method 1: ideal gas law allowing for supersaturation (hurs > 100%)
+  # ============================================================================
+
   # Calculate the partial pressure of water vapor in mbar
   pv <- (sim$sat_ref / pol^8L) * (dt_nc[, hurs] / 100L)
 
@@ -227,11 +237,58 @@ fn_transform <- function(apt) {
 
   # Calculate the air density in kg/m3
   set(
-    x = dt_nc,
-    j = "rho",
+    x     = dt_nc,
+    j     = "rho1",
     value = (
       (pd / (sim$rsp_air * dt_nc[, tas])) + (pv / (sim$rsp_h2o * dt_nc[, tas]))
     ) * 100L
+  )
+
+  # ============================================================================
+  # 3.2.2 Method 2: ideal gas law, no supersaturation (hurs capped at 100%)
+  # These additional methods are provided because occurrences of supersaturation
+  # (hurs > 100%) were observed in MPI-ESM1-2-HR model outputs.
+  # See https://doi.org/jmgx and https://doi.org/jmgw for further details.
+  # ============================================================================
+
+  # Cap hurs at 100% where supersaturation is observed
+  set(
+    x     = dt_nc,
+    j     = "hurs_cap",
+    value = fifelse(dt_nc[, hurs] > 100L, 100L, dt_nc[, hurs])
+  )
+
+  # Re-calculate the partial pressure of water vapor in mbar
+  pv <- (sim$sat_ref / pol^8L) * (dt_nc[, hurs_cap] / 100L)
+  
+  # Re-calculate the partial pressure of dry air in mbar
+  pd <- dt_nc[, ps] / 100L - pv
+
+  # Calculate the air density in kg/m3
+  set(
+    x     = dt_nc,
+    j     = "rho2",
+    value = (
+      (pd / (sim$rsp_air * dt_nc[, tas])) + (pv / (sim$rsp_h2o * dt_nc[, tas]))
+    ) * 100L
+  )
+
+  # ============================================================================
+  # 3.2.3 Method 2: CIPM-2007 method, no supersaturation (hurs capped at 100%)
+  # ============================================================================
+
+  # Alternate air density calculation based on https://doi.org/dqnsdj
+  set(
+    x     = dt_nc,
+    j     = "rho3",
+    value = masscor::airDensity(
+      Temp     = dt_nc[, tas],
+      p        = dt_nc[, ps],
+      h        = dt_nc[, hurs_cap],
+      unitsENV = c("K", "Pa", "%"),
+      x_CO2    = sim$co2_ppm,
+      model    = "CIMP2007" # Typo in the package (should be CIPM-2007)
+    ) * 10^3
   )
 
   # ============================================================================
@@ -329,9 +386,12 @@ fn_transform <- function(apt) {
     "zone",
     "ssp",
     "hurs",
+    "hurs_cap",
     "ps",
     "tas",
-    "rho",
+    "rho1",
+    "rho2",
+    "rho3",
     "hdw",
     "rwy",
     "toda"
@@ -380,7 +440,7 @@ fn_transform <- function(apt) {
 # Distribute the sample airports across the CPU cores
 fn_par_lapply(
   crs = crs,
-  pkg = c("data.table", "DBI", "stringr"),
+  pkg = c("data.table", "DBI", "masscor", "stringr"),
   lst = unique(dt_smp[, icao], by = "icao"),
   fun = fn_transform
 )
