@@ -42,7 +42,7 @@ cat("\014")
 # ==============================================================================
 
 # ==============================================================================
-# 1.1 Create, fetch, and cleanse the data. Variables:
+# 1.1 Create, fetch, and cleanse the climate data. Variables:
 # avg_tas  = Mean air temperature in °C
 # avg_hurs = Mean relative humidity in %
 # avg_ps   = Mean air pressure in Pa
@@ -52,7 +52,7 @@ cat("\014")
 # min_rho  = Minimum air density in kg/m³
 # ==============================================================================
 
-# Create the summary table (runtime: ~13 minutes)
+# Create the summary table (runtime: ~15 minutes)
 fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
@@ -64,13 +64,21 @@ fn_sql_qry(
       icao     CHAR(4),
       lat      FLOAT,
       lon      FLOAT,
+      max_tas  FLOAT,
+      max_hurs FLOAT,
+      max_ps   FLOAT,
+      max_rho  FLOAT,
+      max_hdw  FLOAT,
       avg_tas  FLOAT,
       avg_hurs FLOAT,
       avg_ps   FLOAT,
       avg_rho  FLOAT,
       avg_hdw  FLOAT,
-      max_tas  FLOAT,
-      min_rho  FLOAT
+      min_tas  FLOAT,
+      min_hurs FLOAT,
+      min_ps   FLOAT,
+      min_rho  FLOAT,
+      min_hdw  FLOAT
     )
     AS SELECT
       year,
@@ -79,13 +87,21 @@ fn_sql_qry(
       icao,
       lat,
       lon,
-      AVG(tas)  AS avg_tas,
-      AVG(hurs) AS avg_hurs,
-      AVG(ps)   AS avg_ps,
-      AVG(rho2) AS avg_rho,
-      AVG(hdw)  AS avg_hdw,
-      MAX(tas)  AS max_tas,
-      MIN(rho2) AS min_rho
+      MAX(tas)      AS max_tas,
+      MAX(hurs_cap) AS max_hurs,
+      MAX(ps)       AS max_ps,
+      MAX(rho2)     AS max_rho,
+      MAX(hdw)      AS max_hdw,
+      AVG(tas)      AS avg_tas,
+      AVG(hurs_cap) AS avg_hurs,
+      AVG(ps)       AS avg_ps,
+      AVG(rho2)     AS avg_rho,
+      AVG(hdw)      AS avg_hdw,
+      MIN(tas)      AS min_tas,
+      MIN(hurs_cap) AS min_hurs,
+      MIN(ps)       AS min_ps,
+      MIN(rho2)     AS min_rho,
+      MIN(hdw)      AS min_hdw
     FROM",
     tolower(dat$cli),
     "GROUP BY
@@ -98,7 +114,7 @@ fn_sql_qry(
 )
 
 # Fetch the data
-dt_an1 <- fn_sql_qry(
+dt_cli <- fn_sql_qry(
   statement = paste(
     "SELECT
       *
@@ -110,24 +126,139 @@ dt_an1 <- fn_sql_qry(
 )
 
 # Recast column types
-set(x = dt_an1, j = "year", value = as.integer(dt_an1[, year]))
-set(x = dt_an1, j = "zone", value = as.factor(dt_an1[, zone]))
-set(x = dt_an1, j = "ssp",  value = as.factor(dt_an1[, ssp]))
-set(x = dt_an1, j = "icao", value = as.factor(dt_an1[, icao]))
+set(x = dt_cli, j = "year", value = as.integer(dt_cli[, year]))
+set(x = dt_cli, j = "zone", value = as.factor(dt_cli[, zone]))
+set(x = dt_cli, j = "ssp",  value = as.factor(dt_cli[, ssp]))
+set(x = dt_cli, j = "icao", value = as.factor(dt_cli[, icao]))
 
-# ==============================================================================
-# 1.2 Treat output variables of interest
-# ==============================================================================
-
-# Convert near-surface air temperature from °K to °C
-dt_an1[, avg_tas := avg_tas - sim$k_to_c]
-dt_an1[, max_tas := max_tas - sim$k_to_c]
+# Convert temperatures from °K to °C
+cols <- c("max_tas", "avg_tas", "min_tas")
+dt_cli[, (cols) := lapply(X = .SD, FUN = "-", sim$k_to_c), .SDcols = cols]
 
 # Convert near-surface air pressure from Pa to hPa
-dt_an1[, avg_ps := avg_ps / 100L]
+cols <- c("max_ps", "avg_ps", "min_ps")
+dt_cli[, (cols) := lapply(X = .SD, FUN = "/", 100L), .SDcols = cols]
+
+# Recode frigid airports to temperate
+dt_cli[zone == "Frigid", zone := "Temperate"]
 
 # ==============================================================================
-# 1.3 Summarize the data
+# 1.2 Global summary
+# ==============================================================================
+
+# Declare dependent variables (columns)
+cols_max <- c("max_tas", "max_hurs", "max_ps", "max_rho", "max_hdw")
+cols_avg <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
+cols_min <- c("min_tas", "min_hurs", "min_ps", "min_rho", "min_hdw")
+cols_all <- c(cols_max, cols_avg, cols_min)
+cols_loe <- paste(cols_all, "loe", sep = "_")
+cols_rel <- paste(cols_all, "rel", sep = "_")
+
+# Summarize the data by group
+grp    <- c("year", "ssp", "zone")
+dt_cli <- rbind(
+  # Zonal summary
+  cbind(
+    # Maxima
+    dt_cli[, lapply(X = .SD, FUN = max),
+      by      = grp,
+      .SDcols = cols_max
+    ],
+    # Means
+    dt_cli[, lapply(X = .SD, FUN = mean),
+      by      = grp,
+      .SDcols = cols_avg
+    ][, ..cols_avg],
+    # Minima
+    dt_cli[, lapply(X = .SD, FUN = min),
+      by      = grp,
+      .SDcols = cols_min
+    ][, ..cols_min]
+  ),
+  # Global summary
+  cbind(
+    # Maxima
+    dt_cli[, zone := "Global"][, lapply(X = .SD, FUN = max),
+      by      = grp,
+      .SDcols = cols_max
+    ],
+    # Means
+    dt_cli[, zone := "Global"][, lapply(X = .SD, FUN = mean),
+      by      = grp,
+      .SDcols = cols_avg
+    ][, ..cols_avg],
+    # Minima
+    dt_cli[, zone := "Global"][, lapply(X = .SD, FUN = min),
+      by      = grp,
+      .SDcols = cols_min
+    ][, ..cols_min]
+  )
+)
+
+# Perform local polynomial regression
+dt_cli[,
+  (cols_loe) := lapply(
+    X   = .SD,
+    FUN = function(x) {
+      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+    }
+  ),
+  by      = c("ssp", "zone"),
+  .SDcols = cols_all
+]
+
+# Calculate the relative change from the first year LOESS value by group
+dt_cli[,
+  (cols_rel) := lapply(X = .SD, FUN = function(x) { (x - x[1:1]) / x[1:1] }),
+  by      = c("ssp", "zone"),
+  .SDcols = cols_loe
+]
+
+# Create a function to plot results
+fn_plot <- function(col) {
+  (
+    ggplot(
+      data    = dt_cli,
+      mapping = aes(
+        x     = year,
+        y     = dt_cli[[as.character(col)]]
+      )
+    ) +
+      geom_line(linewidth = .2) +
+      facet_grid(zone ~ toupper(ssp), scales = "free_y")
+  ) |>
+    ggsave(
+      filename = tolower(paste("9_", col, ".png", sep = "")),
+      device   = "png",
+      path     = "plots",
+      scale    = 1L,
+      width    = 6L,
+      height   = NA,
+      units    = "in",
+      dpi      = "print"
+    )
+}
+
+# Generate the plots
+mapply(
+  FUN = fn_plot,
+  col = cols_rel
+)
+
+stop()
+
+
+
+
+
+
+
+
+
+
+
+# ==============================================================================
+# 1.3 Summarize the climatic data by zone and globally
 # ==============================================================================
 
 # Declare output variables for averaging
@@ -137,33 +268,33 @@ cols_mean <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
 grp <- c("year", "ssp", "zone")
 
 # Summarize the data and combine them by group
-dt_an1a <- rbind(
+dt_cli <- rbind(
   # Zonal summary by group
   cbind(
-    dt_an1[, lapply(X = .SD, FUN = mean),
+    dt_cli[, lapply(X = .SD, FUN = mean),
       by = grp,
       .SDcols = cols_mean
     ],
-    dt_an1[, lapply(X = .SD, FUN = max),
+    dt_cli[, lapply(X = .SD, FUN = max),
       by = grp,
       .SDcols = c("max_tas")
     ][, "max_tas"],
-    dt_an1[, lapply(X = .SD, FUN = min),
+    dt_cli[, lapply(X = .SD, FUN = min),
       by = grp,
       .SDcols = c("min_rho")
     ][, "min_rho"]
   ),
   # Global summary by group
   cbind(
-    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = mean),
+    dt_cli[, zone := "Global"][, lapply(X = .SD, FUN = mean),
       by = grp,
       .SDcols = cols_mean
     ],
-    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = max),
+    dt_cli[, zone := "Global"][, lapply(X = .SD, FUN = max),
       by = grp,
       .SDcols = c("max_tas")
     ][, "max_tas"],
-    dt_an1[, zone := "Global"][, lapply(X = .SD, FUN = min),
+    dt_cli[, zone := "Global"][, lapply(X = .SD, FUN = min),
       by = grp,
       .SDcols = c("min_rho")
     ][, "min_rho"]
@@ -189,7 +320,7 @@ cols <- c(
 grp <- c("ssp", "zone")
 
 # Perform regression fitting by group
-dt_an1a[,
+dt_cli[,
   paste(cols, "loess", sep = "_") := lapply(
     X = .SD,
     FUN = function(x) {
@@ -200,42 +331,80 @@ dt_an1a[,
   .SDcols = cols
 ]
 
+
+# ==============================================================================
+# 1.5 Calculate relative change in the output variables
+# ==============================================================================
+
+# Declare LOESS output variables
+cols_loess <- paste(cols, "loess", sep = "_")
+
+# Add the first-year values of LOESS variables by group
+dt_cli <- dt_cli[dt_cli[, .SD[1:1], .SDcols = cols_loess, by = grp], on = grp]
+
+# Calculate relative change in dependent variables and remove initial values
+lapply(
+  X = cols_loess,
+  FUN = function(x) {
+    dt_cli[, paste(x, "rel", sep = "_") :=
+             (get(x) - get(paste("i", x, sep = "."))) /
+             get(paste("i", x, sep = "."))][, paste("i", x, sep = ".") := NULL]
+  }
+)
+
+View(dt_cli)
+stop()
+
+# Declare relative output variables
+cols_rel <- paste(cols_loess, "rel", sep = "_")
+
+# Pivot the table
+dcast(
+  data = melt(
+    data = dt_cli[year == 2100 & zone == "Global"][, c("year", "zone") := NULL],
+    id.vars = "ssp",
+    measure.vars = cols_rel
+  ),
+  formula = variable ~ ssp
+)
+
 # ==============================================================================
 # 1.5 Save the data to disk
 # ==============================================================================
 
 fwrite(
-  x    = dt_an1a,
-  file = paste(dir$res, "dt_an1a.csv", sep = "/")
+  x    = dt_cli,
+  file = paste(dir$res, "dt_cli.csv", sep = "/")
 )
 
-# # ==============================================================================
-# # 1.6 Plot the results
-# # ==============================================================================
-# 
+
+
+# ==============================================================================
+# 1.6 Plot the climate variables on line charts
+# ==============================================================================
+
 # # Create a function to plot results
 # fn_plot <- function(cols) {
 #   (
 #     ggplot(
-#       data = dt_an1a,
+#       data = dt_cli,
 #       mapping = aes(
 #         x     = year,
-#         y     = dt_an1a[[as.character(cols)]]
+#         y     = dt_cli[[as.character(cols)]]
 #       )
 #     ) +
-#       geom_line(size = .2) +
-#       geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+#       geom_line(linewidth = .2) +
+#       geom_smooth(formula = y ~ x, method = "loess", linewidth = .5) +
 #       # Starting value labels
 #       geom_label(
-#         data = dt_an1a[, .SD[which.min(year)], by = grp],
+#         data = dt_cli[, .SD[which.min(year)], by = grp],
 #         aes(
 #           x = year,
-#           y = dt_an1a[, .SD[which.min(year)], by = grp]
+#           y = dt_cli[, .SD[which.min(year)], by = grp]
 #           [[paste(as.character(cols), "loess", sep = "_")]],
-#           label = round(
-#             x = dt_an1a[, .SD[which.min(year)], by = grp]
-#             [[paste(as.character(cols), "loess", sep = "_")]],
-#             digits = 2L
+#           label = sprintf(fmt = "%.2f",
+#             x = dt_cli[, .SD[which.min(year)], by = grp]
+#             [[paste(as.character(cols), "loess", sep = "_")]]
 #           )
 #         ),
 #         alpha      = .5,
@@ -247,15 +416,14 @@ fwrite(
 #       ) +
 #       # Ending value labels
 #       geom_label(
-#         data = dt_an1a[, .SD[which.max(year)], by = grp],
+#         data = dt_cli[, .SD[which.max(year)], by = grp],
 #         aes(
 #           x = year,
-#           y = dt_an1a[, .SD[which.max(year)], by = grp]
+#           y = dt_cli[, .SD[which.max(year)], by = grp]
 #           [[paste(as.character(cols), "loess", sep = "_")]],
-#           label = round(
-#             x = dt_an1a[, .SD[which.max(year)], by = grp]
-#             [[paste(as.character(cols), "loess", sep = "_")]],
-#             digits = 2L
+#           label = sprintf(fmt = "%.2f",
+#             x = dt_cli[, .SD[which.max(year)], by = grp]
+#             [[paste(as.character(cols), "loess", sep = "_")]]
 #           )
 #         ),
 #         alpha      = .5,
@@ -292,120 +460,125 @@ fwrite(
 #   cols = cols
 # )
 
+# ==============================================================================
+# 1.7 Plot the climate variables on world maps
+# ==============================================================================
 
+# WIP START
 
-dt_an1b <- dt_an1[year %in% c(2015, 2100)]
+# Select only the first and last years
+dt_cli <- dt_cli[year %in% c(2015, 2100)]
 
 # Pivot the dataset from long to wide format
-dt_an1b <- dcast.data.table(
-  data      = dt_an1b,
-  formula   = icao + zone + ssp ~ year,
+dt_cli <- dcast.data.table(
+  data      = dt_cli,
+  formula   = zone + ssp ~ year,
   value.var = cols
 )
 
-# Express output variables as a percentage of all takeoffs
-lapply(
-  X = cols,
-  FUN = function(x) {
-    dt_an1b[, paste(x) := get(paste(x, "2100", sep = "_")) - get(paste(x, "2015", sep = "_"))]
-  }
-)
+# # Express output variables as a percentage of all takeoffs
+# lapply(
+#   X = cols,
+#   FUN = function(x) {
+#     dt_cli[, paste(x) := get(paste(x, "2100", sep = "_")) - get(paste(x, "2015", sep = "_"))]
+#   }
+# )
 
-View(dt_an1b)
+View(dt_cli)
 stop()
 
-# Define the world object from the Natural Earth package
-world <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf")
-
-# Build a world map and plot the airports
-(ggplot() +
-    geom_sf(data = world, color = NA, fill = "gray", alpha = .5) +
-    scale_y_continuous(breaks = unique(unlist(geo, use.names = FALSE))) +
-    coord_sf(expand = FALSE) +
-    scale_color_viridis() +
-    geom_point(
-      data     = dt_an1b[!duplicated(dt_an1b$icao), ],
-      mapping  = aes(x = lon, y = lat, color = avg_rho),
-      # color    = "black",
-      shape    = 20L,
-      size     = 1.5
-    ) +
-    # geom_hline(
-    #   aes(yintercept = dt_pop$lat[which.max(dt_pop$lat)]),
-    #   color    = "black"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = df_smp$lat[which.max(df_smp$lat)]),
-    #   color    = "purple"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = dt_pop$lat[which.min(dt_pop$lat)]),
-    #   color    = "black"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = df_smp$lat[which.min(df_smp$lat)]),
-    #   color    = "purple"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = mean(dt_pop[!duplicated(dt_pop$icao), ]$lat)),
-    #   color    = "black"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = mean(df_smp[!duplicated(df_smp$icao), ]$lat)),
-    #   color    = "purple"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = median(dt_pop[!duplicated(dt_pop$icao), ]$lat)),
-    #   color    = "black"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = median(df_smp[!duplicated(df_smp$icao), ]$lat)),
-    #   color    = "purple"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = 66.5635),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = 30),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = 23.4365),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = -23.4365),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = -30),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    # geom_hline(
-    #   aes(yintercept = -66.5635),
-    #   color    = "gray",
-    #   linetype = "dashed"
-    # ) +
-    theme_light() +
-    theme(axis.title = element_blank(), axis.text.x = element_blank())) |>
-  ggsave(
-    filename = "9_world.png",
-    device   = "png",
-    path     = "plots",
-    scale    = 1L,
-    width    = 8.15,
-    height   = 3.69,
-    units    = "in",
-    dpi      = "print"
-  )
-
-stop()
+# # Define the world object from the Natural Earth package
+# world <- rnaturalearth::ne_countries(scale = "small", returnclass = "sf")
+# 
+# # Build a world map and plot the airports
+# (ggplot() +
+#     geom_sf(data = world, color = NA, fill = "gray", alpha = .5) +
+#     scale_y_continuous(breaks = unique(unlist(geo, use.names = FALSE))) +
+#     coord_sf(expand = FALSE) +
+#     scale_color_viridis() +
+#     geom_point(
+#       data     = dt_clib[!duplicated(dt_clib$icao), ],
+#       mapping  = aes(x = lon, y = lat, color = avg_rho),
+#       # color    = "black",
+#       shape    = 20L,
+#       size     = 1.5
+#     ) +
+#     # geom_hline(
+#     #   aes(yintercept = dt_pop$lat[which.max(dt_pop$lat)]),
+#     #   color    = "black"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = df_smp$lat[which.max(df_smp$lat)]),
+#     #   color    = "purple"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = dt_pop$lat[which.min(dt_pop$lat)]),
+#     #   color    = "black"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = df_smp$lat[which.min(df_smp$lat)]),
+#     #   color    = "purple"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = mean(dt_pop[!duplicated(dt_pop$icao), ]$lat)),
+#     #   color    = "black"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = mean(df_smp[!duplicated(df_smp$icao), ]$lat)),
+#     #   color    = "purple"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = median(dt_pop[!duplicated(dt_pop$icao), ]$lat)),
+#     #   color    = "black"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = median(df_smp[!duplicated(df_smp$icao), ]$lat)),
+#     #   color    = "purple"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = 66.5635),
+#     #   color    = "gray",
+#     #   linetype = "dashed"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = 30),
+#     #   color    = "gray",
+#     #   linetype = "dashed"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = 23.4365),
+#     #   color    = "gray",
+#     #   linetype = "dashed"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = -23.4365),
+#     #   color    = "gray",
+#     #   linetype = "dashed"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = -30),
+#     #   color    = "gray",
+#     #   linetype = "dashed"
+#     # ) +
+#     # geom_hline(
+#     #   aes(yintercept = -66.5635),
+#     #   color    = "gray",
+#     #   linetype = "dashed"
+#     # ) +
+#     theme_light() +
+#     theme(axis.title = element_blank(), axis.text.x = element_blank())) |>
+#   ggsave(
+#     filename = "9_world.png",
+#     device   = "png",
+#     path     = "plots",
+#     scale    = 1L,
+#     width    = 8.15,
+#     height   = 3.69,
+#     units    = "in",
+#     dpi      = "print"
+#   )
+# 
+# # WIP END
 
 # ==============================================================================
 # 2. Takeoff outcomes summary
@@ -649,8 +822,8 @@ fn_plot <- function(body, cols) {
         y     = dt_an2[type == body][[as.character(cols)]]
       )
     ) +
-      geom_line(size = .2) +
-      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      geom_line(linewidth = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", linewidth = .5) +
       # Starting value labels
       geom_label(
         data = dt_an2[type == body][, .SD[which.min(year)], by = grp],
@@ -871,8 +1044,8 @@ fn_plot <- function(body, cols) {
         y     = dt_an3[type == body][[as.character(cols)]]
       )
     ) +
-      geom_line(size = .2) +
-      geom_smooth(formula = y ~ x, method = "loess", size = .5) +
+      geom_line(linewidth = .2) +
+      geom_smooth(formula = y ~ x, method = "loess", linewidth = .5) +
       # Starting value labels
       geom_label(
         data = dt_an3[type == body][, .SD[which.min(year)], by = grp],

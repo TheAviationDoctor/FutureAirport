@@ -4,7 +4,7 @@
 # ACTIONS: Pivot the data
 #          Calculate the air density, wind vector, and active runway
 #  OUTPUT: 442,765,932 wide climate observations written to the dat$cli table
-# RUNTIME: ~10 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
+# RUNTIME: ~4.25 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2022
 # ==============================================================================
@@ -287,7 +287,7 @@ fn_transform <- function(apt) {
       h        = dt_nc[, hurs_cap],
       unitsENV = c("K", "Pa", "%"),
       x_CO2    = sim$co2_ppm,
-      model    = "CIMP2007" # Typo in the package (should be CIPM-2007)
+      model    = "CIMP2007" # Typo in the package (should be "CIPM2007")
     ) * 10^3
   )
 

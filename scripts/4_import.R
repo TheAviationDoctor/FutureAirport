@@ -85,18 +85,11 @@ dt_smp <- fn_sql_qry(
 # Recast column types
 set(x = dt_smp, j = "zone", value = as.factor(dt_smp[, zone]))
 
-# Recode frigid airports to temperate
-dt_smp[zone == "Frigid", zone := "Temperate"]
-
 # Index the data table to speed up subsequent lookups
 setkey(x = dt_smp, cols = icao, verbose = TRUE)
 
 # List the NetCDF files from which to extract the airports' climatic conditions
 nc_files <- list.files(path = dir$cli, pattern = "\\.nc$", full.names = TRUE)
-
-# FOR TESTING ONLY
-# dt_smp <- head(dt_smp, 11)
-# nc_files <- head(nc_files, 1)
 
 # ==============================================================================
 # 3 Parse the NetCDF files

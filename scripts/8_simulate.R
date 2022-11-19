@@ -111,28 +111,30 @@ fn_sql_qry(
   statement = paste(
     "CREATE TABLE IF NOT EXISTS",
     tolower(dat$tko),
-    "(id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    year    YEAR NOT NULL,
-    obs     DATETIME NOT NULL,
-    icao    CHAR(4) NOT NULL,
-    lat     FLOAT NOT NULL,
-    lon     FLOAT NOT NULL,
-    zone    CHAR(11) NOT NULL,
-    ssp     CHAR(6) NOT NULL,
-    type    CHAR(4) NOT NULL,
-    hurs    FLOAT NOT NULL,
-    ps      FLOAT NOT NULL,
-    tas     FLOAT NOT NULL,
-    rho     FLOAT NOT NULL,
-    hdw     FLOAT NOT NULL,
-    rwy     CHAR(5) NOT NULL,
-    toda    SMALLINT NOT NULL,
-    todr    SMALLINT NOT NULL,
-    vlof    SMALLINT NOT NULL,
-    thr_red SMALLINT NOT NULL,
-    tom_rem SMALLINT NOT NULL,
-    itr     SMALLINT UNSIGNED NOT NULL,
-    PRIMARY KEY (id));",
+    "(
+      id      INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      year    YEAR NOT NULL,
+      obs     DATETIME NOT NULL,
+      icao    CHAR(4) NOT NULL,
+      lat     FLOAT NOT NULL,
+      lon     FLOAT NOT NULL,
+      zone    CHAR(11) NOT NULL,
+      ssp     CHAR(6) NOT NULL,
+      type    CHAR(4) NOT NULL,
+      hurs    FLOAT NOT NULL,
+      ps      FLOAT NOT NULL,
+      tas     FLOAT NOT NULL,
+      rho     FLOAT NOT NULL,
+      hdw     FLOAT NOT NULL,
+      rwy     CHAR(5) NOT NULL,
+      toda    SMALLINT NOT NULL,
+      todr    SMALLINT NOT NULL,
+      vlof    SMALLINT NOT NULL,
+      thr_red SMALLINT NOT NULL,
+      tom_rem SMALLINT NOT NULL,
+      itr     SMALLINT UNSIGNED NOT NULL,
+      PRIMARY KEY (id)
+    );",
     sep = " "
   )
 )
@@ -143,6 +145,10 @@ dt_exc <- fn_sql_qry(
     "SELECT DISTINCT icao FROM", tolower(dat$tko), ";", sep = " "
   )
 )
+
+# FOR TESTING ONLY
+cat("\014")
+print(dt_exc)
 
 # Create a key on the data table
 setkey(x = dt_exc, "icao")
@@ -175,6 +181,7 @@ fn_simulate <- function(icao) {
   # ============================================================================
 
   # Fetch the takeoff conditions at the airport
+  # Here we use air density estimates from method #2 in 5_transform.R
   dt_cli <- fn_sql_qry(
     statement = paste(
       "SELECT
@@ -185,7 +192,7 @@ fn_simulate <- function(icao) {
         lon,
         zone,
         ssp,
-        hurs,
+        hurs_cap AS hurs,
         ps,
         tas,
         rho2 AS rho,
