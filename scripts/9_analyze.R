@@ -142,20 +142,26 @@ dt_cli[, (cols) := lapply(X = .SD, FUN = "/", 100L), .SDcols = cols]
 # Recode frigid airports to temperate
 dt_cli[zone == "Frigid", zone := "Temperate"]
 
+# Save the data to disk
+fwrite(
+  x    = dt_cli,
+  file = paste(dir$res, "dt_cli.csv", sep = "/")
+)
+
 # ==============================================================================
-# 1.2 Global summary
+# 1.2 Summarize the data by group
 # ==============================================================================
 
-# Declare dependent variables (columns)
+# Declare independent variables for grouping
+grp <- c("year", "ssp", "zone")
+
+# Declare dependent variables for summarizing
 cols_max <- c("max_tas", "max_hurs", "max_ps", "max_rho", "max_hdw")
 cols_avg <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
 cols_min <- c("min_tas", "min_hurs", "min_ps", "min_rho", "min_hdw")
 cols_all <- c(cols_max, cols_avg, cols_min)
-cols_loe <- paste(cols_all, "loe", sep = "_")
-cols_rel <- paste(cols_all, "rel", sep = "_")
 
 # Summarize the data by group
-grp    <- c("year", "ssp", "zone")
 dt_cli <- rbind(
   # Zonal summary
   cbind(
@@ -195,9 +201,19 @@ dt_cli <- rbind(
   )
 )
 
-# Perform local polynomial regression
+# ==============================================================================
+# 1.4 Calculate local polynomial regression fitting (LOESS)
+# ==============================================================================
+
+# Declare absolute LOESS variables
+# cols_max_loe <- paste(cols_max, "loe", sep = "_")
+# cols_avg_loe <- paste(cols_avg, "loe", sep = "_")
+# cols_min_loe <- paste(cols_min, "loe", sep = "_")
+cols_all_loe <- paste(cols_all, "loe", sep = "_")
+
+# Calculate absolute LOESS values
 dt_cli[,
-  (cols_loe) := lapply(
+  (cols_all_loe) := lapply(
     X   = .SD,
     FUN = function(x) {
       predict(loess(formula = x ~ year, span = .75, model = TRUE))
@@ -207,152 +223,228 @@ dt_cli[,
   .SDcols = cols_all
 ]
 
-# Calculate the relative change from the first year LOESS value by group
+
+
+# ==============================================================================
+# 1.5 Calculate absolute changes in the LOESS values
+# ==============================================================================
+
+# Declare absolute LOESS variables
+# cols_max_loe_abs <- paste(cols_max_loe, "abs", sep = "_")
+# cols_avg_loe_abs <- paste(cols_avg_loe, "abs", sep = "_")
+# cols_min_loe_abs <- paste(cols_min_loe, "abs", sep = "_")
+cols_all_loe_abs <- paste(cols_all_loe, "abs", sep = "_")
+
+# Calculate absolute LOESS values
 dt_cli[,
-  (cols_rel) := lapply(X = .SD, FUN = function(x) { (x - x[1:1]) / x[1:1] }),
+  (cols_all_loe_abs) := lapply(X = .SD, FUN = function(x) { (x - x[1:1]) }),
   by      = c("ssp", "zone"),
-  .SDcols = cols_loe
+  .SDcols = cols_all_loe
 ]
 
-# Create a function to plot results
-fn_plot <- function(col) {
-  (
-    ggplot(
-      data    = dt_cli,
-      mapping = aes(
-        x     = year,
-        y     = dt_cli[[as.character(col)]]
-      )
-    ) +
-      geom_line(linewidth = .2) +
-      facet_grid(zone ~ toupper(ssp), scales = "free_y")
-  ) |>
-    ggsave(
-      filename = tolower(paste("9_", col, ".png", sep = "")),
-      device   = "png",
-      path     = "plots",
-      scale    = 1L,
-      width    = 6L,
-      height   = NA,
-      units    = "in",
-      dpi      = "print"
-    )
-}
+# ==============================================================================
+# 1.6 Calculate relative changes in the LOESS values
+# ==============================================================================
 
-# Generate the plots
-mapply(
-  FUN = fn_plot,
-  col = cols_rel
+# Declare relative LOESS variables
+cols_max_loe_rel <- paste(cols_max_loe, "rel", sep = "_")
+cols_avg_loe_rel <- paste(cols_avg_loe, "rel", sep = "_")
+cols_min_loe_rel <- paste(cols_min_loe, "rel", sep = "_")
+cols_all_loe_rel <- paste(cols_all_loe, "rel", sep = "_")
+
+# Calculate relative LOESS values
+dt_cli[,
+  (cols_all_loe_rel) := lapply(X = .SD, FUN = function(x) { (x - x[1:1]) / x[1:1] }),
+  by      = c("ssp", "zone"),
+  .SDcols = cols_all_loe
+]
+
+# ==============================================================================
+# 1.7 Tabulate the results
+# ==============================================================================
+
+# Build data table to visualize the changes
+dt_out <- cbind(
+  # Absolute changes
+  dt_cli[zone == "Global" & year == 2100, c("ssp", ..cols_all_loe_abs)]
+  [, (cols_all_loe_abs) := round(x = .SD, digits = 2L),
+    .SDcols = cols_all_loe_abs]
+  [, melt(.SD, id.vars = c("ssp"))][, dcast(.SD, formula = variable ~ ssp)]
+  [, ord := c(1, 7, 4, 10, 13, 2, 8, 5, 11, 14, 3, 9, 6, 12, 15)]
+  [, setorder(.SD, ord)][, ord := NULL],
+  # Relative changes
+  dt_cli[zone == "Global" & year == 2100, c("ssp", ..cols_all_loe_rel)]
+  [, (cols_all_loe_rel) := round(x = .SD * 100L, digits = 2L),
+    .SDcols = cols_all_loe_rel]
+  [, melt(.SD, id.vars = c("ssp"))][, dcast(.SD, formula = variable ~ ssp)]
+  [, ord := c(1, 7, 4, 10, 13, 2, 8, 5, 11, 14, 3, 9, 6, 12, 15)]
+  [, setorder(.SD, ord)][, ord := NULL]
 )
 
+dt_out
 stop()
 
-
-
-
-
-
-
-
-
-
-
 # ==============================================================================
-# 1.3 Summarize the climatic data by zone and globally
+# 1.6 Plot the relative changes
 # ==============================================================================
 
-# Declare output variables for averaging
-cols_mean <- c("avg_tas", "avg_hurs", "avg_ps", "avg_rho", "avg_hdw")
-
-# Declare input variables for grouping
-grp <- c("year", "ssp", "zone")
-
-# Summarize the data and combine them by group
-dt_cli <- rbind(
-  # Zonal summary by group
-  cbind(
-    dt_cli[, lapply(X = .SD, FUN = mean),
-      by = grp,
-      .SDcols = cols_mean
-    ],
-    dt_cli[, lapply(X = .SD, FUN = max),
-      by = grp,
-      .SDcols = c("max_tas")
-    ][, "max_tas"],
-    dt_cli[, lapply(X = .SD, FUN = min),
-      by = grp,
-      .SDcols = c("min_rho")
-    ][, "min_rho"]
-  ),
-  # Global summary by group
-  cbind(
-    dt_cli[, zone := "Global"][, lapply(X = .SD, FUN = mean),
-      by = grp,
-      .SDcols = cols_mean
-    ],
-    dt_cli[, zone := "Global"][, lapply(X = .SD, FUN = max),
-      by = grp,
-      .SDcols = c("max_tas")
-    ][, "max_tas"],
-    dt_cli[, zone := "Global"][, lapply(X = .SD, FUN = min),
-      by = grp,
-      .SDcols = c("min_rho")
-    ][, "min_rho"]
-  )
+# Pivot long
+dt_plt <- melt(
+  data         = dt_cli,
+  id.vars      = c("year", "ssp", "zone")
 )
 
-# ==============================================================================
-# 1.4 Add local polynomial regression fitting (LOESS) to the output variables
-# ==============================================================================
+# View(dt_cli[zone == "Global"])
 
-# Declare output variables for regression fitting
-cols <- c(
-  "avg_tas",
-  "avg_hurs",
-  "avg_ps",
-  "avg_rho",
-  "avg_hdw",
-  "max_tas",
-  "min_rho"
-)
-
-# Declare input variables for grouping
-grp <- c("ssp", "zone")
-
-# Perform regression fitting by group
-dt_cli[,
-  paste(cols, "loess", sep = "_") := lapply(
-    X = .SD,
-    FUN = function(x) {
-      predict(loess(formula = x ~ year, span = .75, model = TRUE))
+# Plot the global summary
+ggplot() +
+facet_grid(
+  rows       = vars(variable),
+  cols       = vars(ssp),
+  labeller   = labeller(
+    ssp      = toupper,
+    variable = function(label) {
+      substr(label, 1, 1) <- toupper(substr(label, 1, 1))
+      label <- gsub("_", ". ", label, fixed = TRUE)
+      return(label)
     }
   ),
-  by = grp,
-  .SDcols = cols
-]
-
-
-# ==============================================================================
-# 1.5 Calculate relative change in the output variables
-# ==============================================================================
-
-# Declare LOESS output variables
-cols_loess <- paste(cols, "loess", sep = "_")
-
-# Add the first-year values of LOESS variables by group
-dt_cli <- dt_cli[dt_cli[, .SD[1:1], .SDcols = cols_loess, by = grp], on = grp]
-
-# Calculate relative change in dependent variables and remove initial values
-lapply(
-  X = cols_loess,
-  FUN = function(x) {
-    dt_cli[, paste(x, "rel", sep = "_") :=
-             (get(x) - get(paste("i", x, sep = "."))) /
-             get(paste("i", x, sep = "."))][, paste("i", x, sep = ".") := NULL]
-  }
+  scales     = "free_y"
+) +
+geom_line(
+  data      = dt_plt[zone == "Global" & variable %in% cols_avg_rel],
+  mapping   = aes(x = year, y = value),
+  linewidth = .2
+) +
+geom_smooth(
+  data      = dt_plt[zone == "Global" & variable %in% cols_avg_rel],
+  mapping   = aes(x = year, y = value),
+  formula = y ~ x,
+  method = "loess",
+  linewidth = .5
+) +
+# # Starting value labels
+# geom_label(
+#   data = dt_cli[, .SD[which.min(year)], by = grp],
+#   aes(
+#     x = year,
+#     y = dt_cli[, .SD[which.min(year)], by = grp]
+#     [[as.character(col)]],
+#     label = sprintf(fmt = "%.2f",
+#       x = dt_cli[, .SD[which.min(year)], by = grp]
+#       [[as.character(col)]]
+#     )
+#   ),
+#   alpha      = .5,
+#   fill       = "white",
+#   label.r    = unit(0L, "lines"),
+#   label.size = 0L,
+#   nudge_x    = 4L,
+#   size       = 2L
+# ) +
+# 
+# # Ending value labels
+# geom_label(
+#   data = dt_cli[, .SD[which.max(year)], by = grp],
+#   aes(
+#     x = year,
+#     y = dt_cli[, .SD[which.max(year)], by = grp]
+#     [[as.character(col)]],
+#     label = sprintf(fmt = "%.2f",
+#       x = dt_cli[, .SD[which.max(year)], by = grp]
+#       [[as.character(col)]]
+#     )
+#   ),
+#   alpha      = .5,
+#   fill       = "white",
+#   label.r    = unit(0L, "lines"),
+#   label.size = 0L,
+#   nudge_x    = -4L,
+#   size       = 2L
+# )
+# 
+scale_x_continuous(name = "Year",  n.breaks = 5L) +
+scale_y_continuous(name = "Value", labels = label_percent(accuracy = .1)) +
+theme_light() +
+theme(
+  axis.title.y = element_blank(),
+  text = element_text(size = 8)
+)
+  
+# Save the plot
+ggsave(
+  filename = tolower(paste("9_", "test", ".png", sep = "")),
+  plot     = last_plot(),
+  device   = "png",
+  path     = "plots",
+  scale    = 1L,
+  width    = 6L,
+  height   = NA,
+  units    = "in",
+  dpi      = "retina"
 )
 
-View(dt_cli)
+
+
+#   (
+#     ggplot(
+#       data = dt_cli,
+#       mapping = aes(
+#         x     = year,
+#         y     = dt_cli[[as.character(cols)]]
+#       )
+#     ) +
+#       geom_line(linewidth = .2) +
+#       geom_smooth(formula = y ~ x, method = "loess", linewidth = .5) +
+#       # Starting value labels
+#       geom_label(
+#         data = dt_cli[, .SD[which.min(year)], by = grp],
+#         aes(
+#           x = year,
+#           y = dt_cli[, .SD[which.min(year)], by = grp]
+#           [[paste(as.character(cols), "loess", sep = "_")]],
+#           label = sprintf(fmt = "%.2f",
+#             x = dt_cli[, .SD[which.min(year)], by = grp]
+#             [[paste(as.character(cols), "loess", sep = "_")]]
+#           )
+#         ),
+#         alpha      = .5,
+#         fill       = "white",
+#         label.r    = unit(0L, "lines"),
+#         label.size = 0L,
+#         nudge_x    = 4L,
+#         size       = 2L
+#       ) +
+#       # Ending value labels
+#       geom_label(
+#         data = dt_cli[, .SD[which.max(year)], by = grp],
+#         aes(
+#           x = year,
+#           y = dt_cli[, .SD[which.max(year)], by = grp]
+#           [[paste(as.character(cols), "loess", sep = "_")]],
+#           label = sprintf(fmt = "%.2f",
+#             x = dt_cli[, .SD[which.max(year)], by = grp]
+#             [[paste(as.character(cols), "loess", sep = "_")]]
+#           )
+#         ),
+#         alpha      = .5,
+#         fill       = "white",
+#         label.r    = unit(0L, "lines"),
+#         label.size = 0L,
+#         nudge_x    = -4L,
+#         size       = 2L
+#       ) +
+#       scale_x_continuous(name = "Year", n.breaks = 5L) +
+#       scale_y_continuous(name = "Value", labels = label_comma(accuracy = .01)) +
+#       facet_grid(zone ~ toupper(ssp), scales = "free_y") +
+#       theme_light() +
+#       theme(
+#         axis.title.y = element_blank(),
+#         text = element_text(size = 8)
+#       )
+
+
+
 stop()
 
 # Declare relative output variables
