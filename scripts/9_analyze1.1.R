@@ -313,131 +313,232 @@ fwrite(
 # 1.2.5 Tabulate the absolute and relative changes in LOESS values
 # ==============================================================================
 
-# Declare columns
-# cols <- c(cols_all_loe_abs, cols_all_loe_rel)
-
-# Visualize the absolute and relative changes in the console
-dt_out <- cbind(
-  dt_cli
-  [year == dt_cli[which.max(year), year], c("zone", "ssp", ..cols_all_loe_abs)
-  ][, (cols_all_loe_abs) := round(.SD, 1L), .SDcols = cols_all_loe_abs
-  ][, melt(.SD, id.vars = c("zone", "ssp"))
-  ][, dcast(.SD, formula = zone + variable ~ ssp)
-  ][, zone := factor(zone, levels = c("Global", "Temperate", "Tropical"))
-  ][, variable := gsub("_loe_abs", "", variable)
-  ][, variable := factor(variable, c(rbind(cols_max, cols_avg, cols_min)))
-  ][order(variable, zone)
-  ][, setnames(.SD, 3:6, paste(colnames(.SD)[3:6], "abs", sep = "_"))
-  ][, setcolorder(.SD, c(2, 1, 3, 4, 5))
-  ],
-  dt_cli
-  [year == dt_cli[which.max(year), year], c("zone", "ssp", ..cols_all_loe_rel)
-  ][, (cols_all_loe_rel) := round(.SD * 100L, 1L), .SDcols = cols_all_loe_rel
-  ][, melt(.SD, id.vars = c("zone", "ssp"))
-  ][, dcast(.SD, formula = zone + variable ~ ssp)
-  ][, zone := factor(zone, levels = c("Global", "Temperate", "Tropical"))
-  ][, variable := gsub("_loe_rel", "", variable)
-  ][, variable := factor(variable, c(rbind(cols_max, cols_avg, cols_min)))
-  ][order(variable, zone)
-  ][, setnames(.SD, 3:6, paste(colnames(.SD)[3:6], "rel", sep = "_"))
-  ][, setcolorder(.SD, c(2, 1, 3, 4, 5))
-  ][, c("zone", "variable") := NULL
-  ]
-)
-
-# Save the data to disk
-fwrite(
-  x    = dt_out,
-  file = paste(dir$res, "dt_cli_loess_changes_by_2100.csv", sep = "/")
-)
+# # Visualize the absolute and relative changes in the console
+# dt_out <- cbind(
+#   dt_cli
+#   [year == dt_cli[which.max(year), year], c("zone", "ssp", ..cols_all_loe_abs)
+#   ][, (cols_all_loe_abs) := round(.SD, 1L), .SDcols = cols_all_loe_abs
+#   ][, melt(.SD, id.vars = c("zone", "ssp"))
+#   ][, dcast(.SD, formula = zone + variable ~ ssp)
+#   ][, zone := factor(zone, levels = c("Global", "Temperate", "Tropical"))
+#   ][, variable := gsub("_loe_abs", "", variable)
+#   ][, variable := factor(variable, c(rbind(cols_max, cols_avg, cols_min)))
+#   ][order(variable, zone)
+#   ][, setnames(.SD, 3:6, paste(colnames(.SD)[3:6], "abs", sep = "_"))
+#   ][, setcolorder(.SD, c(2, 1, 3, 4, 5))
+#   ],
+#   dt_cli
+#   [year == dt_cli[which.max(year), year], c("zone", "ssp", ..cols_all_loe_rel)
+#   ][, (cols_all_loe_rel) := round(.SD * 100L, 1L), .SDcols = cols_all_loe_rel
+#   ][, melt(.SD, id.vars = c("zone", "ssp"))
+#   ][, dcast(.SD, formula = zone + variable ~ ssp)
+#   ][, zone := factor(zone, levels = c("Global", "Temperate", "Tropical"))
+#   ][, variable := gsub("_loe_rel", "", variable)
+#   ][, variable := factor(variable, c(rbind(cols_max, cols_avg, cols_min)))
+#   ][order(variable, zone)
+#   ][, setnames(.SD, 3:6, paste(colnames(.SD)[3:6], "rel", sep = "_"))
+#   ][, setcolorder(.SD, c(2, 1, 3, 4, 5))
+#   ][, c("zone", "variable") := NULL
+#   ]
+# )
+# 
+# # Save the data to disk
+# fwrite(
+#   x    = dt_out,
+#   file = paste(dir$res, "dt_cli_loess_changes_by_2100.csv", sep = "/")
+# )
 
 # ==============================================================================
 # 1.2.6 Plot the base and LOESS values
 # ==============================================================================
 
+# # Declare independent variables for grouping
+# grp <- c("ssp", "zone")
+# 
+# # Order the zones so the facets display in alphabetical order
+# dt_cli[, zone := factor(zone, levels = c("Global", "Temperate", "Tropical"))]
+# 
+# # Create a function to plot results
+# fn_plot <- function(col) {
+#   print(paste("Plotting", as.character(col), sep = " "))
+#   (
+#     ggplot(
+#       data = dt_cli,
+#       mapping = aes(
+#         x     = year,
+#         y     = dt_cli[[as.character(col)]]
+#       )
+#     ) +
+#     geom_line(linewidth = .2) +
+#     geom_smooth(formula = y ~ x, method = "loess", linewidth = .5) +
+#     # Starting value labels
+#     geom_label(
+#       data = dt_cli[, .SD[which.min(year)], by  = grp],
+#       aes(
+#         x = year,
+#         y = dt_cli[, .SD[which.min(year)], by   = grp]
+#         [[paste(as.character(col), "loe", sep   = "_")]],
+#         label = sprintf(fmt = "%.2f",
+#           x = dt_cli[, .SD[which.min(year)], by = grp]
+#           [[paste(as.character(col), "loe", sep = "_")]]
+#         )
+#       ),
+#       alpha      = .5,
+#       fill       = "white",
+#       label.r    = unit(0L, "lines"),
+#       label.size = 0L,
+#       nudge_x    = 5L,
+#       size       = 1.5
+#     ) +
+#     # Ending value labels
+#     geom_label(
+#       data = dt_cli[, .SD[which.max(year)], by  = grp],
+#       aes(
+#         x = year,
+#         y = dt_cli[, .SD[which.max(year)], by   = grp]
+#         [[paste(as.character(col), "loe", sep   = "_")]],
+#         label = sprintf(fmt = "%.2f",
+#           x = dt_cli[, .SD[which.max(year)], by = grp]
+#           [[paste(as.character(col), "loe", sep = "_")]]
+#         )
+#       ),
+#       alpha      = .5,
+#       fill       = "white",
+#       label.r    = unit(0L, "lines"),
+#       label.size = 0L,
+#       nudge_x    = -5L,
+#       size       = 1.5
+#     ) +
+#     scale_x_continuous(name = "Year",  n.breaks = 5L) +
+#     scale_y_continuous(name = "Value", labels = label_comma(accuracy = .01)) +
+#     facet_grid(zone ~ toupper(ssp), scales = "free_y") +
+#     theme_light() +
+#     theme(
+#       axis.title.y = element_blank(),
+#       text         = element_text(size = 6)
+#     )
+#   ) |>
+#     ggsave(
+#       filename = tolower(paste("9_", col, ".png", sep = "")),
+#       device   = "png",
+#       path     = "plots",
+#       scale    = 1L,
+#       width    = 9L,
+#       height   = 5.2,
+#       units    = "in",
+#       dpi      = "retina"
+#     )
+# }
+# 
+# # Generate the plots
+# mapply(
+#   FUN = fn_plot,
+#   col = cols_all
+# )
+
+# ==============================================================================
+# 1.2.7 Plot max, min, and mean of each variable
+# ==============================================================================
+
 # Declare independent variables for grouping
 grp <- c("ssp", "zone")
 
-# Order the zones so the facets display in alphabetical order
-dt_cli[, zone := factor(zone, levels = c("Global", "Temperate", "Tropical"))]
+# Transform the data
+dt_plt <- dt_cli[zone == "Global", c("year", "ssp", ..cols_avg)
+][, melt(.SD, id.vars = c("year", "ssp"))
+][, variable := gsub("avg_", "", variable)
+][, variable := factor(variable, gsub("avg_", "", cols_avg))
+]
 
-# Create a function to plot results
-fn_plot <- function(col) {
-  print(paste("Plotting", as.character(col), sep = " "))
-  (
-    ggplot(
-      data = dt_cli,
-      mapping = aes(
-        x     = year,
-        y     = dt_cli[[as.character(col)]]
+# Load the label data separately
+labs_start <- dt_cli[
+  zone == "Global", .SD[which.min(year)],
+  by = "ssp", .SDcols = c("year", cols_avg_loe)
+][, melt(.SD, id.vars = c("year", "ssp"))
+][, variable := gsub("avg_", "", variable)
+][, variable := gsub("_loe", "", variable)
+]
+
+# Load the label data separately
+labs_end <- dt_cli[
+  zone == "Global", .SD[which.max(year)],
+  by = "ssp", .SDcols = c("year", cols_avg_loe)
+][, melt(.SD, id.vars = c("year", "ssp"))
+][, variable := gsub("avg_", "", variable)
+][, variable := gsub("_loe", "", variable)
+]
+
+# Create the plot
+ggplot(data   = dt_plt) +
+  geom_line(
+    linewidth = .2,
+    mapping   = aes(
+      x       = year,
+      y       = value
+    )
+  ) +
+  geom_smooth(
+    formula   = y ~ x,
+    method    = "loess",
+    linewidth = .5,
+    mapping   = aes(
+      x       = year,
+      y       = value
       )
     ) +
-    geom_line(linewidth = .2) +
-    geom_smooth(formula = y ~ x, method = "loess", linewidth = .5) +
-    # Starting value labels
-    geom_label(
-      data = dt_cli[, .SD[which.min(year)], by  = grp],
-      aes(
-        x = year,
-        y = dt_cli[, .SD[which.min(year)], by   = grp]
-        [[paste(as.character(col), "loe", sep   = "_")]],
-        label = sprintf(fmt = "%.2f",
-          x = dt_cli[, .SD[which.min(year)], by = grp]
-          [[paste(as.character(col), "loe", sep = "_")]]
-        )
-      ),
-      alpha      = .5,
-      fill       = "white",
-      label.r    = unit(0L, "lines"),
-      label.size = 0L,
-      nudge_x    = 5L,
-      size       = 1.5
-    ) +
-    # Ending value labels
-    geom_label(
-      data = dt_cli[, .SD[which.max(year)], by  = grp],
-      aes(
-        x = year,
-        y = dt_cli[, .SD[which.max(year)], by   = grp]
-        [[paste(as.character(col), "loe", sep   = "_")]],
-        label = sprintf(fmt = "%.2f",
-          x = dt_cli[, .SD[which.max(year)], by = grp]
-          [[paste(as.character(col), "loe", sep = "_")]]
-        )
-      ),
-      alpha      = .5,
-      fill       = "white",
-      label.r    = unit(0L, "lines"),
-      label.size = 0L,
-      nudge_x    = -5L,
-      size       = 1.5
-    ) +
-    scale_x_continuous(name = "Year",  n.breaks = 5L) +
-    scale_y_continuous(name = "Value", labels = label_comma(accuracy = .01)) +
-    facet_grid(zone ~ toupper(ssp), scales = "free_y") +
-    theme_light() +
-    theme(
-      axis.title.y = element_blank(),
-      text         = element_text(size = 6)
-    )
-  ) |>
-    ggsave(
-      filename = tolower(paste("9_", col, ".png", sep = "")),
-      device   = "png",
-      path     = "plots",
-      scale    = 1L,
-      width    = 9L,
-      height   = 5.2,
-      units    = "in",
-      dpi      = "retina"
-    )
-}
+  # STILL NEED TO FIX THE LABELS - DISPLAYING BASE VALUE BUT NOT LOESS RIGHT NOW
+  # Starting value labels
+  geom_label(
+    data = labs_start,
+    aes(
+      x     = year,
+      y     = value,
+      label = sprintf(fmt = "%.1f", value)
+    ),
+    alpha      = .5,
+    fill       = "white",
+    label.r    = unit(0L, "lines"),
+    label.size = 0L,
+    nudge_x    = 1L,
+    size       = 1.5
+  ) +
+  # Ending value labels
+  geom_label(
+    data = labs_end,
+    aes(
+      x     = year,
+      y     = value,
+      label = sprintf(fmt = "%.1f", value)
+    ),
+    alpha      = .5,
+    fill       = "white",
+    label.r    = unit(0L, "lines"),
+    label.size = 0L,
+    nudge_x    = 4L,
+    size       = 1.5
+  ) +
+  scale_x_continuous(name = "Year",  n.breaks = 5L) +
+  scale_y_continuous(name = "Value") +
+  facet_grid(variable ~ toupper(ssp), scales = "free_y") +
+  theme_light() +
+  theme(
+    axis.title.y = element_blank(),
+    text         = element_text(size = 6)
+  )
 
-# Generate the plots
-mapply(
-  FUN  = fn_plot,
-  col  = cols_all
+ggsave(
+  filename = tolower(paste("9_", "global", ".png", sep = "")),
+  plot     = last_plot(),
+  device   = "png",
+  path     = "plots",
+  scale    = 1L,
+  width    = 9L,
+  height   = 5.2,
+  units    = "in",
+  dpi      = "retina"
 )
+
+stop()
 
 # ==============================================================================
 # 1.7 Plot the climate variables on world maps
