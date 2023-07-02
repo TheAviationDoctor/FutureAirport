@@ -6,12 +6,15 @@
 #  OUTPUT: 442,765,932 wide climate observations written to the dat$cli table
 # RUNTIME: ~4.25 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
-#    YEAR: 2022
+#    YEAR: 2023
 # ==============================================================================
 
 # ==============================================================================
 # 0 Housekeeping
 # ==============================================================================
+
+# Clear the environment
+rm(list = ls())
 
 # Load the required libraries
 library(data.table)

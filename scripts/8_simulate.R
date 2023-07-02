@@ -8,12 +8,15 @@
 #  OUTPUT: 1,771,063,728 takeoff observations written to the dat$tko table
 # RUNTIME: ~66 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
-#    YEAR: 2022
+#    YEAR: 2023
 # ==============================================================================
 
 # ==============================================================================
 # 0 Housekeeping
 # ==============================================================================
+
+# Clear the environment
+rm(list = ls())
 
 # Load the required libraries
 library(data.table)

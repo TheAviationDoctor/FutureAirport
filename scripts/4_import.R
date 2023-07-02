@@ -5,16 +5,21 @@
 #  OUTPUT: 2,213,829,660 rows of climate data written to the database
 # RUNTIME: ~7.2 hours (3.8 GHz CPU / 128 GB DDR4 RAM / SSD)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
-#    YEAR: 2022
+#    YEAR: 2023
 # ==============================================================================
 
 # ==============================================================================
 # 0 Housekeeping
 # ==============================================================================
 
+# Clear the environment
+rm(list = ls())
+
 # Load the required libraries
 library(data.table)
 library(DBI)
+library(ncdf4)
+library(ncdf4.helpers)
 library(parallel)
 library(tidyverse)
 library(tmaptools)

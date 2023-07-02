@@ -5,7 +5,7 @@
 #  OUTPUT: Set of global variables loaded into R's environment
 # RUNTIME: N/A
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
-#    YEAR: 2022
+#    YEAR: 2023
 # ==============================================================================
 
 # ==============================================================================
@@ -37,18 +37,18 @@ fls <- list(
 # ==============================================================================
 
 dat <- list(
-  "cnf" = ".my.cnf", # File that contains the database connection parameters
-  "grp" = "phd",     # Group name within the cnf file
-  "act" = "act",     # Aircraft characteristics for the takeoff simulation
-  "cal" = "cal",     # Calibration data
-  "cli" = "cli",     # Climate data post-transformation
-  "imp" = "imp",     # Climate data imported from the NetCDF files
-  "pop" = "pop",     # Population and sample airports
-  "tko" = "tko",     # Takeoff performance calculation outputs
-  "an1" = "an1",     # Climate change summary
-  "an2" = "an2",     # Takeoff outcomes summary
-  "an3" = "an3",     # Research questions summary
-  "idx" = "idx"      # Index name
+  "cnf"    = ".my.cnf", # File that contains the database connection parameters
+  "grp"    = "phd",     # Group name within the cnf file
+  "act"    = "act",     # Aircraft characteristics for the takeoff simulation
+  "cal"    = "cal",     # Calibration data
+  "cli"    = "cli",     # Climate data post-transformation
+  "imp"    = "imp",     # Climate data imported from the NetCDF files
+  "pop"    = "pop",     # Population and sample airports
+  "tko"    = "tko",     # Takeoff performance calculation outputs
+  "an_cli" = "an_cli",  # Climate change summary
+  "an_tko" = "an_tko",  # Takeoff outcomes summary
+  "an_res" = "an_res",  # Research questions summary
+  "idx"    = "idx"      # Index name
 )
 
 # ==============================================================================
@@ -68,7 +68,29 @@ bod <- list(
 )
 
 # ==============================================================================
-# 4 Takeoff simulation parameters
+# 4 Climate simulation parameters
+# ==============================================================================
+
+# Climatic variables and plot units
+cli <- list(
+  "tas"  = "in °C",   # Near-surface air temperature 
+  "ps"   = "in hPa",  # Near-surface air pressure 
+  "hurs" = "in p.p.", # Near-surface relative humidity 
+  "rho"  = "in g/m³", # Near-surface air density 
+  "hdw"  = "in m/s"   # Near-surface headwind 
+)
+
+# Latitudinal boundaries of the Earth's climate zones
+geo <- list(
+  "Frigid"    = c(-90L,     -66.5635), # Antarctic zone
+  "Temperate" = c(-66.5635, -23.4365), # South temperate zone
+  "Tropical"  = c(-23.4365,  23.4365), # Tropical zone
+  "Temperate" = c( 23.4365,  66.5635), # North temperate zone
+  "Frigid"    = c( 66.5635,  90L)      # Arctic zone
+)
+
+# ==============================================================================
+# 5 Takeoff simulation parameters
 # ==============================================================================
 
 sim <- list(
@@ -104,24 +126,41 @@ sim <- list(
   "ps_isa"      = 101325L,     # Air pressure in Pa at sea level under ISA
   "sat_ref"     = 6.1078,      # Ref. saturation vapor pressure at 0°C in mbar
   "rsp_air"     = 287.058,     # Specific gas constant for dry air in J/(kg·K)
-  "rsp_h2o"     = 461.495      # Spec. gas constant for water vapor in J/(kg·K)
-)
-
-# Latitudinal boundaries of the Earth's climate zones
-geo <- list(
-  "Frigid"    = c(-90L,     -66.5635), # Antarctic zone
-  "Temperate" = c(-66.5635, -23.4365), # South temperate zone
-  "Tropical"  = c(-23.4365,  23.4365), # Tropical zone
-  "Temperate" = c( 23.4365,  66.5635), # North temperate zone
-  "Frigid"    = c( 66.5635,  90L)      # Arctic zone
+  "rsp_h2o"     = 461.495,     # Spec. gas constant for water vapor in J/(kg·K)
+  # Analysis settings
+  "quantiles"   = seq(from = 0L, to = 1L, by = .25) # For boxplot analysis
 )
 
 # ==============================================================================
-# 5 Common functions
+# 6 Plotting parameters
+# ==============================================================================
+
+plt <- list(
+  # Font size
+  "axis.text"    = 5L,
+  "axis.title"   = 6L,
+  "label.text"   = 2L,
+  "legend.title" = 5L,
+  "legend.text"  = 5L,
+  "strip.text"   = 5L,
+  "text"         = 9L,
+  # File
+  "device"       = "png",
+  "path"         = dir$plt,
+  # Canvas
+  "dpi"          = "retina",
+  "scale"        = 1L,
+  "height"       = 5.2,
+  "width"        = 9L,
+  "units"        = "in"
+)
+
+# ==============================================================================
+# 7 Common functions
 # ==============================================================================
 
 # ==============================================================================
-# 5.1 Function to distribute a computational task across cores. Parameters:
+# 7.1 Function to distribute a computational task across cores. Parameters:
 # crs = number of cores to use in the cluster
 # lib = libraries required by each core
 # lst = list to be distributed across cores
@@ -159,7 +198,7 @@ fn_par_lapply <- function(crs, pkg, lst, fun) {
 }
 
 # ==============================================================================
-# 5.2 Function to execute a SQL query and retrieve the results. Parameters:
+# 7.2 Function to execute a SQL query and retrieve the results. Parameters:
 # statement = the SQL statement to pass to the database
 # ==============================================================================
 

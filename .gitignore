@@ -8,3 +8,5 @@ runways.csv
 *.log
 *.nc
 *.sh
+logs/
+mysql/

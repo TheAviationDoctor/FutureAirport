@@ -5,7 +5,7 @@
 #  OUTPUT: A vector of ground distances for each takeoff
 # RUNTIME: Variable based on input data table size
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
-#    YEAR: 2022
+#    YEAR: 2023
 # ==============================================================================
 
 # ==============================================================================
