@@ -1,2 +1,2 @@
 # PhD
-A repository for my PhD's dissertation research on the economic impacts of climate change on takeoff performance.
+A repository of R code for my doctoral research on simulating the impacts of climate change on civil aircraft takeoff performance.
