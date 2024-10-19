@@ -3,9 +3,8 @@
 #   INPUT: None
 # ACTIONS: Set common settings used across the scripts
 #  OUTPUT: Set of global variables loaded into R's environment
-# RUNTIME: N/A
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
-#    YEAR: 2023
+#    YEAR: 2024
 # ==============================================================================
 
 # ==============================================================================
@@ -37,34 +36,11 @@ fls <- list(
 # ==============================================================================
 
 dat <- list(
-  "cnf"    = ".my.cnf", # File that contains the database connection parameters
-  "grp"    = "phd",     # Group name within the cnf file
-  "act"    = "act",     # Aircraft characteristics for the takeoff simulation
-  "cal"    = "cal",     # Calibration data
-  "cli"    = "cli",     # Climate data post-transformation
-  "imp"    = "imp",     # Climate data imported from the NetCDF files
-  "pop"    = "pop",     # Population and sample airports
-  "tko"    = "tko",     # Takeoff performance calculation outputs
-  "an_cli" = "an_cli",  # Climate change summary
-  "an_tko" = "an_tko",  # Takeoff outcomes summary
-  "an_res" = "an_res",  # Research questions summary
-  "idx"    = "idx"      # Index name
-)
-
-# ==============================================================================
-# 3 Aircraft types
-# ==============================================================================
-
-act <- list(
-  "Airbus A320neo"   = "A20n", # With LEAP-1A29 engines
-  "Airbus A350-900"  = "A359", # With Trent XWB-84 engines
-  "Boeing 737 MAX 9" = "B39m", # With CFM LEAP-1B27 engines
-  "Boeing 787-9"     = "B789"  # With Trent 1000-K2 engines
-)
-
-bod <- list(
-  "Narrowbody" = c("A20n", "B39m"),
-  "Widebody"   = c("A359", "B789")
+  "cnf"    = ".my.cnf",       # File that contains the database connection parameters
+  "grp"    = "futureairport", # Group name within the cnf file
+  "apt"    = "apt",           # Airports and runways
+  "tas"    = "tas",           # Air temperature data imported from the NetCDF files
+  "idx"    = "idx"            # Index name
 )
 
 # ==============================================================================
