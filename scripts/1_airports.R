@@ -99,11 +99,8 @@ df_apt <- subset(x = df_apt, icao != "UTHU")
 df_apt <- df_apt[order(df_apt$traffic, decreasing = TRUE), ] |>
   select("iata", "icao", "name", "lat", "lon", "zone")
 
-# Reset the row index
-row.names(df_apt) <- NULL
-
 # Save to file 
-write.csv(df_apt, file = fls$apt)
+write.csv(df_apt, file = fls$apt, row.names = FALSE)
 
 # ==============================================================================
 # 2 Housekeeping
