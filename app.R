@@ -23,6 +23,7 @@ library(dplyr)
 library(leaflet)
 library(shiny)
 library(shinyBS)
+library(shinyjs)
 
 # Clear the console
 cat("\014")
@@ -33,6 +34,9 @@ cat("\014")
 
 # ui <- fluidPage(
 ui <- fillPage(
+  useShinyjs(),  # Enable shinyjs if needed for any further interactivity
+  # Define a Bootstrap theme using bslib
+  theme = bs_theme(version = 5, bootswatch = "cerulean"),  # Example of a custom theme
   # CSS
   tags$head(
     tags$style(
@@ -65,17 +69,28 @@ ui <- fillPage(
   div(
     id = "controls",
     h4("Surface air temperature at airports worldwide, 2015–2100"),
-    tags$i(class = "fas fa-info-circle info-icon", id = "airport-info"),
+    span("Select an airport:"),
+    tooltip(
+      span(bsicons::bs_icon("info-circle-fill")),
+      "Optional. This picklist contains ~900 airports with at least 1M passengers in annual traffic, sorted alphabetically by their IATA code. 'All' will display all airports at once.",
+      placement = "bottom"
+    ),
     selectInput(
       inputId  = "airport",
-      label    = "Select an airport:",
+      label    = NULL,
       choices  = NULL,
       selected = NULL,
       width    = "100%"
     ),
+    span("Select a climate scenario:"),
+    tooltip(
+      span(bsicons::bs_icon("info-circle-fill")),
+      "Shared Socioeconomic Pathways (SSPs) are climate change scenarios defined by the Intergovernmental Panel on Climate Change (IPCC) to standardize climate research. They are based on projected socioeconomic development trajectories up to the year 2100. The IPCC Sixth Report (2021) described SSP2 as likely, hence it is selected as default here.",
+      placement = "bottom"
+    ),
     selectInput(
       inputId  = "ssp",
-      label    = "Select a climate scenario:",
+      label    = NULL,
       choices  = names(ssp_choices),
       width    = "100%"
     ),
@@ -90,11 +105,6 @@ ui <- fillPage(
       sep      = "",
       width    = "100%"
     ),
-    # Tooltip for the airport dropdown
-    bsTooltip(id = "airport", 
-              title = "Select an airport to filter the map by its ICAO code", 
-              placement = "right", 
-              trigger = "hover")
   )
 )
 
@@ -108,7 +118,8 @@ server <- function(input, output, session) {
   dt_apt <- fread(
     file          = "data/apt/airports.csv",
     header        = TRUE,
-    colClasses    = c("character", "character", "character", "numeric", "numeric", "factor")) |>
+    colClasses    = c("character", "character", "character", "numeric", "numeric", "factor")
+  ) |>
     setkey(cols   = iata)
 
   # Cosmetic names for the dropdown
@@ -121,7 +132,7 @@ server <- function(input, output, session) {
       updateSelectInput(
         session,
         inputId = "airport",
-        label   = "Select an airport:",
+        label   = NULL,
         choices = c("All", apt_choices)
       )
     }
@@ -131,8 +142,9 @@ server <- function(input, output, session) {
   dt_cli <- fread(
     file          = "data/cli/cli.csv",
     header        = TRUE,
-    colClasses    = c(rep("factor", 4L), rep("numeric", 6L))) |>
-    setkey(cols   = icao)
+    colClasses    = c(rep("factor", 4L), rep("numeric", 6L))
+  ) |>
+    setkey(cols   = icao, var, ssp)
 
   # Cosmetic names for the ssp dropdown
   ssp_choices <- toupper(unique(dt_cli$ssp))
@@ -149,7 +161,7 @@ server <- function(input, output, session) {
       updateSelectInput(
         session,
         inputId = "ssp",
-        label   = "Select a climate scenario:",
+        label   = NULL,
         choices = ssp_choices
       )
     }

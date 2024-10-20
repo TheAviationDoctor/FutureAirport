@@ -173,6 +173,17 @@ dt_cli <- dt_cli[,
 cols <- c("min", "lq", "mean", "median", "uq", "max")
 dt_cli[var == "tas", (cols) := lapply(.SD, "-", 273.15), .SDcols = cols]
 
+# Calculate difference in values from the first year in every group (icao, var, and ssp)
+cols_dif <- paste(cols_dif, "dif", sep = "_")
+dt_cli[,
+       (cols_dif) := lapply(
+         X     = .SD,
+         FUN   = function(x) { (x - x[1:1]) }
+       ),
+       by      = .(icao, var, ssp),
+       .SDcols = cols
+]
+
 # Reduce decimal precision to save space
 dt_cli[, (cols) := lapply(.SD, round, digits = 2), .SDcols = cols]
 
