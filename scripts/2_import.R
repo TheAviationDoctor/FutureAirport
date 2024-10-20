@@ -2,7 +2,7 @@
 #    NAME: scripts/2_import.R
 #   INPUT: NetCDF files downloaded from the Earth System Grid Federation (ESGF)
 # ACTIONS: Extract time series of climate variables for each airport coordinates
-#  OUTPUT: X rows of climate data written to a parquet file
+#  OUTPUT: 312,008 rows of climate data written to a parquet file
 # RUNTIME: ~20 minutes (MacBook Pro M3 Max)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2024
@@ -16,7 +16,6 @@
 rm(list = ls())
 
 # Load the required libraries
-library(arrow)
 library(data.table)
 library(lubridate)
 library(ncdf4)
@@ -43,7 +42,7 @@ dt_apt <- fread(
 
 # List the NetCDF files from which to extract the airports' climatic conditions
 nc_files <- list.files(
-  path       = "data/cli",
+  path       = "data/cdf",
   pattern    = "tas_6hrPlevPt_MPI-ESM1-2-HR", # Air temperature only
   full.names = TRUE
 )
@@ -158,7 +157,7 @@ fn_import <- function(nc_file) {
 } # End of the fn_import function
 
 # Run the function across all NetCDF files and all airports, then consolidate and index
-dt_out <- lapply(
+dt_cli <- lapply(
   X   = nc_files,
   FUN = fn_import
 ) |>
@@ -166,31 +165,24 @@ rbindlist(use.names = FALSE) |>
 setkey(icao, var, ssp, year)
 
 # Group the data
-dt_out <- dt_out[,
+dt_cli <- dt_cli[,
   .(min = min(val), lq = quantile(val, probs = .25), mean = mean(val), median = median(val), uq = quantile(val, probs = .75), max = max(val)),
   by = .(icao, var, ssp, year)]
 
 # Convert tas from K to C
 cols <- c("min", "lq", "mean", "median", "uq", "max")
-dt_out[var == "tas", (cols) := lapply(.SD, "-", 273.15), .SDcols = cols]
+dt_cli[var == "tas", (cols) := lapply(.SD, "-", 273.15), .SDcols = cols]
 
 # Reduce decimal precision to save space
-dt_out[, (cols) := lapply(.SD, round, digits = 2), .SDcols = cols]
+dt_cli[, (cols) := lapply(.SD, round, digits = 2), .SDcols = cols]
 
 # Remove data beyond the year 2100
-dt_out <- dt_out[year != "2101"]
-
-# Save to disk
-write_parquet(
-  x       = dt_out,
-  sink    = "data/out/out.parquet",
-  version = "latest"
-)
+dt_cli <- dt_cli[year != "2101"]
 
 # Save to CSV file
 fwrite(
-  x        = dt_out,
-  file     = "data/out/out.csv",
+  x        = dt_cli,
+  file     = "data/cli/cli.csv",
   compress = "auto"
 )
 
