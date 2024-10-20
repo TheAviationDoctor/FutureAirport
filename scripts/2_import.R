@@ -46,7 +46,6 @@ nc_files <- list.files(
   pattern    = "tas_6hrPlevPt_MPI-ESM1-2-HR", # Air temperature only
   full.names = TRUE
 )
-# ) |> tail(2L) # FOR TESTING ONLY
 
 # ==============================================================================
 # 2 Define a function to parse the NetCDF files
@@ -189,6 +188,9 @@ dt_cli[, (cols) := lapply(.SD, round, digits = 2), .SDcols = cols]
 
 # Remove data beyond the year 2100
 dt_cli <- dt_cli[year != "2101"]
+
+# Temporarily remove the var column to save space given that we don't yet store other climate variables than just tas
+dt_cli[, var:= NULL]
 
 # Save to CSV file
 fwrite(

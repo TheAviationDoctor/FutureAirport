@@ -118,7 +118,7 @@ server <- function(input, output, session) {
   dt_apt <- fread(
     file          = "data/apt/airports.csv",
     header        = TRUE,
-    colClasses    = c("character", "character", "character", "numeric", "numeric", "factor")
+    colClasses    = c(rep("character", 3L), rep("numeric", 2L), "factor")
   ) |>
     setkey(cols   = iata)
 
@@ -142,7 +142,7 @@ server <- function(input, output, session) {
   dt_cli <- fread(
     file          = "data/cli/cli.csv",
     header        = TRUE,
-    colClasses    = c(rep("factor", 4L), rep("numeric", 6L))
+    colClasses    = c(rep("factor", 3L), rep("numeric", 12L))
   ) |>
     setkey(cols   = icao, var, ssp)
 
