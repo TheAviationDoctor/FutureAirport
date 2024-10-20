@@ -72,7 +72,7 @@ ui <- fillPage(
     span("Select an airport:"),
     tooltip(
       span(bsicons::bs_icon("info-circle-fill")),
-      "Optional. This picklist contains ~900 airports with at least 1M passengers in annual traffic, sorted alphabetically by their IATA code. 'All' will display all airports at once.",
+      "Optionally, pick one of the ~900 airports worldwide with at least 1M passengers in annual traffic, sorted alphabetically by their IATA code. 'All' will display all airports at once.",
       placement = "bottom"
     ),
     selectInput(
