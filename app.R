@@ -50,24 +50,30 @@ dt_cli <- fread(
 
 # Define list items for the selectors
 choices <- list(
-  "apt" = dt_apt$icao,          # Airports
-  "ssp" = unique(dt_cli$ssp),   # SSPs
-  "sta" = colnames(dt_cli)[4:9] # Statistic
+  "apt"  = dt_apt$icao,          # Airports
+  "ssp"  = unique(dt_cli$ssp),   # SSPs
+  "stat" = colnames(dt_cli)[4:9] # Statistics
 )
 
-# Define display names for the list items
-# Airports
+# Define display names for the airport dropdown list
 names(choices$apt) <- paste(dt_apt$iata, "/", dt_apt$icao, " ", dt_apt$name, sep = "")
-# SSPs
+
+# Define display names for the SSP dropdown list
 names(choices$ssp) <- c(
   paste(toupper(substring(choices$ssp[1], 0, 4)), "Sustainability (best-case scenario)",             sep = " - "),
   paste(toupper(substring(choices$ssp[2], 0, 4)), "Middle of the road",                              sep = " - "),
   paste(toupper(substring(choices$ssp[3], 0, 4)), "Regional rivalry",                                sep = " - "),
   paste(toupper(substring(choices$ssp[4], 0, 4)), "Fossil-fueled development (worst-case scenario)", sep = " - ")
 )
-# Statistics
-names(choices$sta) <- c(
-  "Minimum", "1st quartile", "Mean", "Median", "3rd quartile", "Maximum"
+
+# Define display names for the statistics dropdown list
+names(choices$stat) <- c(
+  "Minimum (lowest temperature of the year)",
+  "1st quartile (25th percentile temperature of the year)",
+  "Mean (average temperature of the year)",
+  "Median (50th percentile temperature of the year)",
+  "3rd quartile (75th percentile temperature of the year)",
+  "Maximum (highest temperature of the year)"
 )
 
 # ==============================================================================
@@ -120,10 +126,10 @@ ui <- fillPage(
     id = "controls",
 
     # Title
-    h3("Surface air temperature at airports worldwide, 2015–2100"),
+    h3("Air temperature at airports worldwide, 2015–2100"),
 
     # Airport selector
-    span("Select an airport:"),
+    span("Select an airport (optional):"),
     tooltip(
       span(bs_icon("info-circle-fill")),
       "Optionally, pick one of the ~900 airports worldwide with at least 1M passengers in annual traffic, sorted alphabetically by their IATA code. 'All' will display all airports at once.",
@@ -149,19 +155,18 @@ ui <- fillPage(
       choices  = NULL,
       width    = "100%"
     ),
-
+    
     # Climate statistic selector
-    span("Select which statistic to display:"),
+    span("Select a temperature statistic:"),
     tooltip(
       span(bs_icon("info-circle-fill")),
-      "By default, the map displays changes in the mean (average) annual surface air temperature at the selected airport(s) relative to the 2015 baseline. However, you can also choose to display the annual minimum, first quartile (25th percentile), median (50th percentile), third quartile (75th percentile), or maximum instead. It is possible, for example, that the temperature maxima increase after than the mean over time at some locations.",
+      "Global warming affects air temperature in asymmetrical ways. It is possible, for example, for the summer maxima to increase faster than the annual mean at some locations. This option lets you explore different statistics individually.",
       placement = "bottom"
     ),
-    radioButtons(
-      inputId  = "sta",
+    selectInput(
+      inputId  = "stat",
       label    = NULL,
-      choices  = choices$sta,
-      inline   = TRUE,
+      choices  = choices$stat,
       width    = "100%"
     ),
 
@@ -186,9 +191,9 @@ ui <- fillPage(
     # For debugging only
     htmlOutput("airport"),
     htmlOutput("ssp"),
-    htmlOutput("sta"),
+    htmlOutput("stat"),
     htmlOutput("year"),
-    htmlOutput("dat")
+    htmlOutput("nrow")
   )
 )
 
@@ -219,9 +224,9 @@ server <- function(input, output, session) {
     {
       updateSelectInput(
         session,
-        inputId = "ssp",
-        label   = NULL,
-        choices = choices$ssp,
+        inputId  = "ssp",
+        label    = NULL,
+        choices  = choices$ssp,
         selected = choices$ssp[2]
       )
     }
@@ -230,13 +235,12 @@ server <- function(input, output, session) {
   # Climate statistic selector
   observe(
     {
-      updateRadioButtons(
+      updateSelectInput(
         session,
-        inputId  = "sta",
+        inputId  = "stat",
         label    = NULL,
-        choices  = choices$sta,
-        selected = choices$sta[3],
-        inline   = TRUE
+        choices  = choices$stat,
+        selected = choices$stat[3]
       )
     }
   )
@@ -247,27 +251,18 @@ server <- function(input, output, session) {
 
   filtered_data <- reactive(
     {
-      
-      # # WORKING START
-      # # Filter by year
-      # data <- dt_cli |> filter(year == as.character(input$year))
-      # 
-      # # Filter by airport
-      # if (input$airport != "All") { data <- data |> filter(icao == input$airport) }
-      # 
-      # return(data)
-      # # WORKING END
 
       return(
-        dt_cli |>
+        dt_cli[
           # Filter by airport
-          filter(if (input$airport == "All") icao != input$airport else icao == input$airport) |>
+          if (input$airport == "All") icao != input$airport else icao == input$airport
+        ][
           # Filter by SSP
-          filter(ssp == input$ssp) |> 
+          ssp == input$ssp
+        ][
           # Filter by year
-          filter(year == as.character(input$year)) |>
-          # Select only data columns for the chosen climate statistic
-          select(icao, any_of(c(input$sta, paste(input$sta, "dif", sep = "_"))))
+          year == as.character(input$year)
+        ]
       )
 
     }
@@ -282,7 +277,13 @@ server <- function(input, output, session) {
     {
       leaflet(options = leafletOptions(zoomControl = FALSE)) |>
         addProviderTiles("OpenStreetMap") |>
-        setView(lng = 0, lat = 50, zoom = 3) |>
+        setView(
+          lng = 0,
+          lat = 5,
+          # lng = if (input$airport == "All")  0 else ~dt_apt[icao == input$airport, lon],
+          # lat = if (input$airport == "All") 50 else ~dt_apt[icao == input$airport, lat],
+          zoom = 3
+        ) |>
         # Move zoon controls to top right
         onRender("function(el, x) { L.control.zoom({position:'topright'}).addTo(this); }")
     }
@@ -291,30 +292,39 @@ server <- function(input, output, session) {
   # Update the map
   observe(
     {
-      data <- filtered_data()
+      # data <- filtered_data()
       # Create color palette for temperature
       pal <- colorNumeric(palette = "RdYlBu", domain = c(0, 2), reverse = TRUE)
       # Add points to the map
-      leafletProxy("map", data = data) |>
+      leafletProxy("map", data = filtered_data()) |>
         clearMarkers() |> 
         addCircleMarkers(
-          lng         = ~dt_apt[icao == icao, lon],
-          lat         = ~dt_apt[icao == icao, lat],
+          lng         = if (input$airport == "All") ~dt_apt[icao == icao, lon] else ~dt_apt[icao == input$airport, lon],
+          lat         = if (input$airport == "All") ~dt_apt[icao == icao, lat] else ~dt_apt[icao == input$airport, lat],
           radius      = 5,
           # color       = ~pal(mean_dif),
-          # color       = ~pal(mean_dif),
           stroke      = FALSE,
-          fillOpacity = 0.8,
-          popup       = ~paste("ICAO:", icao, "<br>", "Name:", icao)
+          fillOpacity = 0.75,
+          popup       = ~paste(
+            dt_apt[icao == icao, name],
+            " (", dt_apt[icao == icao, iata], "/", dt_apt[icao == icao, icao], ")<br />",
+            names(choices$stat[choices$stat == input$stat]),
+            " in ", input$year, ": ",
+            filtered_data()[icao == icao & year == input$year & ssp == input$ssp, get(input$stat)], "°C",
+            if(input$year != 2015) paste("<br />", "Change since 2015: ", if (filtered_data()[, get(paste(input$stat, "dif", sep = "_"))] > 0) "+", filtered_data()[, get(paste(input$stat, "dif", sep = "_"))], "°C", sep = ""),
+            sep = ""
+          )
         )
     }
   )
-  
+
   # For debugging only
   output$airport <- renderText(input$airport)
   output$ssp     <- renderText(input$ssp)
-  output$sta     <- renderText(input$sta)
-  output$dat     <- renderText(unlist(filtered_data()))
+  output$stat    <- renderText(input$stat)
+  output$year    <- renderText(input$year)
+  # output$nrow    <- renderText(nrow(filtered_data()))
+  output$nrow    <- renderText(length(unlist(filtered_data()[get(input$stat)])))
 }
 
 # Run the app
