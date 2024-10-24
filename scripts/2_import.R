@@ -38,7 +38,7 @@ dt_apt <- fread(
   header     = TRUE,
   colClasses =
     c("character", "character", "character", "numeric", "numeric", "character")
-) |> setkey(cols = icao, verbose = TRUE)
+) |> setkey(cols = icao)
 
 # List the NetCDF files from which to extract the airports' climatic conditions
 nc_files <- list.files(
@@ -154,6 +154,10 @@ fn_import <- function(nc_file) {
   rbindlist(l = dt_nc, use.names = FALSE)
 
 } # End of the fn_import function
+
+# ==============================================================================
+# 3 Consolidate the data for saving
+# ==============================================================================
 
 # Run the function across all NetCDF files and all airports, then consolidate and index
 dt_cli <- lapply(

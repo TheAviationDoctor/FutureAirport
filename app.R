@@ -1,9 +1,9 @@
 # ==============================================================================
 #    NAME: scripts/app.R
 #   INPUT: Airport and climate data files
-# ACTIONS: Run a Shiny dashboard to visualize the climate data by airport
+# ACTIONS: Run a Shiny dashboard to visualize future climate data by airport
 #  OUTPUT: Interactive Shiny dashboard
-# RUNTIME: N/A
+# RUNTIME: N/A (interactive)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2024
 # ==============================================================================
@@ -26,9 +26,6 @@ library(shiny)
 library(shinyBS)
 library(shinyjs)
 
-# Define a Bootstrap theme using bslib
-# theme = bs_theme(version = 5, bootswatch = "cerulean")  # Example of a custom theme
-
 # Clear the console
 cat("\014")
 
@@ -38,7 +35,7 @@ dt_apt <- fread(
   header        = TRUE,
   colClasses    = c(rep("character", 3L), rep("numeric", 2L), "factor")
 ) |>
-  setkey(cols   = iata)
+  setkey(cols   = icao)
 
 # Load the climate data
 dt_cli <- fread(
@@ -50,9 +47,10 @@ dt_cli <- fread(
 
 # Define list items for the selectors
 choices <- list(
-  "apt"  = dt_apt$icao,          # Airports
-  "ssp"  = unique(dt_cli$ssp),   # SSPs
-  "stat" = colnames(dt_cli)[4:9] # Statistics
+  "apt"  = dt_apt$icao,              # Airports
+  "ssp"  = unique(dt_cli$ssp),       # SSPs
+  "stat" = colnames(dt_cli)[4:9],    # Statistics
+  "key"  = c("abs", "dif")           # Color key
 )
 
 # Define display names for the airport dropdown list
@@ -60,20 +58,26 @@ names(choices$apt) <- paste(dt_apt$iata, "/", dt_apt$icao, " ", dt_apt$name, sep
 
 # Define display names for the SSP dropdown list
 names(choices$ssp) <- c(
-  paste(toupper(substring(choices$ssp[1], 0, 4)), "Sustainability (best-case scenario)",             sep = " - "),
-  paste(toupper(substring(choices$ssp[2], 0, 4)), "Middle of the road",                              sep = " - "),
-  paste(toupper(substring(choices$ssp[3], 0, 4)), "Regional rivalry",                                sep = " - "),
-  paste(toupper(substring(choices$ssp[4], 0, 4)), "Fossil-fueled development (worst-case scenario)", sep = " - ")
+  "SSP1 — Sustainability (best-case scenario)",
+  "SSP2 — Middle of the road",
+  "SSP3 — Regional rivalry",
+  "SSP5 — Fossil-fueled development (worst-case scenario)"
 )
 
-# Define display names for the statistics dropdown list
+# Define display names for the statistic dropdown list
 names(choices$stat) <- c(
-  "Minimum (lowest temperature of the year)",
-  "1st quartile (25th percentile temperature of the year)",
-  "Mean (average temperature of the year)",
-  "Median (50th percentile temperature of the year)",
-  "3rd quartile (75th percentile temperature of the year)",
-  "Maximum (highest temperature of the year)"
+  "Minimum (lowest annual temperature)",
+  "1st quartile (25th percentile annual temperature)",
+  "Mean (average annual temperature)",
+  "Median (50th percentile annual temperature)",
+  "3rd quartile (75th percentile annual temperature)",
+  "Maximum (highest annual temperature)"
+)
+
+# Define display names for the color key radio buttons
+names(choices$key) <- c(
+  "Predicted temperature for the year",
+  "Temperature difference since 2015"
 )
 
 # ==============================================================================
@@ -83,9 +87,13 @@ names(choices$stat) <- c(
 ui <- fillPage(
 
   # ==============================================================================
-  # 1.1 CSS
+  # 1.1 CSS and theme
   # ==============================================================================
 
+  # Define a Bootstrap theme using bslib
+  theme = bs_theme(version = 5, bootswatch = "cosmo"),
+
+  # Do CSS positioning
   tags$head(
     tags$style(
       HTML("
@@ -97,7 +105,7 @@ ui <- fillPage(
           padding:       10px;
           z-index:       1000;
           border-radius: 8px;
-          width:         800px;
+          width:         600px;
         }
         .shiny-input-select {
           font-family: 'Courier New', Courier, monospace;
@@ -129,9 +137,8 @@ ui <- fillPage(
     h3("Air temperature at airports worldwide, 2015–2100"),
 
     # Airport selector
-    span("Select an airport (optional):"),
     tooltip(
-      span(bs_icon("info-circle-fill")),
+      h6("Select an airport (optional):", bs_icon("info-circle-fill")),
       "Optionally, pick one of the ~900 airports worldwide with at least 1M passengers in annual traffic, sorted alphabetically by their IATA code. 'All' will display all airports at once.",
       placement = "bottom"
     ),
@@ -143,9 +150,8 @@ ui <- fillPage(
     ),
 
     # SSP selector
-    span("Select a climate scenario:"),
     tooltip(
-      span(bs_icon("info-circle-fill")),
+      h6("Select a climate scenario:", bs_icon("info-circle-fill")),
       "Shared Socioeconomic Pathways (SSPs) are climate change scenarios defined by the Intergovernmental Panel on Climate Change (IPCC) to standardize climate research. They are based on projected socioeconomic development trajectories up to the year 2100. The IPCC Sixth Report (2021) described SSP2 as likely, hence it is selected as default here.",
       placement = "bottom"
     ),
@@ -157,10 +163,9 @@ ui <- fillPage(
     ),
     
     # Climate statistic selector
-    span("Select a temperature statistic:"),
     tooltip(
-      span(bs_icon("info-circle-fill")),
-      "Global warming affects air temperature in asymmetrical ways. It is possible, for example, for the summer maxima to increase faster than the annual mean at some locations. This option lets you explore different statistics individually.",
+      h6("Select a temperature statistic:", bs_icon("info-circle-fill")),
+      "Global warming affects air temperature asymmetrically. It is possible, for example, for the summer maxima to increase faster than the annual mean at some locations. This option lets you explore different statistics individually.",
       placement = "bottom"
     ),
     selectInput(
@@ -170,11 +175,23 @@ ui <- fillPage(
       width    = "100%"
     ),
 
-    # Year selector
-    span("Select an observation year:"),
+    # Color key
     tooltip(
-      span(bs_icon("info-circle-fill")),
-      "2015 is taken as the baseline year for all subsequent observations, which are expressed in degrees Celsius above or below that baseline.",
+      h6("Select color legend:", bs_icon("info-circle-fill")),
+      "The color of the dots can either display the absolute temperature at each airport for the observation year, or the amount of change since the year 2015.",
+      placement = "bottom"
+    ),
+    radioButtons(
+      inputId  = "key",
+      label    = NULL,
+      choices  = choices$key,
+      inline   = FALSE
+    ),
+
+    # Year selector
+    tooltip(
+      h6("Select an observation year:", bs_icon("info-circle-fill")),
+      "The climate model forecasts temperatures up to the year 2100. 2015 is taken as the baseline year for all subsequent observations, which are expressed in degrees Celsius above or below that baseline.",
       placement = "bottom"
     ),
     sliderInput(
@@ -182,18 +199,12 @@ ui <- fillPage(
       label    = NULL,
       min      = 2015,
       max      = 2100,
-      value    = 2015,
+      value    = 2100,
       step     = 1,
       sep      = "",
       width    = "100%"
     ),
 
-    # For debugging only
-    htmlOutput("airport"),
-    htmlOutput("ssp"),
-    htmlOutput("stat"),
-    htmlOutput("year"),
-    htmlOutput("nrow")
   )
 )
 
@@ -214,7 +225,7 @@ server <- function(input, output, session) {
         session,
         inputId = "airport",
         label   = NULL,
-        choices = c("All", choices$apt)
+        choices = c("All", sort(choices$apt))
       )
     }
   )
@@ -245,26 +256,31 @@ server <- function(input, output, session) {
     }
   )
 
+  # Color key
+  updateRadioButtons(
+    session,
+    inputId      = "key",
+    label        = NULL,
+    choices      = choices$key,
+    selected     = choices$key[2],
+    inline       = FALSE
+  )
+
   # ==============================================================================
   # 2.2 Filter climate data dynamically based on selector inputs
   # ==============================================================================
 
   filtered_data <- reactive(
     {
-
       return(
         dt_cli[
-          # Filter by airport
-          if (input$airport == "All") icao != input$airport else icao == input$airport
+          # Filter by airport, or return all airports
+          if(input$airport == "All") icao != input$airport else icao == input$airport
         ][
           # Filter by SSP
           ssp == input$ssp
-        ][
-          # Filter by year
-          year == as.character(input$year)
         ]
       )
-
     }
   )
 
@@ -277,14 +293,16 @@ server <- function(input, output, session) {
     {
       leaflet(options = leafletOptions(zoomControl = FALSE)) |>
         addProviderTiles("OpenStreetMap") |>
-        setView(
+        # setView(
+        flyTo(
           lng = 0,
-          lat = 5,
-          # lng = if (input$airport == "All")  0 else ~dt_apt[icao == input$airport, lon],
-          # lat = if (input$airport == "All") 50 else ~dt_apt[icao == input$airport, lat],
-          zoom = 3
+          lat = 50,
+          # lng  = if(input$airport == "All")  0 else dt_apt[icao == input$airport, lon],
+          # lat  = if(input$airport == "All") 50 else dt_apt[icao == input$airport, lat],
+          # zoom = 3
+          zoom = if(input$airport == "All") 3 else 4
         ) |>
-        # Move zoon controls to top right
+        # Move zoom controls to top right
         onRender("function(el, x) { L.control.zoom({position:'topright'}).addTo(this); }")
     }
   )
@@ -292,41 +310,59 @@ server <- function(input, output, session) {
   # Update the map
   observe(
     {
-      # data <- filtered_data()
       # Create color palette for temperature
-      pal <- colorNumeric(palette = "RdYlBu", domain = c(0, 2), reverse = TRUE)
-      # Add points to the map
+      pal <- colorNumeric(
+        palette = "RdYlBu",
+        # Narrow down the range of temperature colors based on whether the user wants to display absolute or relative temperatures
+        domain = if(input$key == "abs") {
+          # If absolute temperatures
+          c(min(dt_cli[, get(input$stat)]), max(dt_cli[, get(input$stat)]))
+        } else {
+          # If relative temperatures
+          c(min(dt_cli[, get(paste(input$stat, "dif", sep = "_"))]), max(dt_cli[, get(paste(input$stat, "dif", sep = "_"))]))
+        },
+        reverse = TRUE
+      )
+      # Add points with tooltips to the map
       leafletProxy("map", data = filtered_data()) |>
-        clearMarkers() |> 
+        clearMarkers() |>
         addCircleMarkers(
-          lng         = if (input$airport == "All") ~dt_apt[icao == icao, lon] else ~dt_apt[icao == input$airport, lon],
-          lat         = if (input$airport == "All") ~dt_apt[icao == icao, lat] else ~dt_apt[icao == input$airport, lat],
-          radius      = 5,
-          # color       = ~pal(mean_dif),
-          stroke      = FALSE,
-          fillOpacity = 0.75,
-          popup       = ~paste(
-            dt_apt[icao == icao, name],
-            " (", dt_apt[icao == icao, iata], "/", dt_apt[icao == icao, icao], ")<br />",
-            names(choices$stat[choices$stat == input$stat]),
-            " in ", input$year, ": ",
-            filtered_data()[icao == icao & year == input$year & ssp == input$ssp, get(input$stat)], "°C",
-            if(input$year != 2015) paste("<br />", "Change since 2015: ", if (filtered_data()[, get(paste(input$stat, "dif", sep = "_"))] > 0) "+", filtered_data()[, get(paste(input$stat, "dif", sep = "_"))], "°C", sep = ""),
+          # Return all coordinates or just the ones of the selected airport
+          lng         = if(input$airport == "All") dt_apt[icao == icao, lon] else dt_apt[icao == input$airport, lon],
+          lat         = if(input$airport == "All") dt_apt[icao == icao, lat] else dt_apt[icao == input$airport, lat],
+          radius      = if(input$airport == "All") 5L else 10L,
+          # Set the dot color to be either the absolute temperature or the temperature difference since 2015
+          color       = "black",
+          stroke      = TRUE,
+          weight      = .75,
+          fill        = TRUE,
+          fillColor   = pal(if(input$key == "abs") dt_cli[icao == icao & ssp == input$ssp & year == input$year, get(input$stat)] else dt_cli[icao == icao & ssp == input$ssp & year == input$year, get(paste(input$stat, "dif", sep = "_"))]),
+          fillOpacity = if(input$airport == "All") 0.8 else 1L,
+          # Tooltip
+          popup       = paste(
+            # Statistic
+            names(choices$stat[choices$stat == input$stat]), " at ",
+            # Airport
+            if(input$airport == "All") {
+              paste(dt_apt[icao == icao, name], " (", dt_apt[icao == icao, iata], "/", dt_apt[icao == icao, icao], ")", sep = "")
+            } else {
+              paste(dt_apt[icao == input$airport, name], " (", dt_apt[icao == input$airport, iata], "/", dt_apt[icao == input$airport, icao], ")", sep = "")
+            },
+            # Year
+            " in ", input$year, " under ",
+            # SSP
+            substr(x = toupper(input$ssp), start = 1, stop = 4),": ",
+            # Absolute temperature
+            filtered_data()[icao == icao & year == input$year, get(input$stat)], "°C",
+            # Temperature difference
+            if(input$year != 2015) paste(" (", sprintf(fmt = "%+.1f", filtered_data()[icao == icao & year == input$year, get(paste(input$stat, "dif", sep = "_"))]), "°C since 2015).", sep = "") else ".",
             sep = ""
           )
         )
     }
   )
 
-  # For debugging only
-  output$airport <- renderText(input$airport)
-  output$ssp     <- renderText(input$ssp)
-  output$stat    <- renderText(input$stat)
-  output$year    <- renderText(input$year)
-  # output$nrow    <- renderText(nrow(filtered_data()))
-  output$nrow    <- renderText(length(unlist(filtered_data()[get(input$stat)])))
 }
 
 # Run the app
-# shinyApp(ui, server)
-shinyApp(ui = ui, server = server, options = list(launch.browser = TRUE))
+shinyApp(ui = ui, server = server)
