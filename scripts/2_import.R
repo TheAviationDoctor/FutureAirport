@@ -3,7 +3,7 @@
 #   INPUT: NetCDF files downloaded from the Earth System Grid Federation (ESGF)
 # ACTIONS: Extract time series of climate variables for each airport coordinates
 #  OUTPUT: 312,008 rows of climate data written to a parquet file
-# RUNTIME: ~20 minutes (MacBook Pro M3 Max)
+# RUNTIME: ~60 minutes (MacBook Pro M3 Max)
 #  AUTHOR: Thomas D. Pellegrin <thomas@pellegr.in>
 #    YEAR: 2024
 # ==============================================================================
@@ -20,6 +20,7 @@ library(data.table)
 library(lubridate)
 library(ncdf4)
 library(ncdf4.helpers)
+library(PCICt)
 library(tidyverse)
 
 # Start a script timer
@@ -43,7 +44,7 @@ dt_apt <- fread(
 # List the NetCDF files from which to extract the airports' climatic conditions
 nc_files <- list.files(
   path       = "data/cdf",
-  pattern    = "tas_6hrPlevPt_MPI-ESM1-2-HR", # Air temperature only
+  pattern    = "hurs|ps|tas",
   full.names = TRUE
 )
 
@@ -60,22 +61,21 @@ fn_import <- function(nc_file) {
   # Inform the log file
   print(
     paste(
-      Sys.time(),
-      " Processing ", basename(nc_file),
-      "...",
+      format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      " Processing file ", match(nc_file, nc_files), "/", length(nc_files), "...",
       sep = ""
     )
   )
 
   # Open the NetCDF file
-  nc <- ncdf4::nc_open(
+  nc <- nc_open(
     filename  = nc_file,
     write     = FALSE,
     readunlim = FALSE
   )
 
   # Read the NetCDF file's attributes
-  nc_att <- ncdf4::ncatt_get(nc = nc, varid = 0L)
+  nc_att <- ncatt_get(nc = nc, varid = 0L)
 
   # Read the name of the file's climatic variable
   nc_var <- nc_att$variable_id
@@ -84,26 +84,26 @@ fn_import <- function(nc_file) {
   nc_ssp <- nc_att$experiment_id
 
   # Read the latitude vector
-  nc_lat <- ncdf4::ncvar_get(nc = nc, varid = "lat")
+  nc_lat <- ncvar_get(nc = nc, varid = "lat")
 
   # Read the longitude vector
-  nc_lon <- ncdf4::ncvar_get(nc = nc, varid = "lon")
+  nc_lon <- ncvar_get(nc = nc, varid = "lon")
 
   # Recode the longitude vector from 0°-360° to -180°-180°
   nc_lon <- ((nc_lon + 180L) %% 360L) - 180L
 
   # Read the time vector in PCICt (POSIXct-like) format
-  nc_obs <- ncdf4.helpers::nc.get.time.series(
+  nc_obs <- nc.get.time.series(
     f = nc,
     v = nc_var,
     time.dim.name = "time"
   )
 
   # Read the 3D climate array
-  nc_arr <- ncdf4::ncvar_get(nc = nc, varid = nc_var)
+  nc_arr <- ncvar_get(nc = nc, varid = nc_var)
 
   # Release the NetCDF file from memory
-  ncdf4::nc_close(nc = nc)
+  nc_close(nc = nc)
 
   # ============================================================================
   # 2.2 Extract the climatic variables for each sample airport (inner loop)
@@ -121,12 +121,12 @@ fn_import <- function(nc_file) {
       # Assemble the results into a data table
       return(
         data.table(
-          icao = as.factor(x), # Airport's ICAO code
+          icao = as.factor(x),      # Airport's ICAO code
           var  = as.factor(nc_var), # Climate variable
           ssp  = as.factor(nc_ssp), # Experiment (SSP)
-          year = as.factor(    # Year of the observation
+          year = as.factor(         # Time of the observation
             year(
-              PCICt::as.POSIXct.PCICt(
+              as.POSIXct.PCICt(
               x      = nc_obs,
               tz     = "GMT",
               format = "%Y-%m-%d %H:%M:%S"
@@ -156,10 +156,10 @@ fn_import <- function(nc_file) {
 } # End of the fn_import function
 
 # ==============================================================================
-# 3 Consolidate the data for saving
+# 3 Run the function to extract the climatic variables
 # ==============================================================================
 
-# Run the function across all NetCDF files and all airports, then consolidate and index
+# Run the function across all NetCDF files, then consolidate and index
 dt_cli <- lapply(
   X   = nc_files,
   FUN = fn_import
@@ -167,35 +167,52 @@ dt_cli <- lapply(
 rbindlist(use.names = FALSE) |>
 setkey(icao, var, ssp, year)
 
-# Group the data
+# ==============================================================================
+# 4 Transform the data for easier display
+# ==============================================================================
+
+# Summarize the climate variables into annual statistics
 dt_cli <- dt_cli[,
-  .(min = min(val), lq = quantile(val, probs = .25), mean = mean(val), median = median(val), uq = quantile(val, probs = .75), max = max(val)),
-  by = .(icao, var, ssp, year)]
-
-# Convert tas from K to C
-cols <- c("min", "lq", "mean", "median", "uq", "max")
-dt_cli[var == "tas", (cols) := lapply(.SD, "-", 273.15), .SDcols = cols]
-
-# Calculate difference in values from the first year in every group (icao, var, and ssp)
-cols_dif <- paste(cols, "dif", sep = "_")
-dt_cli[,
-       (cols_dif) := lapply(
-         X     = .SD,
-         FUN   = function(x) { (x - x[1:1]) }
-       ),
-       by      = .(icao, var, ssp),
-       .SDcols = cols
+  .(
+    abs_min    = min(val),                   # Minimum
+    abs_lq     = quantile(val, probs = .25), # Lower quartile
+    abs_mean   = mean(val),                  # Mean
+    abs_median = median(val),                # Median
+    abs_uq     = quantile(val, probs = .75), # Upper quartile
+    abs_max    = max(val)                    # Maximum
+  ),
+  by = .(icao, var, ssp, year)
 ]
 
-# Reduce decimal precision to save space
-dt_cli[, (cols) := lapply(.SD, round, digits = 2), .SDcols = cols]
-dt_cli[, (cols_dif) := lapply(.SD, round, digits = 2), .SDcols = cols_dif]
+# Convert tas from K to C
+dt_cli[
+  var == "tas",
+  names(.SD) := lapply(.SD, "-", 273.15),
+  .SDcols = patterns("abs") # Apply only to columns whose names match this
+]
+
+# Calculate difference in values from the first year in every group
+x <- dt_cli[,
+  sub("abs", "dif", names(.SD)) := lapply( # Create new columns
+    X     = .SD,
+    FUN   = function(x) { (x - x[1:1]) }
+  ),
+  by      = .(icao, var, ssp),
+  .SDcols = patterns("abs") # Apply only to columns whose names match this
+]
 
 # Remove data beyond the year 2100
 dt_cli <- dt_cli[year != "2101"]
 
-# Temporarily remove the var column to save space given that we don't yet store other climate variables than just tas
-dt_cli[, var:= NULL]
+# Reduce decimal precision to save space
+dt_cli[,
+  names(.SD) := lapply(.SD, round, digits = 2L),
+  .SDcols = patterns("abs|dif") # Apply only to columns whose names match this
+]
+
+# ==============================================================================
+# 5 Save the data
+# ==============================================================================
 
 # Save to CSV file
 fwrite(
