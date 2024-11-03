@@ -82,21 +82,21 @@ choices$key <- c(
   "Change in value since 2015"   = "dif"
 )
 
-# FOR DEBUGGING ONLY
-input      <- list()
-input$apt  <- "All"
-input$ssp  <- "ssp245"
-input$var  <- "tas"
-input$stat <- "mean"
-input$key  <- "abs"
-input$year <- 2100
+# # FOR DEBUGGING ONLY
+# input      <- list()
+# input$apt  <- "All"
+# input$ssp  <- "ssp245"
+# input$var  <- "tas"
+# input$stat <- "mean"
+# input$key  <- "abs"
+# input$year <- 2100
 
 # ==== 1 UI layout ====
 
 ui <- fillPage(
-
+  
   # ==== 1.1 Styling ====
-
+  
   theme = bs_theme(version = 5, bootswatch = "cosmo"),
   tags$head(tags$style(HTML("
     .bi-info-circle-fill { font-size: 14px; margin-left: 5px; cursor: pointer; color: #2780E3; }
@@ -105,18 +105,18 @@ ui <- fillPage(
     .col-sm-3            { padding-right: 0px; }
     .col-sm-9            { padding: 0px; }
   "))),
-
+  
   sidebarLayout(
-
+    
     # ==== 1.2 Display sidebar panel with selectors ====
-
+    
     sidebarPanel(
       width = 3,
       h3("Climate change at airports worldwide, 2015–2100"),
       hr(),
       # Airport selector
       tooltip(
-        h6("Select an airport (optional):", bs_icon("info-circle-fill")), "Optionally, pick one of the ~900 airports worldwide with at least 1M passengers in annual traffic, sorted alphabetically by their IATA code. 'All' will display all airports at once.",
+        h6("Select or click on an airport (optional):", bs_icon("info-circle-fill")), "Optionally, pick one of the ~900 airports worldwide with at least 1M passengers in annual traffic, sorted alphabetically by their IATA code. 'All' will display all airports at once.",
         placement = "bottom"
       ),
       selectInput(
@@ -169,20 +169,20 @@ ui <- fillPage(
         sep      = "",
         width    = "100%"
       ),
-
-      # For debugging only
-      htmlOutput("apt"),
-      htmlOutput("ssp"),
-      htmlOutput("var"),
-      htmlOutput("stat"),
-      htmlOutput("key"),
-      htmlOutput("year"),
-      htmlOutput("selected"),
-      DT::DTOutput("table")
+      
+      # # For debugging only
+      # htmlOutput("apt"),
+      # htmlOutput("ssp"),
+      # htmlOutput("var"),
+      # htmlOutput("stat"),
+      # htmlOutput("key"),
+      # htmlOutput("year"),
+      # htmlOutput("selected"),
+      # DT::DTOutput("table")
     ),
-
-    # ==== 1.3 Display main panel with maps ====
-
+    
+    # ==== 1.3 Display main panel with map ====
+    
     mainPanel(width = 9, leafletOutput("map", height = "100%"))
   )
 )
@@ -190,9 +190,9 @@ ui <- fillPage(
 # ==== 2 Server logic ====
 
 server <- function(input, output, session) {
-
+  
   # ==== 2.1 Update input values from selectors ====
-
+  
   # Airport selector
   observe(
     {
@@ -253,15 +253,15 @@ server <- function(input, output, session) {
       )
     }
   )
-
-  # ==== 2.2 Filter data based on selector inputs ====
-
+  
+  # ==== 2.2 Filter data for SSP, variable, and year, based on selector inputs (always returns all airports) ====
+  
   dt_map <- reactive(
     {
       dt_cli[
         ssp  == input$ssp &
-        var  == input$var &
-        year == input$year,
+          var  == input$var &
+          year == input$year,
         .(
           icao = icao,
           ssp  = ssp,
@@ -271,10 +271,10 @@ server <- function(input, output, session) {
           dif  = get(paste("dif", input$stat, sep = "_"))
         )
       ][
-        dt_apt, on = "icao"
+        dt_apt, on = "icao" # Merge with airport data table
       ][,
-        label := paste(
-          "<b>", name, " (", iata, "/", icao, ")",                                      # Airport
+        label := paste(                                                                 # Assemble hover label
+          "<b>", name, " (", iata, "/", icao, ") ",                                     # Airport
           " in ", year,                                                                 # Year
           " under ", substr(x = toupper(input$ssp), start = 1, stop = 4), ":</b></br>", # SSP
           names(choices$stat[choices$stat == input$stat]), " ",                         # Statistic
@@ -285,88 +285,93 @@ server <- function(input, output, session) {
       ]
     }
   )
-
-  # ==== 2.4 Process the map ====
-
-  # Render the base map
+  
+  # ==== 2.3 Render the base map ====
+  
   output$map <- renderLeaflet(
     {
       leaflet(data = dt_map()) |>
-      addProviderTiles(providers$CartoDB.Positron)
-      # setView(lng = 0, lat = 20, zoom = 2)
+        addProviderTiles(providers$CartoDB.Positron)
     }
   )
-
-  # Observe filtered data and update the map
+  
+  # ==== 2.4 Observe filtered data and update the circle markers' color ====
+  
   observe(
+  # observeEvent(
+    # input$ssp,
     {
-
       # Update the color palette
       pal <- colorBin(
         palette = "RdYlBu",
         domain  = dt_map()[, abs],
         reverse = TRUE
       )
-
       # Update the map
       leafletProxy("map", data = dt_map()) |>
-      # clearMarkers() |>
-      addCircleMarkers(
-        lng          = ~lon,
-        lat          = ~lat,
-        layerId      = ~icao,
-        radius       = 5L,
-        color        = "black",
-        stroke       = TRUE,
-        weight       = .75,
-        fillColor    = ~pal(abs),
-        fillOpacity  = 1L,
-        # label        = ~lapply(dt_map()[, label], HTML),
-        label        = ~paste(name, " (", icao, "/", iata, ")", sep = ""),
-        labelOptions = labelOptions(textsize = "12px"),
-        # popup        = ~lapply(dt_map()[, label], HTML)
-      )
-      # flyTo(
-      #   lng  = if(input$apt %in% dt_apt[, icao]) dt_apt[icao == input$apt, lon] else 0,
-      #   lat  = if(input$apt %in% dt_apt[, icao]) dt_apt[icao == input$apt, lat] else 20,
-      #   zoom = if(input$apt == "All") 3 else 8
-      # )
-
-      # For debugging only
-      # output$apt  <- renderText(input$apt)
-      # output$ssp  <- renderText(input$ssp)
-      # output$var  <- renderText(input$var)
-      # output$stat <- renderText(input$stat)
-      # output$key  <- renderText(input$key)
-      # output$year <- renderText(input$year)
-      # output$table <- DT::renderDT(dt_map())
-
+        addCircleMarkers(
+          lng          = ~lon,
+          lat          = ~lat,
+          layerId      = ~icao,
+          radius       = 5L,
+          color        = "black",
+          stroke       = TRUE,
+          weight       = .75,
+          fillColor    = ~pal(abs),
+          fillOpacity  = 1L,
+          label        = ~paste(iata, "/", icao, " ", name, sep = ""),
+          labelOptions = labelOptions(textsize = "12px"),
+        )
     }
   )
-
-  # Listen for clicks on map markers
+  
+  # ==== 2.5 Listen for airport dropdown selection ====
+  
+  observeEvent(
+    input$apt,
+    {
+      if(input$apt %in% dt_apt[, icao]) {
+        leafletProxy("map") |>
+          setView(lng = dt_map()[icao == input$apt, lon], lat = dt_map()[icao == input$apt, lat], zoom = 14) |>
+          addPopups(lng = dt_map()[icao == input$apt, lon], lat = dt_map()[icao == input$apt, lat], popup = dt_map()[icao == input$apt, label])
+      } else {
+        leafletProxy("map") |>
+          setView(lng = 0, lat = 20, zoom = 2) |>
+          clearPopups()
+      }
+    }
+  )
+  
+  # ==== 2.6 Listen for clicks on map markers ====
+  
   observeEvent(
     input$map_marker_click,
     {
-      click <- input$map_marker_click
-      
-      # Retrieve the ICAO code and coordinates of the clicked marker
-      clicked_icao <- click$id
-      clicked_lat <- click$lat
-      clicked_lon <- click$lng
-      
       # Update the selectInput dropdown to match the clicked airport
-      updateSelectInput(session, inputId = "apt", selected = clicked_icao)
-
+      updateSelectInput(session, inputId = "apt", selected = input$map_marker_click$id)
       # Zoom in and center the map on the clicked marker
       leafletProxy("map", data = dt_map()) |>
-      setView(lng = clicked_lon, lat = clicked_lat, zoom = 8) |>
-      # addPopups(lng = clicked_lon, lat = clicked_lat, popup = paste("ICAO:", clicked_icao, "<br>", "Name:", click$name))
-      addPopups(lng = clicked_lon, lat = clicked_lat, popup = dt_map()[icao == clicked_icao, label])
-      
+        setView(lng = dt_map()[icao == input$map_marker_click$id, lon], lat = dt_map()[icao == input$map_marker_click$id, lon], zoom = 14) |>
+        addPopups(lng = dt_map()[icao == input$map_marker_click$id, lon], lat = dt_map()[icao == input$map_marker_click$id, lat], popup = dt_map()[icao == input$map_marker_click$id, label])
     }
   )
-
+  
+  # ADD LEGEND TOO
+  
+  # ==== 2.6 For debugging only ====
+  
+  observe(
+    {
+      output$apt  <- renderText(input$apt)
+      output$ssp  <- renderText(input$ssp)
+      output$var  <- renderText(input$var)
+      output$stat <- renderText(input$stat)
+      output$key  <- renderText(input$key)
+      output$year <- renderText(input$year)
+      output$table <- DT::renderDT(dt_map())
+    }
+  )
+  
 }
 
 # Run the app
