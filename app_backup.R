@@ -425,7 +425,7 @@ server <- function(input, output, session) {
         #   min(dt_cli[ssp == input$ssp & var == input$var, get(paste(input$key, input$stat, sep = "_"))]),
         #   max(dt_cli[ssp == input$ssp & var == input$var, get(paste(input$key, input$stat, sep = "_"))])
         # ),
-        domain = c(-60, 60),
+        domain  = c(-60, 60),
         reverse = TRUE
       )
       # Add points with tooltips to the map

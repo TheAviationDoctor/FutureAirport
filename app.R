@@ -19,23 +19,24 @@ cat("\014")
 library(bsicons)
 library(bslib)
 library(data.table)
+library(htmltools)
 library(leaflet)
 library(shiny)
 library(shinyjs)
 
 # Load the airport data
 dt_apt <- fread(
-  file          = "data/apt/airports.csv",
-  header        = TRUE,
-  colClasses    = c(rep("character", 3L), rep("numeric", 2L), "factor")
-) |> setkey(cols   = icao)
+  file           = "data/apt/airports.csv",
+  header         = TRUE,
+  colClasses     = c(rep("character", 3L), rep("numeric", 2L), "factor")
+) |> setkey(cols = icao)
 
 # Load the climate data
 dt_cli <- fread(
-  file          = "data/cli/cli.csv",
-  header        = TRUE,
-  colClasses    = c(rep("factor", 4L), rep("numeric", 12L))
-) |> setkey(cols   = icao, var, ssp, year)
+  file           = "data/cli/cli.csv",
+  header         = TRUE,
+  colClasses     = c(rep("factor", 4L), rep("numeric", 12L))
+) |> setkey(cols = icao, var, ssp, year)
 
 # Initialize a list for the user choices
 choices <- list("apt" = dt_apt$icao)
@@ -58,6 +59,13 @@ choices$var <- c(
   "Air temperature"   = "tas"
 )
 
+# Define display names for the variables
+choices$units <- c(
+  "hurs" = "%",
+  "ps"   = " Pa",
+  "tas"  = "°C"
+)
+
 # Define display names for the statistics
 choices$stat <- c(
   "Minimum (lowest annual value)"               = "min",
@@ -75,13 +83,13 @@ choices$key <- c(
 )
 
 # FOR DEBUGGING ONLY
-# input      <- list()
-# input$apt  <- "All"
-# input$ssp  <- "ssp245"
-# input$var  <- "tas"
-# input$stat <- "mean"
-# input$key  <- "abs"
-# input$year <- 2100
+input      <- list()
+input$apt  <- "All"
+input$ssp  <- "ssp245"
+input$var  <- "tas"
+input$stat <- "mean"
+input$key  <- "abs"
+input$year <- 2100
 
 # ==== 1 UI layout ====
 
@@ -98,9 +106,10 @@ ui <- fillPage(
     .col-sm-9            { padding: 0px; }
   "))),
 
-  # ==== 1.2 Display contents ====
-
   sidebarLayout(
+
+    # ==== 1.2 Display sidebar panel with selectors ====
+
     sidebarPanel(
       width = 3,
       h3("Climate change at airports worldwide, 2015–2100"),
@@ -160,7 +169,7 @@ ui <- fillPage(
         sep      = "",
         width    = "100%"
       ),
-      hr(),
+
       # For debugging only
       htmlOutput("apt"),
       htmlOutput("ssp"),
@@ -168,12 +177,13 @@ ui <- fillPage(
       htmlOutput("stat"),
       htmlOutput("key"),
       htmlOutput("year"),
+      htmlOutput("selected"),
       DT::DTOutput("table")
     ),
-    mainPanel(
-      width = 9,
-      leafletOutput("map", height = "100%") # Display map
-    )
+
+    # ==== 1.3 Display main panel with maps ====
+
+    mainPanel(width = 9, leafletOutput("map", height = "100%"))
   )
 )
 
@@ -181,7 +191,7 @@ ui <- fillPage(
 
 server <- function(input, output, session) {
 
-  # ==== 2.1 Update selectors dynamically ====
+  # ==== 2.1 Update input values from selectors ====
 
   # Airport selector
   observe(
@@ -202,7 +212,7 @@ server <- function(input, output, session) {
         inputId  = "ssp",
         label    = NULL,
         choices  = choices$ssp,
-        selected = choices$ssp[2]
+        selected = choices$ssp[3]
       )
     }
   )
@@ -244,23 +254,8 @@ server <- function(input, output, session) {
     }
   )
 
-  # ==== 2.2 Filter data dynamically based on selector inputs ====
+  # ==== 2.2 Filter data based on selector inputs ====
 
-  # Filter map data
-  # dt_map <- reactive(
-  #   {
-  #     return(
-  #       dt_cli[
-  #         ssp  == input$ssp &
-  #         var  == input$var &
-  #         year == input$year,
-  #         # if(input$apt %in% icao) icao == input$apt else icao != input$apt,
-  #         .SD,
-  #         .SDcols = patterns(paste("icao", "ssp", "var", "year", input$stat, sep = "|"))
-  #       ]
-  #     )
-  #   }
-  # )
   dt_map <- reactive(
     {
       dt_cli[
@@ -275,93 +270,103 @@ server <- function(input, output, session) {
           abs  = get(paste("abs", input$stat, sep = "_")),
           dif  = get(paste("dif", input$stat, sep = "_"))
         )
+      ][
+        dt_apt, on = "icao"
+      ][,
+        label := paste(
+          "<b>", name, " (", iata, "/", icao, ")",                                      # Airport
+          " in ", year,                                                                 # Year
+          " under ", substr(x = toupper(input$ssp), start = 1, stop = 4), ":</b></br>", # SSP
+          names(choices$stat[choices$stat == input$stat]), " ",                         # Statistic
+          tolower(names(choices$var[choices$var == input$var])), ": ",                  # Variable
+          "<b>", sprintf(fmt = "%.2f", abs), choices$units[[input$var]], "</b>.</br>",  # Predicted value for the year
+          # Change in value since 2015
+          if(input$year > 2015) paste("Change since 2015: <b>", sprintf(fmt = "%+.2f", dif), if(choices$units[[input$var]] == "%") " p.p" else choices$units[[input$var]], "</b>.", sep = ""), sep = "")
       ]
     }
   )
 
   # ==== 2.4 Process the map ====
 
-  # Render the map
+  # Render the base map
   output$map <- renderLeaflet(
     {
-      leaflet(options = leafletOptions(zoomControl = FALSE)) |>
-        flyTo(
-          lng  = if(input$apt %in% dt_apt[, icao]) dt_apt[icao == input$apt, lon] else 0,
-          lat  = if(input$apt %in% dt_apt[, icao]) dt_apt[icao == input$apt, lat] else 50,
-          zoom = if(input$apt %in% dt_apt[, icao]) 6 else 3
-        ) |>
-        addProviderTiles("OpenStreetMap") |>
-        # clearMarkers() |>
-        addCircleMarkers(
-          data        = dt_map(),
-          lng         = dt_apt[icao == icao, lon],
-          lat         = dt_apt[icao == icao, lat],
-          radius      = if(input$apt %in% dt_apt[, icao]) 10L else 5L,
-          color       = "black",
-          stroke      = TRUE,
-          weight      = .75,
-          fill        = TRUE,
-          fillColor   = "#2780E3",
-          fillOpacity = .75
-        )
+      leaflet(data = dt_map()) |>
+      addProviderTiles(providers$CartoDB.Positron)
+      # setView(lng = 0, lat = 20, zoom = 2)
     }
   )
 
-  # Update the map
+  # Observe filtered data and update the map
   observe(
     {
+
+      # Update the color palette
+      pal <- colorBin(
+        palette = "RdYlBu",
+        domain  = dt_map()[, abs],
+        reverse = TRUE
+      )
+
+      # Update the map
       leafletProxy("map", data = dt_map()) |>
-      clearMarkers()
-      # addCircleMarkers(
-      #   # Return all coordinates or just the ones of the selected airport
-      #   # lng         = if(input$apt %in% dt_apt[, icao]) dt_apt[icao == input$apt, lon] else dt_apt[icao == icao, lon],
-      #   # lat         = if(input$apt %in% dt_apt[, icao]) dt_apt[icao == input$apt, lat] else dt_apt[icao == icao, lat],
-      #   lng         = dt_apt[icao == icao, lon],
-      #   lat         = dt_apt[icao == icao, lat],
-      #   radius      = if(input$apt %in% dt_apt[, icao]) 10L else 5L,
-      #   # Set the dot color to be either the absolute temperature or the temperature difference since 2015
-      #   color       = "black",
-      #   stroke      = TRUE,
-      #   weight      = .75,
-      #   fill        = TRUE,
-      #   # fillColor   = pal(dt_cli[icao == icao & ssp == input$ssp & var == input$var & year == input$year, get(paste(input$key, input$stat, sep = "_"))]),
-      #   # fillColor   = ~dt_pal(),
-      #   fillOpacity = if(input$apt %in% dt_apt[, icao]) 1L else .8,
-      #   # Tooltip
-      #   popupOptions(keepInView = TRUE, closeOnClick = NULL),
-      #   popup       = paste(
-      #     if(input$apt %in% dt_apt[, icao]) {
-      #       paste("<b>", dt_apt[icao == input$apt, name], " (", dt_apt[icao == input$apt, iata], "/", dt_apt[icao == input$apt, icao], ")", "</b></br>", sep = "")
-      #     } else {
-      #       paste("<b>", dt_apt[icao == icao, name], " (", dt_apt[icao == icao, iata], "/", dt_apt[icao == icao, icao], ")", "</b></br>", sep = "")
-      #     },
-      #     # Statistic
-      #     names(choices$stat[choices$stat == input$stat]),
-      #     # Variable
-      #     tolower(names(choices$var[choices$var == input$var])),
-      #     # Year
-      #     "in", input$year, "under",
-      #     # SSP
-      #     substr(x = toupper(input$ssp), start = 1, stop = 4), "is",
-      #     # Absolute temperature
-      #     sprintf(fmt = "%.2f", dt_map()[icao == icao & year == input$year, get(paste("abs", input$stat, sep = "_"))]), "°C",
-      #     # Temperature difference
-      #     if(input$year > 2015) paste(" (", sprintf(fmt = "%+.2f", dt_map()[icao == icao & year == input$year, get(paste("dif", input$stat, sep = "_"))]), "°C since 2015).", sep = "") else ".",
-      #     sep = " "
-      #   )
-      
+      # clearMarkers() |>
+      addCircleMarkers(
+        lng          = ~lon,
+        lat          = ~lat,
+        layerId      = ~icao,
+        radius       = 5L,
+        color        = "black",
+        stroke       = TRUE,
+        weight       = .75,
+        fillColor    = ~pal(abs),
+        fillOpacity  = 1L,
+        # label        = ~lapply(dt_map()[, label], HTML),
+        label        = ~paste(name, " (", icao, "/", iata, ")", sep = ""),
+        labelOptions = labelOptions(textsize = "12px"),
+        # popup        = ~lapply(dt_map()[, label], HTML)
+      )
+      # flyTo(
+      #   lng  = if(input$apt %in% dt_apt[, icao]) dt_apt[icao == input$apt, lon] else 0,
+      #   lat  = if(input$apt %in% dt_apt[, icao]) dt_apt[icao == input$apt, lat] else 20,
+      #   zoom = if(input$apt == "All") 3 else 8
+      # )
 
       # For debugging only
-      output$apt  <- renderText(input$apt)
-      output$ssp  <- renderText(input$ssp)
-      output$var  <- renderText(input$var)
-      output$stat <- renderText(input$stat)
-      output$key  <- renderText(input$key)
-      output$year <- renderText(input$year)
-      output$table <- DT::renderDT(dt_map())
+      # output$apt  <- renderText(input$apt)
+      # output$ssp  <- renderText(input$ssp)
+      # output$var  <- renderText(input$var)
+      # output$stat <- renderText(input$stat)
+      # output$key  <- renderText(input$key)
+      # output$year <- renderText(input$year)
+      # output$table <- DT::renderDT(dt_map())
 
     }
   )
+
+  # Listen for clicks on map markers
+  observeEvent(
+    input$map_marker_click,
+    {
+      click <- input$map_marker_click
+      
+      # Retrieve the ICAO code and coordinates of the clicked marker
+      clicked_icao <- click$id
+      clicked_lat <- click$lat
+      clicked_lon <- click$lng
+      
+      # Update the selectInput dropdown to match the clicked airport
+      updateSelectInput(session, inputId = "apt", selected = clicked_icao)
+
+      # Zoom in and center the map on the clicked marker
+      leafletProxy("map", data = dt_map()) |>
+      setView(lng = clicked_lon, lat = clicked_lat, zoom = 8) |>
+      # addPopups(lng = clicked_lon, lat = clicked_lat, popup = paste("ICAO:", clicked_icao, "<br>", "Name:", click$name))
+      addPopups(lng = clicked_lon, lat = clicked_lat, popup = dt_map()[icao == clicked_icao, label])
+      
+    }
+  )
+
 }
 
 # Run the app
