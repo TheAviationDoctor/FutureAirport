@@ -184,11 +184,18 @@ dt_cli <- dt_cli[,
   by = .(icao, var, ssp, year)
 ]
 
+# Convert ps from Pa to hPa
+dt_cli[
+  var == "ps",
+  names(.SD) := lapply(.SD, "/", 100L),
+  .SDcols = patterns("abs|dif")
+]
+
 # Convert tas from K to C
 dt_cli[
   var == "tas",
   names(.SD) := lapply(.SD, "-", 273.15),
-  .SDcols = patterns("abs") # Apply only to columns whose names match this
+  .SDcols = patterns("abs")
 ]
 
 # Calculate difference in values from the first year in every group
@@ -198,16 +205,21 @@ x <- dt_cli[,
     FUN   = function(x) { (x - x[1:1]) }
   ),
   by      = .(icao, var, ssp),
-  .SDcols = patterns("abs") # Apply only to columns whose names match this
+  .SDcols = patterns("abs")
 ]
 
 # Remove data beyond the year 2100
 dt_cli <- dt_cli[year != "2101"]
 
 # Reduce decimal precision to save space
-dt_cli[,
-  names(.SD) := lapply(.SD, round, digits = 2L),
-  .SDcols = patterns("abs|dif") # Apply only to columns whose names match this
+# (tas to two digits, ps and hurs to one digit)
+dt_cli[var == "tas",
+  names(.SD) := lapply(.SD, round, digits = 2),
+  .SDcols = patterns("abs|dif")
+]
+dt_cli[var != "tas",
+       names(.SD) := lapply(.SD, round, digits = 1),
+       .SDcols = patterns("abs|dif")
 ]
 
 # ==============================================================================

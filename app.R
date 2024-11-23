@@ -30,14 +30,14 @@ library(shinyjs)
 dt_apt <- fread(
   file           = "data/apt/airports.csv",
   header         = TRUE,
-  colClasses     = c(rep("character", 3L), rep("numeric", 2L), "factor")
+  colClasses     = c(rep("character", 3), rep("numeric", 2), "factor")
 ) |> setkey(cols = icao)
 
 # Load the climate data
 dt_cli <- fread(
   file           = "data/cli/cli.csv",
   header         = TRUE,
-  colClasses     = c(rep("factor", 3L), "integer", rep("numeric", 12L))
+  colClasses     = c(rep("factor", 3), "integer", rep("numeric", 12))
 ) |> setkey(cols = icao, var, ssp, year)
 
 # Initialize a list for the user choices
@@ -64,7 +64,7 @@ choices$var <- c(
 # Define display names for the variables
 choices$units <- c(
   "hurs" = "%",
-  "ps"   = " Pa",
+  "ps"   = " hPa",
   "tas"  = "°C"
 )
 
@@ -87,15 +87,6 @@ choices$key <- c(
 # Set sidebar panel width
 sidebar_width <- 4L
 
-# FOR DEBUGGING ONLY
-input      <- list()
-input$apt  <- "All"
-input$ssp  <- "ssp370"
-input$var  <- "tas"
-input$stat <- "mean"
-input$key  <- "abs"
-input$year <- 2100
-
 # ==== 1 UI layout ====
 
 ui <- fillPage(
@@ -103,13 +94,19 @@ ui <- fillPage(
   # ==== 1.1 Styling ====
   
   theme = bs_theme(version = 5, bootswatch = "cosmo"),
-  tags$head(tags$style(HTML("
-    .bi-info-circle-fill { font-size: 14px; margin-left: 5px; cursor: pointer; color: #2780E3; }
-    .row, .well          { height: 100%;}
-    .shiny-input-select  { font-family: 'Courier New', Courier, monospace; }
-    .col-sm-4            { padding-right: 0px; }
-    .col-sm-8            { padding: 0px; }
-  "))),
+  tags$head(
+    tags$style(
+      HTML(
+        "
+        .bi-info-circle-fill { font-size: 14px; margin-left: 5px; cursor: pointer; color: #2780E3; }
+        .row, .well          { height: 100%;}
+        .shiny-input-select  { font-family: 'Courier New', Courier, monospace; }
+        .col-sm-4            { padding-right: 0px; }
+        .col-sm-8            { padding: 0px; }
+        "
+      )
+    )
+  ),
   
   sidebarLayout(
     
@@ -174,22 +171,11 @@ ui <- fillPage(
         width    = "100%"
       ),
       hr(),
-      h6("Plot for the selected airport(s)"),
+      h6(htmlOutput("title")),
       
       # Display the climate plot
-      # plotOutput("plot", height = "350px"),
       plotlyOutput("plot", height = "350px"),
       
-      # # For debugging only
-      # htmlOutput("apt"),
-      # htmlOutput("ssp"),
-      # htmlOutput("var"),
-      # htmlOutput("stat"),
-      # htmlOutput("key"),
-      # htmlOutput("year")
-      # htmlOutput("selected"),
-      # DT::DTOutput("table"),
-      # htmlOutput("range")
     ),
     
     # ==== 1.3 Display main panel with map ====
@@ -291,34 +277,34 @@ server <- function(input, output, session) {
           " under ", substr(x = toupper(input$ssp), start = 1, stop = 4), ":</b></br>", # SSP
           names(choices$stat[choices$stat == input$stat]), " ",                         # Statistic
           tolower(names(choices$var[choices$var == input$var])), ": ",                  # Variable
-          "<b>", sprintf(fmt = "%.2f", abs), choices$units[[input$var]], "</b></br>",  # Predicted value for the year
-          # Change in value since 2015
+          "<b>", sprintf(fmt = "%.2f", abs), choices$units[[input$var]], "</b></br>",   # Predicted value for the year
+                                                                                        # Change in value since 2015
           if(input$year > 2015) paste("Change in value (±) since 2015: <b>", sprintf(fmt = "%+.2f", dif), ifelse(choices$units[[input$var]] == "%", " p.p", choices$units[[input$var]]), "</b>", sep = ""),
-          sep = "")
+          sep = ""
+        )
       ]
     }
   )
   
   # Plot data
   dt_plt <- reactive(
-    {
+    if(input$apt %in% dt_apt[, icao]) { # If user selected an airport
       dt_cli[
-        icao == "AYPY" &
-        ssp  == input$ssp &
-        var  == input$var,
-        .(
-          icao = icao,
-          ssp  = ssp,
-          var  = var,
-          year = year,
-          abs  = get(paste("abs", input$stat, sep = "_")),
-          dif  = get(paste("dif", input$stat, sep = "_"))
-        )
+        icao == input$apt & ssp == input$ssp & var == input$var,
+        .(Year = year, Value = get(paste(input$key, input$stat, sep = "_")))
       ]
+    } else { # If user did not select an airport
+      dt_cli[
+        ssp == input$ssp & var == input$var,
+        # Take the lowest annual value for the minima, or the highest annual value for the maxima, or the mean for every other statistic
+        .(Year = year, Value = round(sapply(X = .SD, FUN = if (input$stat == "min") min else if (input$stat == "max") max else mean), 2)),
+        by = year,
+        .SDcols = paste(input$key, input$stat, sep = "_")
+      ][, !"year"]
     }
   )
   
-  # ==== 2.3 Render the base map and the plot ====
+  # ==== 2.3 Render the base map ====
   
   output$map <- renderLeaflet(
     {
@@ -327,33 +313,51 @@ server <- function(input, output, session) {
     }
   )
   
+  # ==== 2.4 Render the plot ====
+  
+  # Title
   observe(
     {
-      # output$plot <- renderPlot(
+      output$title <- renderText(
+        paste(
+          "Plot of the",
+          ifelse(input$key == "abs", "annual values for the", "centennial change in the"),
+          tolower(names(choices$stat[choices$stat == input$stat])),
+          tolower(names(choices$var[choices$var == input$var])),
+          paste("(in", ifelse(choices$units[[input$var]] == "%", " p.p", choices$units[[input$var]]), ")", sep = ""),
+          ifelse(input$apt %in% dt_apt[, icao], "at", "across"),
+          ifelse(input$apt %in% dt_apt[, icao], paste(dt_apt[icao == input$apt, name], " (", dt_apt[icao == input$apt, iata], "/", dt_apt[icao == input$apt, icao], ")", sep = ""), tolower(input$apt)),
+          ifelse(input$apt %in% dt_apt[, icao], "", "airports worldwide"),
+          paste("under ", toupper(substr(input$ssp, 1, 4)), ":", sep = ""),
+          sep = " "
+        )
+      )
+    }
+  )
+  
+  # Plot
+  observe(
+    {
       output$plot <- renderPlotly(
         {
-          # Plot the temperature trend over time
           ggplot(data = dt_plt()) +
-            geom_point(mapping = aes(x = year, y = dif)) +
-            geom_smooth(mapping = aes(x = year, y = dif), formula = y ~ x, method = "loess", linewidth = 1, color = "green", se = FALSE) +
-            geom_vline(xintercept = input$year, color = "#2780E3") +
+            geom_point(mapping = aes(x = Year, y = Value), color = "#2780E3", alpha = 0.5) +
+            geom_smooth(mapping = aes(x = Year, y = Value), formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
+            geom_vline(xintercept = input$year, color = "#2780E3", linetype = "dotted") +
             theme(
               axis.title         = element_blank(),
-              # axis.text.y        = element_text(margin = margin(l = 25, r = -25, "pt"), vjust = -0.5),
+              legend.position    = "none",
               panel.grid.major.x = element_blank(),
               panel.grid.major.y = element_line(color = "lightgray"),
-              panel.grid.minor   = element_blank(),
-              panel.background   = element_rect(fill = "#F7F7F7"),
-              plot.background    = element_rect(fill = "#F7F7F7", color = NA),
-              # plot.margin        = margin(0, -15, 0, -25, "pt"),
-              text               = element_text(size = 12L)
+              panel.background   = element_rect(fill  = "#F7F7F7"),
+              plot.background    = element_rect(fill  = "#F7F7F7", color = NA)
             )
         }
       )
     }
   )
   
-  # ==== 2.4 Listen for changes to filtered data ====
+  # ==== 2.5 Listen for change in filtered data ====
   
   observe(
     {
@@ -369,7 +373,7 @@ server <- function(input, output, session) {
           lng          = ~lon,
           lat          = ~lat,
           layerId      = ~icao,
-          radius       = 5L,
+          radius       = 5,
           color        = "black",
           stroke       = TRUE,
           weight       = .75,
@@ -380,7 +384,7 @@ server <- function(input, output, session) {
         ) |>
         clearControls() |>
         addLegend(
-          position  = "bottomleft",
+          position  = "bottomright",
           pal       = pal,
           values    = ~get(input$key),
           title     = paste("Values in", choices$units[[input$var]], sep = " "),
@@ -390,7 +394,7 @@ server <- function(input, output, session) {
     }
   )
   
-  # ==== 2.5 Listen for change in airport selection ====
+  # ==== 2.6 Listen for change in airport selection ====
   
   observeEvent(
     input$apt,
@@ -408,7 +412,7 @@ server <- function(input, output, session) {
     }
   )
   
-  # ==== 2.6 Listen for click on a map marker ====
+  # ==== 2.7 Listen for click on a map marker ====
   
   observeEvent(
     input$map_marker_click,
@@ -418,7 +422,7 @@ server <- function(input, output, session) {
     }
   )
   
-  # ==== 2.7 Listen for change in climate scenario selection ====
+  # ==== 2.8 Listen for change in climate scenario selection ====
   
   observeEvent(
     input$ssp,
@@ -433,7 +437,7 @@ server <- function(input, output, session) {
     }
   )
   
-  # ==== 2.8 Listen for change in climate variable selection ====
+  # ==== 2.9 Listen for change in climate variable selection ====
   
   observeEvent(
     input$var,
@@ -448,7 +452,7 @@ server <- function(input, output, session) {
     }
   )
   
-  # ==== 2.9 Listen for change in climate statistic selection ====
+  # ==== 2.10 Listen for change in climate statistic selection ====
   
   observeEvent(
     input$stat,
@@ -463,7 +467,7 @@ server <- function(input, output, session) {
     }
   )
   
-  # ==== 2.10 Listen for change in year selection ====
+  # ==== 2.11 Listen for change in year selection ====
   
   observeEvent(
     input$year,
@@ -475,21 +479,6 @@ server <- function(input, output, session) {
           setView(lng = dt_map()[icao == input$apt, lon], lat = dt_map()[icao == input$apt, lat], zoom = 14) |>
           addPopups(lng = dt_map()[icao == input$apt, lon], lat = dt_map()[icao == input$apt, lat] + 0.001, popup = dt_map()[icao == input$apt, popup])
       }
-    }
-  )
-  
-  # ==== 2.6 For debugging only ====
-  
-  observe(
-    {
-      output$apt  <- renderText(input$apt)
-      output$ssp  <- renderText(input$ssp)
-      output$var  <- renderText(input$var)
-      output$stat <- renderText(input$stat)
-      output$key  <- renderText(input$key)
-      output$year <- renderText(input$year)
-      output$table <- DT::renderDT(dt_map())
-      output$range <- renderText(range(dt_map()[, get(input$key)]))
     }
   )
   
