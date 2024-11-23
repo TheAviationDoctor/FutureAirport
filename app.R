@@ -114,7 +114,11 @@ ui <- fillPage(
     
     sidebarPanel(
       width = sidebar_width,
-      h4("Climate change at airports worldwide, 2015–2100"),
+      # h4("Climate change at airports worldwide, 2015–2100"),
+      tooltip(
+        h4("Climate change at airports worldwide, 2015–2100", bs_icon("info-circle-fill")), "This dashboard shows the amount of climate change expected at airports in the 21st century according to the latest generation of climate models. It allows you to pick any of the world's ~900 largest airports, choose one of four climate scenarios from most to least optimistic, and see how much change is predicted to happen in the air temperature, pressure, and humidity at that location up to the year 2100.",
+        placement = "bottom"
+      ),
       hr(),
       # Airport selector
       tooltip(

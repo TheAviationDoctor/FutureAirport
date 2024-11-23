@@ -6,6 +6,7 @@
 .Ruserdata
 runways.csv
 *.cnf
+*.dcf
 *.log
 *.nc
 *.sh
