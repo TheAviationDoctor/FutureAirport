@@ -77,8 +77,7 @@ ui <- fillPage(
   theme = bs_theme(version = 5, bootswatch = "cosmo"),
   tags$head(
     tags$style(
-      HTML(
-        "
+      HTML("
         a                    { margin-right: 50px; }
         h4, h6               { display: inline }
         .bi-info-circle-fill { font-size: 14px; margin-left: 5px; cursor: pointer; color: #2780E3; }
@@ -87,8 +86,7 @@ ui <- fillPage(
         .footer              { text-align: center }
         .row, .well          { height: 100%;}
         .shiny-input-select  { font-family: 'Courier New', Courier, monospace; }
-        "
-      )
+      ")
     )
   ),
   
@@ -130,7 +128,7 @@ ui <- fillPage(
         width     = "100%"
       ),
       # Climate statistic selector
-      h6("Select a statistic:"),
+      h6("Select an air temperature statistic:"),
       tooltip(
         trigger   = bs_icon("info-circle-fill"), "Climate change affects different temperature statistics, such as minima or mean, asymmetrically. This option lets you explore different statistics individually. Choose the mean if you are unsure.",
         placement = "right"
@@ -159,13 +157,13 @@ ui <- fillPage(
       ),
       hr(),
       # Plot title
-      h6("Surface air temperature (in ℃) over time:"),
+      h6("Plot of the surface air temperature (in ℃) over time:"),
       tooltip(
         trigger   = bs_icon("info-circle-fill"), "This plot displays the annualized values for the maximum, 75th percentile (dotted), median (dashed), mean, 25th percentile (dotted), and minimum temperatures for the airport(s) selected above. The trend line uses a linear polynomial regression fitting.",
         placement = "right"
       ),
       # Plot
-      plotlyOutput("plot", height = "500px"),
+      plotlyOutput("plot", height = "450px"),
       hr(),
       div(
         class = "footer",
@@ -292,12 +290,12 @@ server <- function(input, output, session) {
         ssp == input$ssp,
         .(
           Year           = year,
-          Minimum        = round(min(abs_min),     2),
-          LowerQuartile  = round(mean(abs_lq),     2),
-          Mean           = round(mean(abs_mean),   2),
-          Median         = round(mean(abs_median), 2),
-          UpperQuartile  = round(mean(abs_uq),     2),
-          Maximum        = round(max(abs_uq),      2)
+          Minimum        = round(suppressWarnings(min(abs_min)), 2),
+          LowerQuartile  = round(mean(abs_lq),                   2),
+          Mean           = round(mean(abs_mean),                 2),
+          Median         = round(mean(abs_median),               2),
+          UpperQuartile  = round(mean(abs_uq),                   2),
+          Maximum        = round(suppressWarnings(max(abs_uq)),  2)
         ),
         by = year
       ][, !"year"]
@@ -320,31 +318,36 @@ server <- function(input, output, session) {
     {
       output$plot <- renderPlotly(
         {
-          ggplot(data = dt_plt()) +
-            # Scatterplots
-            geom_point(mapping = aes(x = Year, y = Minimum),       color = "#2780E3", alpha = 0.25) +
-            geom_point(mapping = aes(x = Year, y = LowerQuartile), color = "#2780E3", alpha = 0.25) +
-            geom_point(mapping = aes(x = Year, y = Mean),          color = "#2780E3", alpha = 0.25) +
-            geom_point(mapping = aes(x = Year, y = Median),        color = "#2780E3", alpha = 0.25) +
-            geom_point(mapping = aes(x = Year, y = UpperQuartile), color = "#2780E3", alpha = 0.25) +
-            geom_point(mapping = aes(x = Year, y = Maximum),       color = "#2780E3", alpha = 0.25) +
-            # Local polynomial regression fitting lines
-            geom_smooth(mapping = aes(x = Year, y = Minimum),       formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
-            geom_smooth(mapping = aes(x = Year, y = LowerQuartile), formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE, linetype = "dotted") +
-            geom_smooth(mapping = aes(x = Year, y = Mean),          formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
-            geom_smooth(mapping = aes(x = Year, y = Median),        formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE, linetype = "dashed") +
-            geom_smooth(mapping = aes(x = Year, y = UpperQuartile), formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE, linetype = "dotted") +
-            geom_smooth(mapping = aes(x = Year, y = Maximum),       formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
-            # Year indicator (vertical line)
-            geom_vline(xintercept = input$year, color = "#2780E3", linetype = "dotted") +
-            theme(
-              axis.title         = element_blank(),
-              legend.position    = "none",
-              panel.grid.major.x = element_blank(),
-              panel.grid.major.y = element_line(color = "lightgray"),
-              panel.background   = element_rect(fill  = "#F7F7F7"),
-              plot.background    = element_rect(fill  = "#F7F7F7", color = NA)
-            )
+          p <- ggplot(data = dt_plt()) +
+          # Scatterplots
+          geom_point(mapping = aes(x = Year, y = Minimum),       color = "#2780E3", alpha = 0.25) +
+          geom_point(mapping = aes(x = Year, y = LowerQuartile), color = "#2780E3", alpha = 0.25) +
+          geom_point(mapping = aes(x = Year, y = Mean),          color = "#2780E3", alpha = 0.25) +
+          geom_point(mapping = aes(x = Year, y = Median),        color = "#2780E3", alpha = 0.25) +
+          geom_point(mapping = aes(x = Year, y = UpperQuartile), color = "#2780E3", alpha = 0.25) +
+          geom_point(mapping = aes(x = Year, y = Maximum),       color = "#2780E3", alpha = 0.25) +
+          # Local polynomial regression fitting lines
+          geom_smooth(mapping = aes(x = Year, y = Minimum),       formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
+          geom_smooth(mapping = aes(x = Year, y = LowerQuartile), formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE, linetype = "dotted") +
+          geom_smooth(mapping = aes(x = Year, y = Mean),          formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
+          geom_smooth(mapping = aes(x = Year, y = Median),        formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE, linetype = "dashed") +
+          geom_smooth(mapping = aes(x = Year, y = UpperQuartile), formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE, linetype = "dotted") +
+          geom_smooth(mapping = aes(x = Year, y = Maximum),       formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
+          # Year indicator (vertical line)
+          geom_vline(xintercept = input$year, color = "#2780E3", linetype = "dotted") +
+          # Styling
+          theme(
+            axis.ticks.length  = unit(0, "pt"),
+            axis.title         = element_blank(),
+            legend.position    = "none",
+            panel.grid.major.x = element_blank(),
+            panel.grid.major.y = element_line(color = "lightgray"),
+            panel.background   = element_rect(fill  = "#F7F7F7"),
+            plot.background    = element_rect(fill  = "#F7F7F7", color = NA),
+            plot.margin        = unit(c(0, 0, 0, 0), "pt")
+          )
+          # Hide the Plotly toolbar
+          ggplotly(p) |> config(displayModeBar = FALSE)
         }
       )
     }
