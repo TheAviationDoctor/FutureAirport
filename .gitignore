@@ -13,4 +13,4 @@ runways.csv
 *.sh
 logs/
 mysql/
-data/cdf
+cdf
