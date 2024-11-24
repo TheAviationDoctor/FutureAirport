@@ -78,7 +78,7 @@ ui <- fillPage(
   tags$head(
     tags$style(
       HTML("
-        div.footer svg       { margin-right: 50px; }
+        div.footer svg       { margin-left: 25px; margin-right: 25px; }
         h4, h6               { display: inline }
         .bi-info-circle-fill { font-size: 14px; margin-left: 5px; cursor: pointer; color: #2780E3; }
         .col-sm-4            { padding-right: 0px; }
