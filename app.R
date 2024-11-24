@@ -37,8 +37,9 @@ dt_apt <- fread(
 dt_cli <- fread(
   file           = "data/cli/cli.csv",
   header         = TRUE,
-  colClasses     = c(rep("factor", 3), "integer", rep("numeric", 12))
-) |> setkey(cols = icao, var, ssp, year)
+  colClasses     = c(rep("factor", 3), "integer", rep("numeric", 12)),
+  drop           = "var" # The file contains temperature data only, so we don't need the variable name
+) |> setkey(cols = icao, ssp, year)
 
 # Initialize a list for the user choices
 choices <- list("apt" = dt_apt$icao)
@@ -48,24 +49,10 @@ names(choices$apt) <- paste(dt_apt$iata, "/", dt_apt$icao, " ", dt_apt$name, sep
 
 # Define display names for the SSPs
 choices$ssp <- c(
-  "SSP1 — Sustainability (best-case scenario)"             = "ssp126",
+  "SSP1 — Sustainability (most optimistic   )"             = "ssp126",
   "SSP2 — Middle of the road"                              = "ssp245",
   "SSP3 — Regional rivalry"                                = "ssp370",
-  "SSP5 — Fossil-fueled development (worst-case scenario)" = "ssp585"
-)
-
-# Define display names for the variables
-choices$var <- c(
-  "Relative humidity" = "hurs",
-  "Air pressure"      = "ps",
-  "Air temperature"   = "tas"
-)
-
-# Define display names for the variables
-choices$units <- c(
-  "hurs" = "%",
-  "ps"   = " hPa",
-  "tas"  = "°C"
+  "SSP5 — Fossil-fueled development (least optimistic)"    = "ssp585"
 )
 
 # Define display names for the statistics
@@ -76,12 +63,6 @@ choices$stat <- c(
   "Median (50th percentile annual value)"       = "median",
   "3rd quartile (75th percentile annual value)" = "uq",
   "Maximum (highest annual value)"              = "max"
-)
-
-# Define display names for the color keys
-choices$key <- c(
-  "Predicted value for the year"   = "abs",
-  "Change in value (±) since 2015" = "dif"
 )
 
 # Set sidebar panel width
@@ -98,11 +79,14 @@ ui <- fillPage(
     tags$style(
       HTML(
         "
+        a                    { margin-right: 50px; }
+        h4, h6               { display: inline }
         .bi-info-circle-fill { font-size: 14px; margin-left: 5px; cursor: pointer; color: #2780E3; }
-        .row, .well          { height: 100%;}
-        .shiny-input-select  { font-family: 'Courier New', Courier, monospace; }
         .col-sm-4            { padding-right: 0px; }
         .col-sm-8            { padding: 0px; }
+        .footer              { text-align: center }
+        .row, .well          { height: 100%;}
+        .shiny-input-select  { font-family: 'Courier New', Courier, monospace; }
         "
       )
     )
@@ -110,76 +94,102 @@ ui <- fillPage(
   
   sidebarLayout(
     
-    # ==== 1.2 Display sidebar panel with selectors ====
+    # ==== 1.2 Display sidebar panel ====
     
     sidebarPanel(
       width = sidebar_width,
-      # h4("Climate change at airports worldwide, 2015–2100"),
+      # Title
+      h4("Climate change at airports worldwide, 2015–2100"),
       tooltip(
-        h4("Climate change at airports worldwide, 2015–2100", bs_icon("info-circle-fill")), "This dashboard shows the amount of climate change expected at airports in the 21st century according to the latest generation of climate models. It allows you to pick any of the world's ~900 largest airports, choose one of four climate scenarios from most to least optimistic, and see how much change is predicted to happen in the air temperature, pressure, and humidity at that location up to the year 2100.",
+        trigger   = bs_icon("info-circle-fill"), "This dashboard shows the change in surface air temperature expected at the world's largest airports up to the year 2100 based on a leading IPCC climate model under four climate scenarios.",
         placement = "bottom"
       ),
       hr(),
       # Airport selector
+      h6("Select or click on an airport (optional):"),
       tooltip(
-        h6("Select or click on an airport (optional):", bs_icon("info-circle-fill")), "Optionally, pick one of the ~900 airports worldwide with at least 1M passengers in annual traffic, sorted alphabetically by their IATA code. 'All' will display all airports at once.",
-        placement = "bottom"
+        trigger   = bs_icon("info-circle-fill"), "These are the 907 airports with one million passengers or more in 2019. 'All' will display all airports at once.",
+        placement = "right"
       ),
       selectInput(
-        inputId  = "apt",
-        label    = NULL,
-        choices  = NULL,
-        width    = "100%"
+        inputId   = "apt",
+        label     = NULL,
+        choices   = NULL,
+        width     = "100%"
       ),
       # SSP selector
-      tooltip(h6("Select a climate scenario:", bs_icon("info-circle-fill")), "Shared Socioeconomic Pathways (SSPs) are climate change scenarios defined by the Intergovernmental Panel on Climate Change (IPCC) to standardize climate research. They are based on projected socioeconomic development trajectories up to the year 2100. The IPCC Sixth Report (2021) described SSP2 as likely, hence it is selected as default here."),
-      selectInput(
-        inputId  = "ssp",
-        label    = NULL,
-        choices  = NULL,
-        width    = "100%"
+      h6("Select a climate scenario:"),
+      tooltip(
+        trigger   = bs_icon("info-circle-fill"), "These are four socioeconomic development scenarios of CO2 emissions commonly used in climate research. SSP2 and SSP3 are considered the most likely.",
+        placement = "right"
       ),
-      # Climate variable selector
-      tooltip(h6("Select a climate variable:", bs_icon("info-circle-fill")), "Choose whether to display the predicted near-surface air temperature, air pressure, or relative humidity at the airports."),
       selectInput(
-        inputId  = "var",
-        label    = NULL,
-        choices  = choices$var,
-        width    = "100%"
+        inputId   = "ssp",
+        label     = NULL,
+        choices   = NULL,
+        width     = "100%"
       ),
       # Climate statistic selector
-      tooltip(h6("Select a statistic:", bs_icon("info-circle-fill")), "Climate change affects different statistics asymmetrically. It is possible, for example, for the annual maximum to change faster than the annual mean at some locations. This option lets you explore different statistics individually. Choose the mean if you are unsure."),
-      selectInput(
-        inputId  = "stat",
-        label    = NULL,
-        choices  = choices$stat,
-        width    = "100%"
+      h6("Select a statistic:"),
+      tooltip(
+        trigger   = bs_icon("info-circle-fill"), "Climate change affects different temperature statistics, such as minima or mean, asymmetrically. This option lets you explore different statistics individually. Choose the mean if you are unsure.",
+        placement = "right"
       ),
-      # Color key
-      tooltip(h6("Select value for the colored markers to display:", bs_icon("info-circle-fill")), "The color of the dots can either display the absolute temperature at each airport for the observation year, or the amount of change since the year 2015."),
-      radioButtons(
-        inputId  = "key",
-        label    = NULL,
-        choices  = choices$key
+      selectInput(
+        inputId   = "stat",
+        label     = NULL,
+        choices   = choices$stat,
+        width     = "100%"
       ),
       # Year selector
-      tooltip(h6("Select an observation year:", bs_icon("info-circle-fill")), "The climate model forecasts temperatures up to the year 2100. 2015 is taken as the baseline year for all subsequent observations, which are expressed in degrees Celsius above or below that baseline."),
+      h6("Select an observation year:"),
+      tooltip(
+        trigger   = bs_icon("info-circle-fill"), "2015 is the first year of model predictions. The change in temperatures for later years is expressed in degrees Celsius above or below that baseline.",
+        placement = "right"
+      ),
       sliderInput(
-        inputId  = "year",
-        label    = NULL,
-        min      = 2015,
-        max      = 2100,
-        value    = 2100,
-        step     = 1,
-        sep      = "",
-        width    = "100%"
+        inputId   = "year",
+        label     = NULL,
+        min       = 2015,
+        max       = 2100,
+        value     = 2100,
+        step      = 1,
+        sep       = "",
+        width     = "100%"
       ),
       hr(),
-      h6(htmlOutput("title")),
-      
-      # Display the climate plot
-      plotlyOutput("plot", height = "350px"),
-      
+      # Plot title
+      h6("Surface air temperature (in ℃) over time:"),
+      tooltip(
+        trigger   = bs_icon("info-circle-fill"), "This plot displays the annualized values for the maximum, 75th percentile (dotted), median (dashed), mean, 25th percentile (dotted), and minimum temperatures for the airport(s) selected above. The trend line uses a linear polynomial regression fitting.",
+        placement = "right"
+      ),
+      # Plot
+      plotlyOutput("plot", height = "500px"),
+      hr(),
+      div(
+        class = "footer",
+        tooltip(
+          trigger   = tags$a(bs_icon("github", size = "1.25em"), href = "https://github.com/TheAviationDoctor/FutureAirport", target = "_blank"),
+          "Visit my Github repo for the codebase and methodology",
+          placement = "top"
+        ),
+        tooltip(
+          trigger   = tags$a(bs_icon("mortarboard-fill", size = "1.25em"), href = "https://commons.erau.edu/edt/720/", target = "_blank"),
+          "Link to the underlying research",
+          placement = "top"
+        ),
+        tooltip(
+          trigger   = tags$a(bs_icon("linkedin", size = "1.25em"), href = "https://www.linkedin.com/in/thomasdpellegrin/", target = "_blank"),
+          "Connect with me on LinkedIn",
+          placement = "top"
+        ),
+        tooltip(
+          trigger   = tags$a(bs_icon("file-person-fill", size = "1.25em"), href = "https://thomas.pellegr.in/", target = "_blank"),
+          "Visit my personal website",
+          placement = "top"
+        )
+      )
     ),
     
     # ==== 1.3 Display main panel with map ====
@@ -217,18 +227,6 @@ server <- function(input, output, session) {
       )
     }
   )
-  # Climate variable selector
-  observe(
-    {
-      updateSelectInput(
-        session,
-        inputId  = "var",
-        label    = NULL,
-        choices  = choices$var,
-        selected = choices$var[3]
-      )
-    }
-  )
   # Climate statistic selector
   observe(
     {
@@ -241,19 +239,6 @@ server <- function(input, output, session) {
       )
     }
   )
-  # Color key selector
-  observe(
-    {
-      updateRadioButtons(
-        session,
-        inputId      = "key",
-        label        = NULL,
-        choices      = choices$key,
-        selected     = choices$key[2],
-        inline       = FALSE
-      )
-    }
-  )
   
   # ==== 2.2 Filter data based on user selections ====
   
@@ -261,13 +246,10 @@ server <- function(input, output, session) {
   dt_map <- reactive(
     {
       dt_cli[
-        ssp  == input$ssp &
-        var  == input$var &
-        year == input$year,
+        ssp  == input$ssp & year == input$year,
         .(
           icao = icao,
           ssp  = ssp,
-          var  = var,
           year = year,
           abs  = get(paste("abs", input$stat, sep = "_")),
           dif  = get(paste("dif", input$stat, sep = "_"))
@@ -279,11 +261,11 @@ server <- function(input, output, session) {
           "<b>", name, " (", iata, "/", icao, ") ",                                     # Airport
           " in ", year,                                                                 # Year
           " under ", substr(x = toupper(input$ssp), start = 1, stop = 4), ":</b></br>", # SSP
-          names(choices$stat[choices$stat == input$stat]), " ",                         # Statistic
-          tolower(names(choices$var[choices$var == input$var])), ": ",                  # Variable
-          "<b>", sprintf(fmt = "%.2f", abs), choices$units[[input$var]], "</b></br>",   # Predicted value for the year
+          names(choices$stat[choices$stat == input$stat]),                              # Statistic
+          " air temperature: ",                                                         # Variable
+          "<b>", sprintf(fmt = "%.2f", abs), "℃</b></br>",   # Predicted value for the year
                                                                                         # Change in value since 2015
-          if(input$year > 2015) paste("Change in value (±) since 2015: <b>", sprintf(fmt = "%+.2f", dif), ifelse(choices$units[[input$var]] == "%", " p.p", choices$units[[input$var]]), "</b>", sep = ""),
+          if(input$year > 2015) paste("Change in value (±) since 2015: <b>", sprintf(fmt = "%+.2f", dif), "℃</b>", sep = ""),
           sep = ""
         )
       ]
@@ -294,16 +276,30 @@ server <- function(input, output, session) {
   dt_plt <- reactive(
     if(input$apt %in% dt_apt[, icao]) { # If user selected an airport
       dt_cli[
-        icao == input$apt & ssp == input$ssp & var == input$var,
-        .(Year = year, Value = get(paste(input$key, input$stat, sep = "_")))
+        icao == input$apt & ssp == input$ssp,
+        .(
+          Year           = year,
+          Minimum        = abs_min,
+          LowerQuartile  = abs_lq,
+          Mean           = abs_mean,
+          Median         = abs_median,
+          UpperQuartile  = abs_uq,
+          Maximum        = abs_max
+        )
       ]
     } else { # If user did not select an airport
       dt_cli[
-        ssp == input$ssp & var == input$var,
-        # Take the lowest annual value for the minima, or the highest annual value for the maxima, or the mean for every other statistic
-        .(Year = year, Value = round(sapply(X = .SD, FUN = if (input$stat == "min") min else if (input$stat == "max") max else mean), 2)),
-        by = year,
-        .SDcols = paste(input$key, input$stat, sep = "_")
+        ssp == input$ssp,
+        .(
+          Year           = year,
+          Minimum        = round(min(abs_min),     2),
+          LowerQuartile  = round(mean(abs_lq),     2),
+          Mean           = round(mean(abs_mean),   2),
+          Median         = round(mean(abs_median), 2),
+          UpperQuartile  = round(mean(abs_uq),     2),
+          Maximum        = round(max(abs_uq),      2)
+        ),
+        by = year
       ][, !"year"]
     }
   )
@@ -319,34 +315,27 @@ server <- function(input, output, session) {
   
   # ==== 2.4 Render the plot ====
   
-  # Title
-  observe(
-    {
-      output$title <- renderText(
-        paste(
-          "Plot of the",
-          ifelse(input$key == "abs", "annual values for the", "centennial change in the"),
-          tolower(names(choices$stat[choices$stat == input$stat])),
-          tolower(names(choices$var[choices$var == input$var])),
-          paste("(in", ifelse(choices$units[[input$var]] == "%", " p.p", choices$units[[input$var]]), ")", sep = ""),
-          ifelse(input$apt %in% dt_apt[, icao], "at", "across"),
-          ifelse(input$apt %in% dt_apt[, icao], paste(dt_apt[icao == input$apt, name], " (", dt_apt[icao == input$apt, iata], "/", dt_apt[icao == input$apt, icao], ")", sep = ""), tolower(input$apt)),
-          ifelse(input$apt %in% dt_apt[, icao], "", "airports worldwide"),
-          paste("under ", toupper(substr(input$ssp, 1, 4)), ":", sep = ""),
-          sep = " "
-        )
-      )
-    }
-  )
-  
   # Plot
   observe(
     {
       output$plot <- renderPlotly(
         {
           ggplot(data = dt_plt()) +
-            geom_point(mapping = aes(x = Year, y = Value), color = "#2780E3", alpha = 0.5) +
-            geom_smooth(mapping = aes(x = Year, y = Value), formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
+            # Scatterplots
+            geom_point(mapping = aes(x = Year, y = Minimum),       color = "#2780E3", alpha = 0.25) +
+            geom_point(mapping = aes(x = Year, y = LowerQuartile), color = "#2780E3", alpha = 0.25) +
+            geom_point(mapping = aes(x = Year, y = Mean),          color = "#2780E3", alpha = 0.25) +
+            geom_point(mapping = aes(x = Year, y = Median),        color = "#2780E3", alpha = 0.25) +
+            geom_point(mapping = aes(x = Year, y = UpperQuartile), color = "#2780E3", alpha = 0.25) +
+            geom_point(mapping = aes(x = Year, y = Maximum),       color = "#2780E3", alpha = 0.25) +
+            # Local polynomial regression fitting lines
+            geom_smooth(mapping = aes(x = Year, y = Minimum),       formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
+            geom_smooth(mapping = aes(x = Year, y = LowerQuartile), formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE, linetype = "dotted") +
+            geom_smooth(mapping = aes(x = Year, y = Mean),          formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
+            geom_smooth(mapping = aes(x = Year, y = Median),        formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE, linetype = "dashed") +
+            geom_smooth(mapping = aes(x = Year, y = UpperQuartile), formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE, linetype = "dotted") +
+            geom_smooth(mapping = aes(x = Year, y = Maximum),       formula = y ~ x, method = "loess", linewidth = 1, color = "#2780E3", se = FALSE) +
+            # Year indicator (vertical line)
             geom_vline(xintercept = input$year, color = "#2780E3", linetype = "dotted") +
             theme(
               axis.title         = element_blank(),
@@ -368,7 +357,7 @@ server <- function(input, output, session) {
       # Update the color palette
       pal <- colorBin(
         palette = "plasma",
-        domain  = dt_map()[, get(input$key)],
+        domain  = dt_map()[, dif],
         reverse = TRUE
       )
       # Update the map
@@ -381,17 +370,17 @@ server <- function(input, output, session) {
           color        = "black",
           stroke       = TRUE,
           weight       = .75,
-          fillColor    = ~pal(get(input$key)),
+          fillColor    = ~pal(dif),
           fillOpacity  = .8,
-          label        = ~paste(name, " (", iata, "/", icao, "): ", sprintf(fmt = ifelse(input$key == "abs", "%.2f", "%+.2f"), get(input$key)), ifelse(choices$units[[input$var]] == "%", " p.p", choices$units[[input$var]]), sep = ""),
+          label        = ~paste(name, " (", iata, "/", icao, "): ", sprintf(fmt = "%+.2f", dif), "℃", sep = ""),
           labelOptions = labelOptions(textsize = "12px")
         ) |>
         clearControls() |>
         addLegend(
           position  = "bottomright",
           pal       = pal,
-          values    = ~get(input$key),
-          title     = paste("Values in", choices$units[[input$var]], sep = " "),
+          values    = ~dif,
+          title     = "Change in ℃ since 2015",
           labFormat = labelFormat(suffix = ""),
           opacity   = 1
         )

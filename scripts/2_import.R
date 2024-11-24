@@ -44,7 +44,7 @@ dt_apt <- fread(
 # List the NetCDF files from which to extract the airports' climatic conditions
 nc_files <- list.files(
   path       = "data/cdf",
-  pattern    = "hurs|ps|tas",
+  pattern    = "tas",
   full.names = TRUE
 )
 
@@ -182,13 +182,6 @@ dt_cli <- dt_cli[,
     abs_max    = max(val)                    # Maximum
   ),
   by = .(icao, var, ssp, year)
-]
-
-# Convert ps from Pa to hPa
-dt_cli[
-  var == "ps",
-  names(.SD) := lapply(.SD, "/", 100L),
-  .SDcols = patterns("abs|dif")
 ]
 
 # Convert tas from K to C
