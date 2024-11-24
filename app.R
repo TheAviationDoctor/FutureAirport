@@ -159,7 +159,7 @@ ui <- fillPage(
       # Plot title
       h6("Plot of the surface air temperature (in ℃) over time:"),
       tooltip(
-        trigger   = bs_icon("info-circle-fill"), "This plot displays the annualized values for the maximum, 75th percentile (dotted), median (dashed), mean, 25th percentile (dotted), and minimum temperatures for the airport(s) selected above. The trend line uses a linear polynomial regression fitting.",
+        trigger   = bs_icon("info-circle-fill"), "This plot displays the annualized values for (top to bottom) the maximum, 75th percentile (dotted), median (dashed), mean, 25th percentile (dotted), and minimum temperatures for the airport(s) selected above. Each trend line uses a linear polynomial regression fitting.",
         placement = "right"
       ),
       # Plot
